@@ -1,9 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
-using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
@@ -16,11 +14,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 using DocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
-using RuleKind = Casazen.Core.Options.FiscalDocumentKind;
 
 namespace Casazen.Tests.Integration;
 

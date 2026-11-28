@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using Casazen.Core.Entities;
 
 namespace Casazen.Core.OfficialData;
 
@@ -28,14 +27,4 @@ public static partial class MefNuovaAtCatalogPage
         @"href=""(https://(?:www1\.)?finanze\.gov\.it/[^""]*nuova_at[^""]*\.(?:csv|txt))""",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex CsvPermalinkRegex();
-}
-
-/// <summary>Dataset keys used by the comune official-profile agent (MEF <c>nuova_at</c>).</summary>
-public static class MefOfficialSource
-{
-    public const string Authority = MefNuovaAtCatalogPage.Authority;
-
-    public static string IndexDataset => OfficialSourceDatasets.MefNuovaAtIndex;
-
-    public static string ActDataset => OfficialSourceDatasets.MefImpostaSoggiorno;
 }

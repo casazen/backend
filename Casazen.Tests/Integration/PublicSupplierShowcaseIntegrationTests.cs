@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Suppliers;
 using Xunit;
 
 namespace Casazen.Tests.Integration;

@@ -12,7 +12,6 @@ using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;

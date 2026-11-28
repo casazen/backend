@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;

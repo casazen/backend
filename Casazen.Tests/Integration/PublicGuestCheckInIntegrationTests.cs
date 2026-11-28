@@ -8,7 +8,6 @@ using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.AspNetCore.Hosting;
 using Casazen.Core.Options;
 using Xunit;
 

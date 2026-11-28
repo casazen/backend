@@ -9,7 +9,6 @@ using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace Casazen.Web.BackgroundJobs;
 

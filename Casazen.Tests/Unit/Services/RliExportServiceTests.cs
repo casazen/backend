@@ -2,7 +2,6 @@ using System.Text;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Documents;

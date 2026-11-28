@@ -6,7 +6,6 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Assistant;
 using Casazen.Tests.Unit.Logging;

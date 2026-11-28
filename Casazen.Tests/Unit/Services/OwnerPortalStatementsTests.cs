@@ -12,7 +12,6 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.OwnerPortal;
 using Casazen.Web.Resources;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

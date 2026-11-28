@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Casazen.Core.Authorization;
-using Casazen.Core.Entities;
 using Casazen.Core.Search;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Search;
@@ -10,7 +9,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.Logging.Abstractions;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Search;

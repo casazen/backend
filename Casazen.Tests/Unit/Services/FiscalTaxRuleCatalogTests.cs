@@ -1,4 +1,3 @@
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -12,7 +11,6 @@ using Casazen.Infrastructure.Documents;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Extensions;
 using Casazen.Web.Resources;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http;
-
 namespace Casazen.Web.DTOs.LongRent;
 
 /// <summary>

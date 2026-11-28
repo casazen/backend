@@ -1,6 +1,5 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Utilities;

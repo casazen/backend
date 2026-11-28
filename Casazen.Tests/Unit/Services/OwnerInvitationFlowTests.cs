@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -9,7 +8,6 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Services;
-using Casazen.Tests.Unit.Logging;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Microsoft.AspNetCore.Authorization;

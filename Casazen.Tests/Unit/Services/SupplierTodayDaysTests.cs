@@ -1,6 +1,5 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
-using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Services;
 using Moq;
 using Xunit;

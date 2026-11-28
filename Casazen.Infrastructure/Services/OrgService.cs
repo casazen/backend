@@ -19,18 +19,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
     public Task<Org?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
 
-    public async Task<Org?> GetByUserIdAsync(string userId, CancellationToken cancellationToken = default)
-    {
-        var orgId = await dbContext.Users.AsNoTracking()
-            .Where(u => u.Id == userId)
-            .Select(u => u.OrgId)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return orgId is null
-            ? null
-            : await dbContext.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
-    }
-
     /// <remarks>
     /// Also resolves a previous slug of the org (<see cref="OrgSlugAlias"/>, PL-04): links shared before a slug change
     /// keep working. The returned org carries its current slug, so the site can redirect to the canonical address.
@@ -225,10 +213,6 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         await dbContext.SaveChangesAsync(cancellationToken);
         return org;
     }
-
-    public Task<Org?> GetByStripeCustomerIdAsync(string stripeCustomerId, CancellationToken cancellationToken = default) =>
-        dbContext.Orgs.AsNoTracking()
-            .FirstOrDefaultAsync(o => o.StripeCustomerId == stripeCustomerId, cancellationToken);
 
     public async Task<Org?> UpdateBillingProfileAsync(
         Guid orgId,

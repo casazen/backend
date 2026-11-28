@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Resources;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Casazen.Infrastructure.Email;

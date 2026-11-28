@@ -1,6 +1,5 @@
 using System.Text;
 using Casazen.Core.Entities;
-using Casazen.Core.OfficialData;
 
 namespace Casazen.Infrastructure.OfficialData;
 

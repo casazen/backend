@@ -10,7 +10,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Documents;
-using Casazen.Web.BackgroundJobs;
 using Casazen.Web.Resources;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Validation;
 using Casazen.Infrastructure.Data;

@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;

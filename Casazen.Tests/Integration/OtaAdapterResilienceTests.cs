@@ -3,7 +3,6 @@ using Casazen.Infrastructure.OTA.Resilience;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System.Net;
 using Xunit;
 
 namespace Casazen.Tests.Integration;

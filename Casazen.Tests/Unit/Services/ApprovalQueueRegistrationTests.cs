@@ -140,6 +140,9 @@ public class ApprovalQueueRegistrationTests
 
         public Task<int> PreviewCountAsync(Guid segmentId, Guid orgId, HostScope scope, CancellationToken cancellationToken = default, Guid? propertyId = null) =>
             throw new NotSupportedException();
+
+        public Task<int> PreviewConditionCountAsync(Casazen.Core.Models.Condition condition, Guid orgId, HostScope scope, CancellationToken cancellationToken = default, Guid? propertyId = null) =>
+            throw new NotSupportedException();
     }
 
     private sealed class QueueThatNeedsTheRegistry(IApprovalOriginActionRegistry registry) : IApprovalQueueService

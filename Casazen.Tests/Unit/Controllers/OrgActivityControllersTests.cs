@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;

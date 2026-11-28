@@ -1,6 +1,5 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
-using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Tests.Unit.Logging;
 using Casazen.Tests.Unit.Services;

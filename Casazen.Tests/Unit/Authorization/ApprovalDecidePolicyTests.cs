@@ -8,7 +8,6 @@ using Casazen.Web.Controllers;
 using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;

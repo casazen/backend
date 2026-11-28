@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
-using Casazen.Core.Suppliers;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Tests.Unit.Services;

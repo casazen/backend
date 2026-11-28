@@ -18,7 +18,6 @@ using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Fiscal;
 using Casazen.Web.Infrastructure;
 using Casazen.Web.Resources;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;

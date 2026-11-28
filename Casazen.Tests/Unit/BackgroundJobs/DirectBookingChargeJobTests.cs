@@ -5,7 +5,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
-using Casazen.Tests.Integration;
 using Casazen.Tests.Unit.Email;
 using Casazen.Web.BackgroundJobs;
 using Microsoft.EntityFrameworkCore;

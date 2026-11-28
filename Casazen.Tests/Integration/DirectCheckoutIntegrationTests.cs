@@ -1,6 +1,5 @@
 using Casazen.Core.GuestPortal;
 using System.Net;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using System.Text;
 using System.Text.Json;
@@ -1045,9 +1044,6 @@ internal sealed class FakeStripeService : IStripeService
             Metadata = metadata,
         });
     }
-
-    public Task<PaymentIntent> ConfirmPaymentAsync(string paymentIntentId) =>
-        Task.FromResult(new PaymentIntent { Id = paymentIntentId });
 
     /// <summary>Idempotent creations received (LT-06 rent): one PaymentIntent per idempotency key, as Stripe does.</summary>
     public System.Collections.Concurrent.ConcurrentDictionary<string, PaymentIntent> IdempotentPaymentIntents { get; } = new();

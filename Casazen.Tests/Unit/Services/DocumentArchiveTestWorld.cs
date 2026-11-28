@@ -1,5 +1,4 @@
 using System.Text;
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Core.Options;

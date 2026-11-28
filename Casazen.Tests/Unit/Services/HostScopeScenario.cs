@@ -1,7 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Enums;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Xunit;

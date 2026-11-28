@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Reflection;
 using System.Security.Claims;
 using Casazen.Core.Authorization;
-using Casazen.Core.Features;
 using Casazen.Core.Search;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;

@@ -1,7 +1,6 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
 using Hangfire;
-using Microsoft.Extensions.Logging;
 
 namespace Casazen.Web.BackgroundJobs;
 

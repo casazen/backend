@@ -1,4 +1,3 @@
-using Casazen.Core.Entities;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Xunit;

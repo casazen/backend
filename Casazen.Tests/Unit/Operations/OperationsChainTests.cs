@@ -9,7 +9,6 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Jobs;
-using Moq;
 using Xunit;
 using AutoSendOutcome = Casazen.Infrastructure.Octorate.StayGuestsAutoSendOutcome;
 using World = Casazen.Tests.Unit.Operations.OperationsScenarioBuilder;

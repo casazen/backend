@@ -2,8 +2,6 @@ using Casazen.Core.Entities;
 using Casazen.Core.Enums;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Xunit;
 
 namespace Casazen.Tests.Integration;

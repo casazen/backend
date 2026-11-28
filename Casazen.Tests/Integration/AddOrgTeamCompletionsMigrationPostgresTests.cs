@@ -1,9 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;

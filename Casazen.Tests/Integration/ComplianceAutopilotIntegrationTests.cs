@@ -7,7 +7,6 @@ using Casazen.Infrastructure.Email;
 using Casazen.Tests.Unit;
 using Hangfire.Common;
 using Hangfire.States;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;

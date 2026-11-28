@@ -1,6 +1,5 @@
 using Casazen.Core.Documents;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;

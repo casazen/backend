@@ -3,7 +3,6 @@ using System.Text;
 using System.Threading.RateLimiting;
 using Casazen.Web.DTOs;
 using Casazen.Web.Extensions;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Casazen.Web.Infrastructure;

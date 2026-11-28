@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
 
@@ -115,6 +116,22 @@ public interface ICampaignService
     /// <returns>Count of eligible recipients.</returns>
     Task<int> PreviewCountAsync(
         Guid segmentId,
+        Guid orgId,
+        HostScope scope,
+        CancellationToken cancellationToken = default, Guid? propertyId = null);
+
+    /// <summary>
+    /// Previews the recipient count of a condition that is not saved yet: the count <see cref="PreviewCountAsync"/> gives for a segment
+    /// holding that condition, with the same consent, suppression and monthly limit rules. A condition that is not valid counts nobody.
+    /// </summary>
+    /// <param name="condition">The condition tree to evaluate.</param>
+    /// <param name="orgId">Organization ID.</param>
+    /// <param name="scope">Host scope for perimeter enforcement.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="propertyId">Optional property whose audience is counted.</param>
+    /// <returns>Count of eligible recipients.</returns>
+    Task<int> PreviewConditionCountAsync(
+        Condition condition,
         Guid orgId,
         HostScope scope,
         CancellationToken cancellationToken = default, Guid? propertyId = null);

@@ -1,6 +1,5 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Features;
-using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;

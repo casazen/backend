@@ -218,7 +218,7 @@ public class CampaignServiceTests
 
     private static IFeatureFlags ModuleOn() => new TestFeatureFlags(FeatureFlags.CrmMarketing);
 
-    internal static void AddContact(AppDbContext db, Guid orgId, string email, bool confirmed = true)
+    internal static GuestCrmProfile AddContact(AppDbContext db, Guid orgId, string email, bool confirmed = true)
     {
         var profile = new GuestCrmProfile { OrgId = orgId, CompositeKeyHash = Guid.NewGuid().ToString("N") };
         db.GuestCrmProfiles.Add(profile);
@@ -232,6 +232,7 @@ public class CampaignServiceTests
             LegalBasis = GuestContactLegalBasis.Consent,
             Confirmation = confirmed ? GuestContactConfirmation.Confirmed : GuestContactConfirmation.Unconfirmed,
         });
+        return profile;
     }
 
     private static async Task<(DbContextOptions<AppDbContext> Options, Guid OrgId, Guid CampaignId)> SeedApprovedCampaignAsync(string guestEmail)

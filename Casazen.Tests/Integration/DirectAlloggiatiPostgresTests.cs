@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text;
-using System.Xml.Linq;
 using Casazen.Core.Entities;
 using Casazen.Core.Features;
 using Casazen.Core.Services;

@@ -4,7 +4,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;

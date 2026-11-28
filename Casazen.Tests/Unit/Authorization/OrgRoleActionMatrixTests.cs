@@ -4,7 +4,6 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;

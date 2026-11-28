@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Reflection;
 using System.Security.Claims;
-using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;

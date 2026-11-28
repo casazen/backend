@@ -11,7 +11,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;

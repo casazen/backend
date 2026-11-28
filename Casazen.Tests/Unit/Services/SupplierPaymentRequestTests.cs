@@ -3,7 +3,6 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
-using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Xunit;

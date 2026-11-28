@@ -8,7 +8,6 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
-using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Infrastructure.Services.ApprovalActions;
 using Casazen.Tests.Unit.Services;

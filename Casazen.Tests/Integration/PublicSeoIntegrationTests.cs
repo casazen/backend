@@ -5,7 +5,6 @@ using System.Xml.Linq;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
-using Casazen.Core.Regulatory;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Microsoft.Extensions.Configuration;

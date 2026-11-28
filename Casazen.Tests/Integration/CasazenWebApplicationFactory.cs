@@ -10,7 +10,6 @@ using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
-using Hangfire.InMemory;
 using Hangfire.States;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;

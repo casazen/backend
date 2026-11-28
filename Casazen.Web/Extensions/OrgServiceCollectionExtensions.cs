@@ -1,6 +1,5 @@
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Infrastructure;
 using Microsoft.Extensions.DependencyInjection.Extensions;
