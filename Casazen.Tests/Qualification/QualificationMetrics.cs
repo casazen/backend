@@ -539,6 +539,7 @@ public static class QualificationDecisionCodes
     public const string CoherenceIdentifyingConflict = "identifying_conflict";
     public const string CoherenceMrzInvalid = "mrz_invalid";
     public const string CoherenceExpired = "expired";
+    public const string CoherenceBookingConflict = "booking_conflict";
     public const string CoherenceUnknown = "unknown";
 
     public const string LivenessPassed = "passed";

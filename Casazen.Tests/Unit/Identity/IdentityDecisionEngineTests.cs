@@ -243,6 +243,7 @@ public sealed class IdentityDecisionEngineTests
     [InlineData(IdentityDocumentCoherence.IdentifyingConflict, VerificationReasons.Results.Failed)]
     [InlineData(IdentityDocumentCoherence.MrzInvalid, VerificationReasons.Results.CheckDigitsInvalid)]
     [InlineData(IdentityDocumentCoherence.Expired, VerificationReasons.Results.Expired)]
+    [InlineData(IdentityDocumentCoherence.BookingConflict, VerificationReasons.Results.BookingMismatch)]
     [InlineData(IdentityDocumentCoherence.Unknown, VerificationReasons.Results.NotRun)]
     public void IdentityDecisionEngine_ADocumentWhoseCoherenceIsNotAPass_IsReviewed_NeverRetried(IdentityDocumentCoherence coherence, string result)
     {

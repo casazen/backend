@@ -156,6 +156,7 @@ internal sealed class PixelAntiSpoofing : IAntiSpoofingService
     }
 }
 
+// The MRZ spells the true values of the owner of the card, as the dataset declares them for the booking.
 internal sealed class MarkerMrzReader : IMrzExtractionService
 {
     public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default)
@@ -171,14 +172,15 @@ internal sealed class MarkerMrzReader : IMrzExtractionService
         if (!PixelCode.IsCard(picture) || PixelCode.Level(picture, PixelCode.CardSideX + 4, PixelCode.CardMarkY + 4) < 128)
             return new MrzReading(null, []);
 
+        var person = PixelCode.PersonOfLevel(PixelCode.Level(picture, PixelCode.CardPersonX + 4, PixelCode.CardMarkY + 4));
         return new MrzReading(
             new MrzExtractionResult
             {
                 DocumentType = "IdCard",
-                Surname = "ZQLOGIC",
-                GivenNames = "ZQTEST",
+                Surname = QualificationLogicFixture.TrueSurname(person),
+                GivenNames = QualificationLogicFixture.TrueGivenNames(person),
                 Nationality = "ITA",
-                DocumentNumber = "ZQ0000000",
+                DocumentNumber = QualificationLogicFixture.TrueNumber(person),
                 DateOfBirth = new DateTime(1980, 1, 1),
                 ExpirationDate = new DateTime(2040, 1, 1),
                 IsExpired = false,
@@ -205,7 +207,11 @@ public sealed class QualificationLogicFixture : IAsyncLifetime
 
     public const int Cap = 5;
 
-    private static readonly string[] TrueValues = ["ZQSURNAME", "ZQGIVEN", "ZQNUMBER"];
+    public static string TrueSurname(int person) => $"ZQSURNAME{person}";
+
+    public static string TrueGivenNames(int person) => $"ZQGIVEN{person}";
+
+    public static string TrueNumber(int person) => $"ZQNUMBER{person}";
 
     public string Folder { get; } = Path.Combine(Path.GetTempPath(), "casazen-qualification-logic-" + Guid.NewGuid().ToString("N"));
 
@@ -297,7 +303,7 @@ public sealed class QualificationLogicFixture : IAsyncLifetime
                 File.WriteAllBytes(Path.Combine(directory, "back.png"), CardPngEncoder.Encode(back));
             }
 
-            File.WriteAllText(Path.Combine(directory, "truth.json"), $$"""{ "surname": "{{TrueValues[0]}}{{person}}", "givenNames": "{{TrueValues[1]}}{{person}}", "documentNumber": "{{TrueValues[2]}}{{person}}" }""");
+            File.WriteAllText(Path.Combine(directory, "truth.json"), $$"""{ "surname": "{{TrueSurname(person)}}", "givenNames": "{{TrueGivenNames(person)}}", "documentNumber": "{{TrueNumber(person)}}" }""");
             WriteSequence(Path.Combine(directory, "seq"), policy, person, live: true);
         }
 
@@ -407,7 +413,7 @@ public sealed class QualificationRunnerLogicTests(QualificationLogicFixture run)
         Assert.All(run.Results.Metrics.Latency, stage => Assert.True(stage.P95Ms >= stage.P50Ms && stage.MaxMs >= stage.P95Ms));
         Assert.DoesNotContain("ZQSURNAME", run.Results.ToJson(), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ZQNUMBER", run.Results.ToJson(), StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("ZQLOGIC", run.Results.ToJson(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ZQGIVEN", run.Results.ToJson(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -83,7 +83,8 @@ public sealed class IdentityPresenceOptions
 
     public int MaxFrameSide { get; set; } = 720;
 
-    public int SequenceTimeoutMs { get; set; } = 8_000;
+    // On a busy CPU the models need several seconds for one sequence, and a time over sends the guest to a person.
+    public int SequenceTimeoutMs { get; set; } = 20_000;
 }
 
 public sealed class IdentityEvidenceOptions

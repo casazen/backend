@@ -43,7 +43,8 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
 
         new(RateLimitPolicies.GuestIdentity, 30, OneMinute, PartitionByToken: true),
-        new(RateLimitPolicies.GuestIdentityUpload, 6, OneMinute, PartitionByToken: true),
+        // The uploads are the pictures of the document and the sequence: a whole sitting fits, with retakes, the guided retry and the retries of the network.
+        new(RateLimitPolicies.GuestIdentityUpload, 20, OneMinute, PartitionByToken: true),
 
         new(RateLimitPolicies.PublicDoorCheckIn, 5, OneMinute, PartitionByToken: true, TokenRouteValue: DoorTokenRouteValue),
         new(RateLimitPolicies.PublicTouristTaxCalc, 30, OneMinute, "SeoTouristTax:RateLimitPermitLimit"),
