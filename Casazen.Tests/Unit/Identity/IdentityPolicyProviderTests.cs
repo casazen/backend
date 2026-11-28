@@ -49,8 +49,9 @@ internal static class IdentityPolicyTestFiles
     }
 
     /// <summary>
-    /// The text of the candidate policy file <paramref name="version"/> (<c>identity-policy-2026.11-2</c> or <c>-3</c>, IDENT-TESTPOLICY): the committed policy, not provisional, with the three
-    /// similarity thresholds of the candidate. No pin of a candidate is committed: the tests compute its canonical hash from the file.
+    /// The text of the candidate policy file <paramref name="version"/>, not provisional: <c>identity-policy-2026.11-2</c> or <c>-3</c> (IDENT-TESTPOLICY), the committed policy with the three similarity
+    /// thresholds of the candidate; <c>-4</c> or <c>-5</c> (IDENT-TUNING), the policy of <c>-2</c> with the two thresholds of the pose of the head of the candidate. No pin of a candidate is committed:
+    /// the tests compute its canonical hash from the file.
     /// </summary>
     public static string CandidateText(string version)
     {
@@ -697,6 +698,73 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.True(committed.Provisional);
         Assert.Equal(IdentityPolicyTestFiles.ShippedCanonicalHash, committed.Hash);
         Assert.NotEqual(committed.Hash, candidate.Hash);
+    }
+
+    // ─── The pose candidates (IDENT-TUNING, NF-194) ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// AC1: each pose candidate is the candidate <c>identity-policy-2026.11-2</c> with exactly three members different: its version (the name of its file) and the two thresholds of the pose of the head. The numbers are below
+    /// what the estimator of the pose can measure, to compare on real runs, never a calibration; every other limit and rule, <c>neutralMaxDegrees</c> too, is the one of <c>-2</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("identity-policy-2026.11-4", "12", "6")]
+    [InlineData("identity-policy-2026.11-5", "8", "4")]
+    public void PoseCandidatePolicyFile_IsTheSecondCandidateWithOnlyTheVersionAndTheTwoPoseThresholdsChanged(string version, string turnMinYawDegrees, string lookMinPitchDegrees)
+    {
+        var expected = IdentityPolicyTestFiles.Apply(
+            IdentityPolicyTestFiles.CandidateText("identity-policy-2026.11-2"),
+            ("version", $"\"{version}\""),
+            ("presence.pose.turnMinYawDegrees", turnMinYawDegrees),
+            ("presence.pose.lookMinPitchDegrees", lookMinPitchDegrees));
+        var text = IdentityPolicyTestFiles.CandidateText(version);
+
+        Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(expected), out var expectedCanonical));
+        Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(text), out var actualCanonical));
+        Assert.Equal(expectedCanonical, actualCanonical);
+    }
+
+    /// <summary>
+    /// AC2, the way a pose candidate is chosen and the only way: with the two variables over the committed <c>appsettings.json</c> the services of the application give the ready, non-provisional candidate with its canonical hash, its
+    /// two thresholds of the pose and the similarity thresholds of <c>-2</c>; with the committed defaults alone they give the committed provisional policy and its pin, as before.
+    /// </summary>
+    [Theory]
+    [InlineData("identity-policy-2026.11-4", 12.0, 6.0)]
+    [InlineData("identity-policy-2026.11-5", 8.0, 4.0)]
+    public void AddCasazenServices_TheTwoVariables_SelectThePoseCandidatePolicy_AndTheCommittedDefaultsKeepTheProvisionalOne(string version, double turnMinYawDegrees, double lookMinPitchDegrees)
+    {
+        var hash = IdentityPolicyProvider.CanonicalSha256(Encoding.UTF8.GetBytes(IdentityPolicyTestFiles.CandidateText(version)))!;
+        var variables = new Dictionary<string, string?>
+        {
+            ["IdentityVerification:PolicyFile"] = $"IdentityPolicies/{version}.json",
+            ["IdentityVerification:PolicySha256"] = hash,
+        };
+
+        var candidate = SnapshotOfTheServices(variables);
+        var committed = SnapshotOfTheServices(new Dictionary<string, string?>());
+
+        Assert.True(candidate.IsReady);
+        Assert.False(candidate.Provisional);
+        var policy = candidate.Policy!;
+        Assert.Equal((version, false, hash), (policy.Version, policy.Provisional, candidate.Hash));
+        Assert.Equal(
+            (turnMinYawDegrees, lookMinPitchDegrees, 15.0),
+            (policy.Presence.Pose.TurnMinYawDegrees, policy.Presence.Pose.LookMinPitchDegrees, policy.Presence.Pose.NeutralMaxDegrees));
+        Assert.Equal((0.5, 0.363, 0.3), (policy.Match.Accept, policy.Match.ReviewFloor, policy.Match.MinEachFrame));
+        Assert.True(committed.IsReady);
+        Assert.True(committed.Provisional);
+        Assert.Equal(IdentityPolicyTestFiles.ShippedCanonicalHash, committed.Hash);
+        Assert.NotEqual(committed.Hash, candidate.Hash);
+    }
+
+    /// <summary>Security: a pose candidate named without its own pin (only <c>IdentityVerification__PolicyFile</c> set) is no policy: the pin of the committed file does not fit it, and a person decides.</summary>
+    [Theory]
+    [InlineData("identity-policy-2026.11-4")]
+    [InlineData("identity-policy-2026.11-5")]
+    public void AddCasazenServices_ThePoseCandidateFileWithTheCommittedPin_IsUnavailable_AsHashMismatch(string version)
+    {
+        var snapshot = SnapshotOfTheServices(new Dictionary<string, string?> { ["IdentityVerification:PolicyFile"] = $"IdentityPolicies/{version}.json" });
+
+        AssertUnavailable(snapshot, IdentityPolicyReasonCodes.PolicyHashMismatch);
     }
 
     /// <summary>What the services of the application, built over the committed <c>appsettings.json</c> and the configuration <paramref name="variables"/> on top of it, make of the policy.</summary>

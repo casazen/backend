@@ -46,8 +46,9 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestCheckInSubmit, 3, OneMinute, "CheckIn:SubmitRateLimitPermitLimit", PartitionByToken: true),
 
         // The self-hosted identity step (E70/F01/US01/T01): the opening and the presence challenge, and the upload of a presence sequence, per client IP and token.
+        // The uploads (the pictures of the document too) leave room for a whole sitting: both sides and the sequence, with retakes, the guided retry and the retries of the network.
         new(RateLimitPolicies.GuestIdentity, 30, OneMinute, PartitionByToken: true),
-        new(RateLimitPolicies.GuestIdentityUpload, 6, OneMinute, PartitionByToken: true),
+        new(RateLimitPolicies.GuestIdentityUpload, 20, OneMinute, PartitionByToken: true),
 
         // The guest at the door (E22/F01/US02/T01): a booking code or a surname and a date open the check-in link of a stay: 5 a minute per client IP and door token.
         new(RateLimitPolicies.PublicDoorCheckIn, 5, OneMinute, PartitionByToken: true, TokenRouteValue: DoorTokenRouteValue),

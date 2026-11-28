@@ -212,7 +212,7 @@ public class IdentityContractsTests
 
         Assert.Equal(("GuestIdentity", 30, TimeSpan.FromMinutes(1), true, false, "token"),
             (identity.Name, identity.DefaultPermitLimit, identity.DefaultWindow, identity.PartitionByToken, identity.PartitionByUser, identity.TokenRouteValue));
-        Assert.Equal(("GuestIdentityUpload", 6, TimeSpan.FromMinutes(1), true, false, "token"),
+        Assert.Equal(("GuestIdentityUpload", 20, TimeSpan.FromMinutes(1), true, false, "token"),
             (upload.Name, upload.DefaultPermitLimit, upload.DefaultWindow, upload.PartitionByToken, upload.PartitionByUser, upload.TokenRouteValue));
     }
 

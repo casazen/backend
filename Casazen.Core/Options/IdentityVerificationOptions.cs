@@ -107,9 +107,9 @@ public sealed class IdentityPresenceOptions
 
     /// <summary>
     /// The time the server may take on one sequence, in milliseconds (500 to 30000, ADR-013-R17): the request is synchronous, past the limit a person decides.
-    /// Default 8000.
+    /// Default 20000: on a busy CPU the models need several seconds for one sequence, and a time over sends the guest to a person.
     /// </summary>
-    public int SequenceTimeoutMs { get; set; } = 8_000;
+    public int SequenceTimeoutMs { get; set; } = 20_000;
 }
 
 /// <summary>

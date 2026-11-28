@@ -31,7 +31,7 @@ public class IdentityVerificationOptionsTests
             ("IdentityPolicies/identity-policy-2026.11-1.json", "", "IdentityFormats"),
             (defaults.PolicyFile, defaults.PolicySha256, defaults.FormatsDirectory));
         Assert.Equal(
-            (60, 262_144, 6_291_456, 720, 8_000),
+            (60, 262_144, 6_291_456, 720, 20_000),
             (defaults.Presence.MaxFrames, defaults.Presence.MaxFrameBytes, defaults.Presence.MaxSequenceBytes, defaults.Presence.MaxFrameSide,
                 defaults.Presence.SequenceTimeoutMs));
         Assert.Equal((48, 3, 480), (defaults.Evidence.RetentionHours, defaults.Evidence.MaxFrames, defaults.Evidence.MaxSide));
