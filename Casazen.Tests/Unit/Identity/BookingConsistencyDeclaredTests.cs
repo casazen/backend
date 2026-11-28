@@ -88,7 +88,7 @@ public sealed class BookingConsistencyDeclaredTests
             Assert.Equal(IdentityFinalDecision.AutoApproved, decision.Final);
             Assert.Equal((IdentityShadowDecision.Approve, IdentityDecisionMode.Automatic, IdentityOutcomeCodes.AutoApproved), (decision.Shadow, decision.Mode, decision.OutcomeCode));
             Assert.Equal((BiometricOutcome.Accept, BiometricOutcome.Accept), (decision.LogOutcome, decision.ShadowOutcome));
-            Assert.Equal(1, decision.Reasons.Count(reason => reason == NothingCompared));
+            Assert.Single(decision.Reasons, reason => reason == NothingCompared);
             Assert.Contains(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, VerificationReasons.Results.Passed), decision.Reasons);
             Assert.All(decision.Reasons.Where(reason => reason != NothingCompared), reason => Assert.Equal(VerificationReasons.Results.Passed, reason.Result));
         }
