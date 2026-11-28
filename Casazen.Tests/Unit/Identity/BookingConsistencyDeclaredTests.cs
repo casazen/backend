@@ -7,6 +7,7 @@ using Casazen.Core.Identity;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Identity;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Qualification;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
@@ -286,6 +287,42 @@ public sealed class BookingConsistencyDeclaredTests
             Assert.Equal(IdentityDocumentCoherence.BookingConflict, IdentityDocumentCoherences.Of(conflict, Cie with { RequiredChecks = list }));
 
         Assert.Equal(IdentityDocumentCoherence.Unknown, IdentityDocumentCoherences.Of(Report(NothingDeclared), null));
+    }
+
+    [Fact]
+    public void QualificationRunner_WritesABookingConflict_AsItsOwnCode_NeverAsAPassedDocument()
+    {
+        // The metrics of the document stage count a document as let through only when its coherence is the code of a pass: a booking conflict is not one, and a pass that compared
+        // nothing with the booking is.
+        var conflict = QualificationRunner.CoherenceOf(Report(new CheckInIdentity(null, null, null, "CA99999ZZ", null)), Cie);
+        Assert.Equal(IdentityDocumentCoherence.BookingConflict, conflict);
+        Assert.Equal("booking_conflict", QualificationRunner.CoherenceCode(conflict));
+        Assert.Equal(QualificationDecisionCodes.CoherenceBookingConflict, QualificationRunner.CoherenceCode(conflict));
+
+        foreach (var declared in new[] { NothingDeclared, new CheckInIdentity("MARIA GIUSEPPINA", "ROSSI", null, null, null) })
+            Assert.Equal(QualificationDecisionCodes.CoherencePassed, QualificationRunner.CoherenceCode(QualificationRunner.CoherenceOf(Report(declared), Cie)));
+    }
+
+    [Fact]
+    public void QualificationRunner_GivesEveryCoherenceOfTheDecision_ItsCode()
+    {
+        var expected = new Dictionary<IdentityDocumentCoherence, string>
+        {
+            [IdentityDocumentCoherence.Unknown] = QualificationDecisionCodes.CoherenceUnknown,
+            [IdentityDocumentCoherence.Passed] = QualificationDecisionCodes.CoherencePassed,
+            [IdentityDocumentCoherence.IdentifyingConflict] = QualificationDecisionCodes.CoherenceIdentifyingConflict,
+            [IdentityDocumentCoherence.MrzInvalid] = QualificationDecisionCodes.CoherenceMrzInvalid,
+            [IdentityDocumentCoherence.Expired] = QualificationDecisionCodes.CoherenceExpired,
+            [IdentityDocumentCoherence.BookingConflict] = QualificationDecisionCodes.CoherenceBookingConflict,
+            [IdentityDocumentCoherence.PassedWithoutBooking] = QualificationDecisionCodes.CoherencePassed,
+        };
+
+        Assert.Equal(Enum.GetValues<IdentityDocumentCoherence>().Order(), expected.Keys.Order());
+        foreach (var (coherence, code) in expected)
+            Assert.Equal(code, QualificationRunner.CoherenceCode(coherence));
+
+        Assert.Equal(2, expected.Values.Count(code => code == QualificationDecisionCodes.CoherencePassed));
+        Assert.Equal(expected.Count - 1, expected.Values.Distinct().Count());
     }
 
     [Fact]

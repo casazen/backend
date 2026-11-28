@@ -632,9 +632,9 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
     /// The coherence as the decision reads it: the very rule of the flow (<see cref="IdentityDocumentCoherences"/>), an identifying conflict, an invalid MRZ, an expired document, a
     /// value declared for the booking that differs from the document, then a pass only when every check the format requires holds.
     /// </summary>
-    private static IdentityDocumentCoherence CoherenceOf(DocumentCoherenceReport report, DocumentFormat format) => IdentityDocumentCoherences.Of(report, format);
+    internal static IdentityDocumentCoherence CoherenceOf(DocumentCoherenceReport report, DocumentFormat format) => IdentityDocumentCoherences.Of(report, format);
 
-    private static string CoherenceCode(IdentityDocumentCoherence coherence) => coherence switch
+    internal static string CoherenceCode(IdentityDocumentCoherence coherence) => coherence switch
     {
         IdentityDocumentCoherence.Passed or IdentityDocumentCoherence.PassedWithoutBooking => QualificationDecisionCodes.CoherencePassed,
         IdentityDocumentCoherence.IdentifyingConflict => QualificationDecisionCodes.CoherenceIdentifyingConflict,
