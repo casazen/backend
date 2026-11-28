@@ -45,6 +45,10 @@ public enum IdentityDocumentCoherence
     MrzInvalid = 3,
 
     Expired = 4,
+
+    BookingConflict = 5,
+
+    PassedWithoutBooking = 6,
 }
 
 public enum IdentityModelsFault

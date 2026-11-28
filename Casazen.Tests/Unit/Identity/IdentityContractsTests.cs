@@ -103,14 +103,14 @@ public class IdentityContractsTests
     }
 
     [Fact]
-    public void VerificationReasons_Checks_HoldActivePoseAndTheElevenChecksOfTheSelfHostedFlow()
+    public void VerificationReasons_Checks_HoldActivePoseAndTheTwelveChecksOfTheSelfHostedFlow()
     {
         Assert.Equal(
             new[]
             {
                 "quality", "liveness", "document_validity", "mrz_consistency", "similarity", "processing", "active_pose",
                 "presence_challenge", "presence_timing", "presence_continuity", "presence_single_face", "presence_quality", "document_layout",
-                "document_side", "document_coherence", "document_format", "assurance_level", "observation_mode",
+                "document_side", "document_coherence", "booking_consistency", "document_format", "assurance_level", "observation_mode",
             }.Order(),
             StringConstants(typeof(VerificationReasons.Checks)).Order());
     }
@@ -203,7 +203,7 @@ public class IdentityContractsTests
 
         Assert.Equal(("GuestIdentity", 30, TimeSpan.FromMinutes(1), true, false, "token"),
             (identity.Name, identity.DefaultPermitLimit, identity.DefaultWindow, identity.PartitionByToken, identity.PartitionByUser, identity.TokenRouteValue));
-        Assert.Equal(("GuestIdentityUpload", 6, TimeSpan.FromMinutes(1), true, false, "token"),
+        Assert.Equal(("GuestIdentityUpload", 20, TimeSpan.FromMinutes(1), true, false, "token"),
             (upload.Name, upload.DefaultPermitLimit, upload.DefaultWindow, upload.PartitionByToken, upload.PartitionByUser, upload.TokenRouteValue));
     }
 

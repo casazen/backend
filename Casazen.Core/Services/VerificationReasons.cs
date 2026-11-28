@@ -54,6 +54,8 @@ public static class VerificationReasons
 
         public const string DocumentCoherence = "document_coherence";
 
+        public const string BookingConsistency = "booking_consistency";
+
         public const string DocumentFormat = "document_format";
 
         public const string AssuranceLevel = "assurance_level";
@@ -68,6 +70,8 @@ public static class VerificationReasons
 
         public const string NotRun = "not_run";
 
+        public const string NotApplicable = "not_applicable";
+
         public const string BetweenThresholds = "between_thresholds";
 
         public const string Expired = "expired";
@@ -77,6 +81,9 @@ public static class VerificationReasons
         public const string BirthDateMismatch = "birth_date_mismatch";
         public const string DocumentNumberMismatch = "document_number_mismatch";
         public const string NationalityMismatch = "nationality_mismatch";
+
+        public const string BookingMismatch = "booking_mismatch";
+
         public const string Unavailable = "unavailable";
         public const string Timeout = "timeout";
         public const string Error = "error";

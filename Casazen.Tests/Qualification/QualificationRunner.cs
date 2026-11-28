@@ -578,26 +578,15 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return new SideOutcome(new QualificationSideResult(sideCode, null, false, null, 0, codes), [], new MrzReading(null, []), null, false, false);
     }
 
-    private static IdentityDocumentCoherence CoherenceOf(DocumentCoherenceReport report, DocumentFormat format)
+    internal static IdentityDocumentCoherence CoherenceOf(DocumentCoherenceReport report, DocumentFormat format) => IdentityDocumentCoherences.Of(report, format);
+
+    internal static string CoherenceCode(IdentityDocumentCoherence coherence) => coherence switch
     {
-        if (report.IdentifyingConflict == true)
-            return IdentityDocumentCoherence.IdentifyingConflict;
-
-        if (report.Summary(DocumentFormatChecks.MrzCheckDigits) == DocumentCoherenceResults.Failed)
-            return IdentityDocumentCoherence.MrzInvalid;
-
-        if (report.Expired == true)
-            return IdentityDocumentCoherence.Expired;
-
-        return report.AllPassed(format.RequiredChecks) ? IdentityDocumentCoherence.Passed : IdentityDocumentCoherence.Unknown;
-    }
-
-    private static string CoherenceCode(IdentityDocumentCoherence coherence) => coherence switch
-    {
-        IdentityDocumentCoherence.Passed => QualificationDecisionCodes.CoherencePassed,
+        IdentityDocumentCoherence.Passed or IdentityDocumentCoherence.PassedWithoutBooking => QualificationDecisionCodes.CoherencePassed,
         IdentityDocumentCoherence.IdentifyingConflict => QualificationDecisionCodes.CoherenceIdentifyingConflict,
         IdentityDocumentCoherence.MrzInvalid => QualificationDecisionCodes.CoherenceMrzInvalid,
         IdentityDocumentCoherence.Expired => QualificationDecisionCodes.CoherenceExpired,
+        IdentityDocumentCoherence.BookingConflict => QualificationDecisionCodes.CoherenceBookingConflict,
         _ => QualificationDecisionCodes.CoherenceUnknown,
     };
 
