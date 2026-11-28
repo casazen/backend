@@ -843,7 +843,8 @@ internal sealed class PresenceClosureWorld : IAsyncDisposable
 
     public AppDbContext Db { get; }
 
-    public IDataProtectionProvider DataProtection { get; } = new EphemeralDataProtectionProvider();
+    // The one key ring of the test process: EF caches the model of the context by the provider (DataProtectionModelCacheKeyFactory), so the model is built once and not once per test.
+    public IDataProtectionProvider DataProtection { get; } = TestDataProtection.Shared;
 
     public FakeTimeProvider Clock { get; } = new(PresenceClosureKit.Now);
 
