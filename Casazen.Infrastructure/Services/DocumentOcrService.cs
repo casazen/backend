@@ -80,6 +80,9 @@ public class DocumentOcrService(
                     using var turned = orientation == 1 ? null : working.Oriented(orientation);
                     var text = await pageReader.ReadPageAsync(turned ?? working, token);
                     var read = ParseOcrText(text ?? string.Empty, today);
+                    if (read is not { GivenNames: not null, Surname: not null }
+                        && await ReadNamesByLayoutAsync(turned ?? working, today, token) is { } named)
+                        read = named;
                     if (read is null)
                         continue;
 
@@ -162,6 +165,20 @@ public class DocumentOcrService(
             page?.Dispose();
             colour?.Dispose();
         }
+    }
+
+    // The automatic segmentation misses the small name labels of a card on its patterned background; the block layouts read them.
+    private async Task<DocumentOcrResult?> ReadNamesByLayoutAsync(GrayBitmap image, DateOnly today, CancellationToken token)
+    {
+        foreach (var sparse in new[] { true, false })
+        {
+            token.ThrowIfCancellationRequested();
+            var read = ParseOcrText(await pageReader!.ReadLayoutAsync(image, sparse, token) ?? string.Empty, today);
+            if (read is { GivenNames: not null, Surname: not null })
+                return read;
+        }
+
+        return null;
     }
 
     private static GrayBitmap? CropBlueCard(RasterImage image, GrayBitmap page)
