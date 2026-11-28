@@ -659,6 +659,62 @@ public sealed class IdentityPolicyProviderTests : IDisposable
         Assert.NotEqual(committed.Hash, candidate.Hash);
     }
 
+    [Theory]
+    [InlineData("identity-policy-2026.11-4", "12", "6")]
+    [InlineData("identity-policy-2026.11-5", "8", "4")]
+    public void PoseCandidatePolicyFile_IsTheSecondCandidateWithOnlyTheVersionAndTheTwoPoseThresholdsChanged(string version, string turnMinYawDegrees, string lookMinPitchDegrees)
+    {
+        var expected = IdentityPolicyTestFiles.Apply(
+            IdentityPolicyTestFiles.CandidateText("identity-policy-2026.11-2"),
+            ("version", $"\"{version}\""),
+            ("presence.pose.turnMinYawDegrees", turnMinYawDegrees),
+            ("presence.pose.lookMinPitchDegrees", lookMinPitchDegrees));
+        var text = IdentityPolicyTestFiles.CandidateText(version);
+
+        Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(expected), out var expectedCanonical));
+        Assert.True(IdentityConfigurationJson.TryCanonicalize(Encoding.UTF8.GetBytes(text), out var actualCanonical));
+        Assert.Equal(expectedCanonical, actualCanonical);
+    }
+
+    [Theory]
+    [InlineData("identity-policy-2026.11-4", 12.0, 6.0)]
+    [InlineData("identity-policy-2026.11-5", 8.0, 4.0)]
+    public void AddCasazenServices_TheTwoVariables_SelectThePoseCandidatePolicy_AndTheCommittedDefaultsKeepTheProvisionalOne(string version, double turnMinYawDegrees, double lookMinPitchDegrees)
+    {
+        var hash = IdentityPolicyProvider.CanonicalSha256(Encoding.UTF8.GetBytes(IdentityPolicyTestFiles.CandidateText(version)))!;
+        var variables = new Dictionary<string, string?>
+        {
+            ["IdentityVerification:PolicyFile"] = $"IdentityPolicies/{version}.json",
+            ["IdentityVerification:PolicySha256"] = hash,
+        };
+
+        var candidate = SnapshotOfTheServices(variables);
+        var committed = SnapshotOfTheServices(new Dictionary<string, string?>());
+
+        Assert.True(candidate.IsReady);
+        Assert.False(candidate.Provisional);
+        var policy = candidate.Policy!;
+        Assert.Equal((version, false, hash), (policy.Version, policy.Provisional, candidate.Hash));
+        Assert.Equal(
+            (turnMinYawDegrees, lookMinPitchDegrees, 15.0),
+            (policy.Presence.Pose.TurnMinYawDegrees, policy.Presence.Pose.LookMinPitchDegrees, policy.Presence.Pose.NeutralMaxDegrees));
+        Assert.Equal((0.5, 0.363, 0.3), (policy.Match.Accept, policy.Match.ReviewFloor, policy.Match.MinEachFrame));
+        Assert.True(committed.IsReady);
+        Assert.True(committed.Provisional);
+        Assert.Equal(IdentityPolicyTestFiles.ShippedCanonicalHash, committed.Hash);
+        Assert.NotEqual(committed.Hash, candidate.Hash);
+    }
+
+    [Theory]
+    [InlineData("identity-policy-2026.11-4")]
+    [InlineData("identity-policy-2026.11-5")]
+    public void AddCasazenServices_ThePoseCandidateFileWithTheCommittedPin_IsUnavailable_AsHashMismatch(string version)
+    {
+        var snapshot = SnapshotOfTheServices(new Dictionary<string, string?> { ["IdentityVerification:PolicyFile"] = $"IdentityPolicies/{version}.json" });
+
+        AssertUnavailable(snapshot, IdentityPolicyReasonCodes.PolicyHashMismatch);
+    }
+
     private static IdentityPolicySnapshot SnapshotOfTheServices(Dictionary<string, string?> variables)
     {
         var configuration = new ConfigurationBuilder()

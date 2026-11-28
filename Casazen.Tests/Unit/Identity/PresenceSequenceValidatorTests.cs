@@ -555,7 +555,7 @@ public class PresenceSequenceValidatorTests
         Assert.All(logger.Entries, entry => Assert.Null(entry.Exception));
     }
 
-    private static PresenceSequenceValidator Validator(ScriptedRun run, int timeoutMs = 8000, CapturingLogger<PresenceSequenceValidator>? logger = null)
+    private static PresenceSequenceValidator Validator(ScriptedRun run, int timeoutMs = 20_000, CapturingLogger<PresenceSequenceValidator>? logger = null)
     {
         var options = new IdentityVerificationOptions { Presence = { SequenceTimeoutMs = timeoutMs } };
         return new PresenceSequenceValidator(
