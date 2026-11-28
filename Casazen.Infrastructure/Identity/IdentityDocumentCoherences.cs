@@ -8,10 +8,10 @@ namespace Casazen.Infrastructure.Identity;
 /// state, no I/O, no log, and it never sees a value read on the document (the report has none).
 /// </summary>
 /// <remarks>
-/// In this order, the first that applies: an identifying conflict between the sides, a failed check digit of the MRZ, an expired document; then, for a format of the
-/// registry, a known conflict with what was declared for the booking (<c>booking_consistency</c> failed, where the format requires that check); then a pass only when every
-/// check the format requires holds (<see cref="DocumentCoherenceReport.AllPassed"/>: <c>booking_consistency</c> may be <c>not_applicable</c> when nothing was declared, no
-/// other check may). Anything else, a format the registry does not hold included, is <see cref="IdentityDocumentCoherence.Unknown"/>: never a pass.
+/// In this order, the first that applies: an identifying conflict between the sides, a failed check digit of the MRZ, an expired document, a known conflict with what was
+/// declared for the booking (<c>booking_consistency</c> failed, whatever the checks the format requires); then, for a format of the registry, a pass only when every check
+/// the format requires holds (<see cref="DocumentCoherenceReport.AllPassed"/>: <c>booking_consistency</c> may be <c>not_applicable</c> when nothing was declared, no other
+/// check may). Anything else, a format the registry does not hold included, is <see cref="IdentityDocumentCoherence.Unknown"/>: never a pass.
 /// </remarks>
 public static class IdentityDocumentCoherences
 {
@@ -29,15 +29,11 @@ public static class IdentityDocumentCoherences
         if (report.Expired == true)
             return IdentityDocumentCoherence.Expired;
 
+        if (report.Summary(DocumentFormatChecks.BookingConsistency) == DocumentCoherenceResults.Failed)
+            return IdentityDocumentCoherence.BookingConflict;
+
         if (format is null)
             return IdentityDocumentCoherence.Unknown;
-
-        // A value declared and different from the document: a person decides, with the code of the conflict. A format that does not require the check does not judge it.
-        if (format.RequiredChecks.Contains(DocumentFormatChecks.BookingConsistency, StringComparer.Ordinal)
-            && report.Summary(DocumentFormatChecks.BookingConsistency) == DocumentCoherenceResults.Failed)
-        {
-            return IdentityDocumentCoherence.BookingConflict;
-        }
 
         return report.AllPassed(format.RequiredChecks) ? IdentityDocumentCoherence.Passed : IdentityDocumentCoherence.Unknown;
     }

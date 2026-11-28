@@ -61,8 +61,8 @@ public enum IdentityDocumentCoherence
     Expired = 4,
 
     /// <summary>
-    /// A value declared for the booking (the names, the birth date, the document number or the citizenship) is there and differs from the document, in a format that
-    /// requires <c>booking_consistency</c>: a known conflict, never a pass (IDENT-DECLARED). Nothing declared is no conflict (<c>not_applicable</c>).
+    /// A value declared for the booking (the names, the birth date, the document number or the citizenship) is there and differs from the document, whatever the checks the
+    /// format requires: a known conflict, never a pass (IDENT-DECLARED). Nothing declared is no conflict (<c>not_applicable</c>).
     /// </summary>
     BookingConflict = 5,
 }

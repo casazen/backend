@@ -257,10 +257,18 @@ public sealed class BookingConsistencyDeclaredTests
             }
         }
 
-        // A format that does not require the check of the booking does not judge it (the rule of its list, unchanged); a format the registry does not hold is never a pass.
+        // A known conflict never depends on the checks a format lists: a format that leaves the booking out is no way round it. A format the registry does not hold is never a pass.
         var conflict = Report(new CheckInIdentity(null, null, null, "CA99999ZZ", null));
-        var withoutBooking = Cie with { RequiredChecks = [.. Cie.RequiredChecks.Where(check => check != DocumentFormatChecks.BookingConsistency)] };
-        Assert.Equal(IdentityDocumentCoherence.Passed, IdentityDocumentCoherences.Of(conflict, withoutBooking));
+        IReadOnlyList<string>[] lists =
+        [
+            Cie.RequiredChecks,
+            [.. Cie.RequiredChecks.Where(check => check != DocumentFormatChecks.BookingConsistency)],
+            [DocumentFormatChecks.MrzCheckDigits],
+            [DocumentFormatChecks.Layout],
+        ];
+        foreach (var list in lists)
+            Assert.Equal(IdentityDocumentCoherence.BookingConflict, IdentityDocumentCoherences.Of(conflict, Cie with { RequiredChecks = list }));
+
         Assert.Equal(IdentityDocumentCoherence.Unknown, IdentityDocumentCoherences.Of(Report(NothingDeclared), null));
     }
 
