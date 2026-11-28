@@ -1,6 +1,5 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Services;
-using Microsoft.AspNetCore.Http;
 
 namespace Casazen.Web.DTOs;
 

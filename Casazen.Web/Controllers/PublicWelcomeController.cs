@@ -2,7 +2,6 @@ using Casazen.Core.Services;
 using Casazen.Web.DTOs.Crm;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 

@@ -10,7 +10,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Logging;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 

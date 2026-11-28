@@ -49,11 +49,8 @@ public class CampaignsController(
         if (orgId is null)
             return Unauthorized();
 
-        var evaluator = HttpContext.RequestServices.GetRequiredService<IConditionEvaluator>();
-        var errors = evaluator.ValidateCondition(request.Condition);
-        if (errors.Count > 0 || request.Condition.Groups.SelectMany(g => g.Rules).Any(r =>
-            !MarketingSegmentRules.Fields.Any(f => f.FieldId == r.FieldId && f.Operators.Contains(r.Operator))))
-            return this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_segment_rules", "marketing_invalid_condition");
+        if (RejectInvalidCondition(request.Condition) is { } invalid)
+            return invalid;
 
         var conditionJson = JsonSerializer.Serialize(request.Condition);
 
@@ -118,6 +115,32 @@ public class CampaignsController(
 
         return Ok(new SegmentPreviewDto { Count = count });
     }
+
+    [HttpPost("segments/preview")]
+    [ProducesResponseType(typeof(SegmentPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<SegmentPreviewDto>> PreviewCondition([FromBody] SegmentPreviewRequest request)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
+        if (orgId is null)
+            return Unauthorized();
+
+        if (RejectInvalidCondition(request.Condition) is { } invalid)
+            return invalid;
+
+        var scope = await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted);
+        if (scope is null)
+            return Unauthorized();
+
+        var count = await campaignService.PreviewConditionCountAsync(request.Condition, orgId.Value, scope, HttpContext.RequestAborted, request.PropertyId);
+
+        return Ok(new SegmentPreviewDto { Count = count });
+    }
+
+    private ObjectResult? RejectInvalidCondition(Condition condition) =>
+        MarketingSegmentRules.IsValid(condition, HttpContext.RequestServices.GetRequiredService<IConditionEvaluator>())
+            ? null
+            : this.ApiProblem(StatusCodes.Status400BadRequest, "invalid_segment_rules", "marketing_invalid_condition");
 
     #endregion
 
@@ -281,6 +304,12 @@ public record GuestSegmentDto
     public required string Name { get; init; }
     public Condition? Condition { get; init; }
     public DateTime CreatedAt { get; init; }
+}
+
+public record SegmentPreviewRequest
+{
+    public required Condition Condition { get; init; }
+    public Guid? PropertyId { get; init; }
 }
 
 public record SegmentPreviewDto

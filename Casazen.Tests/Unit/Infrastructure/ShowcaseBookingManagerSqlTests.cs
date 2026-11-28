@@ -1,7 +1,6 @@
 using System.Text.RegularExpressions;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 

@@ -12,7 +12,6 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Configuration;
 using Casazen.Web.Infrastructure;
-using Casazen.Web.Middleware;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.EntityFrameworkCore;
@@ -237,11 +236,5 @@ public static class ServiceCollectionExtensions
                 logger
             ).WithPolicyKey($"{platform}-resilience");
         });
-    }
-
-    public static IApplicationBuilder UseCasazenMiddleware(this IApplicationBuilder app)
-    {
-        app.UseErrorHandling();
-        return app;
     }
 }

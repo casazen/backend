@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
-using Casazen.Web.DTOs;
 using Casazen.Web.DTOs.ApprovalQueue;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;

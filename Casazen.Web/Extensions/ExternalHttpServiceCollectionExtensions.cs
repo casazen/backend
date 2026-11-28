@@ -1,8 +1,6 @@
-using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Http;
-using Casazen.Infrastructure.Services;
 using Polly;
 
 namespace Casazen.Web.Extensions;

@@ -5,7 +5,6 @@ using Casazen.Core.Options;
 using Casazen.Infrastructure.Services.LeaseContracts;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 
 namespace Casazen.Tests.Unit.Services.LeaseContracts;

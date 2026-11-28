@@ -1,7 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
-using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;

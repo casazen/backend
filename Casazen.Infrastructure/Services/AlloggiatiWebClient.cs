@@ -1,5 +1,4 @@
 using System.Xml.Linq;
-using Casazen.Core.Entities;
 using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;

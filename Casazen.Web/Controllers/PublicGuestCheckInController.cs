@@ -3,7 +3,6 @@ using Casazen.Infrastructure.GuestPortal;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
-using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Infrastructure;

@@ -29,9 +29,6 @@ public static class DirectBookingServiceCollectionExtensions
         services.AddScoped<IAdminReviewService, AdminReviewService>();
         services.AddScoped<IGuestMessageService, GuestMessageService>();
         services.AddScoped<IHostContactService, HostContactService>();
-        services.AddScoped<NotificationRouter>();
-        services.AddScoped<INotificationChannel, EmailNotificationChannel>();
-        services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
 
         return services;
     }

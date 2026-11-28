@@ -7,7 +7,6 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Push;
 using Casazen.Tests.Integration.Postgres;
 using Hangfire.Common;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

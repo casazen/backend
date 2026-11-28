@@ -1,6 +1,5 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
-using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;

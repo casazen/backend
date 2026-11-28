@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;

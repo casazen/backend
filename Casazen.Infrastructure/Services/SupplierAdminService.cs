@@ -11,7 +11,6 @@ using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 

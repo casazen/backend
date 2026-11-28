@@ -1,6 +1,5 @@
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Jobs;
-using Casazen.Infrastructure.Services;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;

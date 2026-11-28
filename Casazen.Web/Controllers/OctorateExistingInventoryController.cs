@@ -1,4 +1,3 @@
-using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;

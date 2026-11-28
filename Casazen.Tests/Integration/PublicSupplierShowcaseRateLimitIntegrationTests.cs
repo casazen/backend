@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text.Json;
 using Xunit;
 
 namespace Casazen.Tests.Integration;

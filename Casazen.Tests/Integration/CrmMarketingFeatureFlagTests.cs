@@ -21,6 +21,7 @@ public class CrmMarketingFeatureFlagTests(CasazenWebApplicationFactory factory) 
     [InlineData("GET", "/api/campaigns")]
     [InlineData("GET", "/api/campaigns/segments")]
     [InlineData("POST", "/api/campaigns/segments")]
+    [InlineData("POST", "/api/campaigns/segments/preview")]
     [InlineData("POST", "/api/campaigns")]
     [InlineData("GET", "/api/campaigns/00000000-0000-0000-0000-000000000001")]
     [InlineData("POST", "/api/campaigns/00000000-0000-0000-0000-000000000001/submit")]

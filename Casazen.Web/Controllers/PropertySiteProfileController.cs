@@ -2,7 +2,6 @@ using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Web.Authorization;
