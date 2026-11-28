@@ -354,6 +354,26 @@ internal sealed class SelfHostedIdentityScenario : IAsyncDisposable
         return userId;
     }
 
+    public async Task<string> SeedSelectedCollaboratorAsync(ScenarioStay stay, bool onTheStay)
+    {
+        var userId = await OrgTeamHttp.AddMemberAsync(Factory, stay.OrgId, OrgRole.Collaborator, ["short-rent"]);
+        using var scope = Host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var granted = stay.PropertyId;
+        if (!onTheStay)
+        {
+            var other = HostScopeScenario.NewProperty(stay.OrgId, stay.OwnerId, "Casa assegnata");
+            db.Properties.Add(other);
+            granted = other.Id;
+        }
+
+        var member = await db.OrgMembers.IgnoreQueryFilters().SingleAsync(m => m.UserId == userId, Ct);
+        member.PropertyScope = PropertyScope.Selected;
+        db.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = stay.OrgId, UserId = userId, PropertyId = granted });
+        await db.SaveChangesAsync(Ct);
+        return userId;
+    }
+
     /// <summary>Reads the database of the host in a scope of its own (the filters of the tenant are the caller's to lift).</summary>
     public async Task<T> ReadAsync<T>(Func<AppDbContext, Task<T>> read)
     {

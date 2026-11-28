@@ -376,6 +376,16 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
             await otherProperty.PostAsJsonAsync($"/api/verification/{stay.BookingId}/verify", new { outcome = true, note = "prova" }), HttpStatusCode.NotFound, "no_pending_verification");
         Assert.Empty(await scenario.ActivityAsync(stay.OrgId, OrgActivityType.IdentityEvidenceViewed));
 
+        Assert.Single(await SelfHostedIdentityScenario.PendingAsync(owner), item => BookingOf(item) == stay.BookingId);
+        var ownerCounters = await SelfHostedIdentityScenario.IdentityMetricsAsync(owner);
+        Assert.Equal((1, 1), (ownerCounters.GetProperty("opened").GetInt32(), ownerCounters.GetProperty("outcomes").GetProperty("review").GetInt32()));
+        Assert.Single(await SelfHostedIdentityScenario.PilotRowsAsync(owner));
+        var otherCounters = await SelfHostedIdentityScenario.IdentityMetricsAsync(otherProperty);
+        Assert.Equal(
+            (0, 0, 0),
+            (otherCounters.GetProperty("opened").GetInt32(), otherCounters.GetProperty("outcomes").GetProperty("review").GetInt32(), otherCounters.GetProperty("outcomes").GetProperty("inProgress").GetInt32()));
+        Assert.Empty(await SelfHostedIdentityScenario.PilotRowsAsync(otherProperty));
+
         // The reviewer who reaches the property reads two pictures: each is served never cached and never sniffed, and each writes its own line, with the reader, the booking and the kind.
         var crop = items.First(item => KindOf(item) == IdentityEvidenceKinds.DocumentPortrait);
         var frame = items.First(item => KindOf(item) == IdentityEvidenceKinds.Frame);
@@ -405,6 +415,43 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
             [IdentityEvidenceKinds.DocumentPortrait, IdentityEvidenceKinds.Frame],
             lines.Select(line => JsonDocument.Parse(line.DetailsJson).RootElement.GetProperty("part").GetString()!).Order(StringComparer.Ordinal));
         Assert.DoesNotContain("identity-evidence", string.Concat(lines.Select(line => line.DetailsJson)), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task S8_ACollaboratorOfSomeProperties_IsRefusedOnEveryRouteOfTheReview_WhicheverPropertyItWasGiven()
+    {
+        await using var scenario = SelfHostedIdentityScenario.Start(factory);
+        var (stay, guest) = await scenario.ReadyStayAsync();
+        var review = await scenario.AttemptAsync(guest, stay, scenario.Genuine, liveness: 0.99, similarity: 0.99);
+        Assert.Equal(Operator, review.Result);
+        var owner = scenario.Operator(stay.OwnerId);
+        var items = await SelfHostedIdentityScenario.EvidenceListAsync(owner, stay.BookingId);
+        Assert.NotEmpty(items);
+        var picture = items[0].GetProperty("id").GetGuid();
+
+        // The role of a collaborator holds no permission to decide a verification: the permission answers (403) before the reach is asked, so the grants change nothing.
+        foreach (var onTheStay in new[] { false, true })
+        {
+            var collaborator = scenario.Operator(await scenario.SeedSelectedCollaboratorAsync(stay, onTheStay), roles: string.Empty);
+
+            var statuses = new[]
+            {
+                await StatusOfAsync(collaborator.GetAsync($"/api/verification/{stay.BookingId}/evidence")),
+                await StatusOfAsync(collaborator.GetAsync($"/api/verification/{stay.BookingId}/evidence/{picture}")),
+                await StatusOfAsync(collaborator.GetAsync("/api/verification/pending")),
+                await StatusOfAsync(collaborator.PostAsJsonAsync($"/api/verification/{stay.BookingId}/verify", new { outcome = true, note = "prova" })),
+                await StatusOfAsync(collaborator.PostAsJsonAsync($"/api/verification/{stay.BookingId}/reject", new { reason = "prova" })),
+                await StatusOfAsync(collaborator.GetAsync("/api/verification/metrics")),
+                await StatusOfAsync(collaborator.GetAsync("/api/verification/metrics/export.csv")),
+            };
+
+            Assert.All(statuses, status => Assert.Equal(HttpStatusCode.Forbidden, status));
+        }
+
+        Assert.Empty(await scenario.ActivityAsync(stay.OrgId, OrgActivityType.IdentityEvidenceViewed));
+        Assert.Single(await SelfHostedIdentityScenario.PendingAsync(owner), item => BookingOf(item) == stay.BookingId);
+        Assert.All(await scenario.EvidenceRowsAsync(stay.BookingId), item => Assert.Null(item.DeletedAt));
+        Assert.Single(await scenario.OpenTodosAsync(stay.BookingId));
     }
 
     // ───── S10: the legacy routes ─────
@@ -479,6 +526,12 @@ public sealed class SelfHostedIdentityScenarioTests(CasazenWebApplicationFactory
     private static Guid BookingOf(JsonElement item) => item.GetProperty("bookingId").GetGuid();
 
     private static string KindOf(JsonElement item) => item.GetProperty("kind").GetString()!;
+
+    private static async Task<HttpStatusCode> StatusOfAsync(Task<HttpResponseMessage> call)
+    {
+        using var response = await call;
+        return response.StatusCode;
+    }
 
     private static bool HasReason(BiometricVerificationLog row, string check, string result) =>
         VerificationReasons.Parse(row.ReasonsJson).Any(reason => reason.Check == check && reason.Result == result);
