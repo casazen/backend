@@ -4,36 +4,7 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Identity;
 
-/// <summary>
-/// The decision of the versioned policy for one attempt of the self-hosted identity verification (E73/F01/US01/T01, NF-193, NF-194, ADR-013-R18, R19, decisions D4, D7, D8).
-/// <b>Pure</b>: no dependency, no field, no I/O, no clock, no logger, no randomness; the same <see cref="IdentityEvidenceBundle"/> (which carries the policy's numbers and the
-/// segment) always gives the same <see cref="IdentityDecision"/>. It holds no decision number: the verdicts of the checks and of the match come in the bundle, filled from the
-/// policy file by the closure.
-/// </summary>
-/// <remarks>
-/// <para><b>The rules, in this order</b> (the first that applies decides):</para>
-/// <list type="number">
-/// <item><description><b>A fault never approves.</b> The policy is not ready, or the models are not loaded: a person reviews, outcome <c>unavailable</c>. A model failed or the time was
-/// over (a check or the match that could not be made included): a person reviews, outcome <c>technical_error</c>. The reasons carry <c>processing</c>.</description></item>
-/// <item><description><b>A failure of the presence.</b> When every failure is correctable (a new recording guided by its codes can fix it, and at least one code tells the guest what to
-/// change) and the guided retries used are fewer than <c>closure.guidedRetries</c>: one guided retry with the guidance codes of the failures, whatever the document, the format and the
-/// match say: they are judged by the attempt that follows, as ever, and a guided retry is never an approval (its shadow decision is the review, it has no outcome code and closes nothing).
-/// Otherwise a person reviews: the same correctable defects after the guided retry are reviewed with their reasons.</description></item>
-/// <item><description><b>The document.</b> A coherence that is not a pass (an identifying conflict, an invalid MRZ, an expired document, a value declared for the booking that
-/// differs from the document, or a coherence that could not be told) or a document that is not complete: review, never correctable. Nothing declared for the booking is no
-/// conflict: the coherence passes on the document alone (<see cref="IdentityDocumentCoherences"/>) and the reasons say that nothing was compared (<c>booking_consistency:not_applicable</c>).</description></item>
-/// <item><description><b>The similarity.</b> In the review band, under the floor, a weak frame, no portrait, or no comparison at all: review, never correctable.</description></item>
-/// <item><description><b>The format and the assurance.</b> No format, or a format that does not give on the channel the assurance the segment requires
-/// (<c>assurance_requires_chip</c>): review with <c>assurance_level</c>.</description></item>
-/// <item><description><b>Everything passed</b> (every check of <see cref="IdentityEvidenceBundle.PresenceChecks"/>, the document, the match and the assurance): the policy would
-/// approve (shadow approval). The outcome is the automatic approval ONLY when the segment allows it (<see cref="SegmentResolution.AutoApprovalAllowed"/>: qualified for the policy
-/// and the weights in force, with the platform permission on); otherwise a person reviews, with the reason <c>observation_mode</c> whose result is the reason code of the segment
-/// (for example <c>segment_observation</c> or <c>auto_approval_disabled</c>), in observation.</description></item>
-/// </list>
-/// <para><b>No compensation</b> (D7): the timing, the single face, the quality, the continuity, the challenge, the liveness and the similarity are independent AND conditions. No
-/// score is combined with another, nothing is weighed or averaged across kinds: a similarity of 0.99 never makes up for a failed presence check.</para>
-/// <para><b>No rejection</b> (D8): the outcomes are the approval, the guided retry and the review (<see cref="IdentityFinalDecision"/>).</para>
-/// </remarks>
+// Every check is an independent AND condition: no score makes up for another, a fault or an unknown never approves, and nothing is rejected: a person decides.
 public sealed class IdentityDecisionEngine
 {
     public IdentityDecision Decide(IdentityEvidenceBundle bundle)
@@ -181,7 +152,7 @@ public sealed class IdentityDecisionEngine
 
         reasons.Add(new VerificationReason(VerificationReasons.Checks.DocumentCoherence, CoherenceResult(bundle)));
 
-        // The log outlives the checks kept on the session: this reason is the lasting trace that no value of the booking was compared with the document.
+        // The log outlives the checks kept on the session: this reason is the lasting trace that nothing was compared with the booking.
         if (bundle.DocumentComplete && bundle.DocumentCoherence == IdentityDocumentCoherence.PassedWithoutBooking)
             reasons.Add(new VerificationReason(VerificationReasons.Checks.BookingConsistency, VerificationReasons.Results.NotApplicable));
 

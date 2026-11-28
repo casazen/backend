@@ -156,7 +156,7 @@ internal sealed class PixelAntiSpoofing : IAntiSpoofingService
     }
 }
 
-/// <summary>The MRZ spells the true values of the owner of the card, which the dataset declares for the booking: a document that differs from its own booking is a conflict whatever the checks the format lists.</summary>
+// The MRZ spells the true values of the owner of the card, as the dataset declares them for the booking.
 internal sealed class MarkerMrzReader : IMrzExtractionService
 {
     public async Task<MrzExtractionResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default)

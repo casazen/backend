@@ -12,13 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// IDENT-DECLARED (NF-190, NF-194, decisions D4, D8, D11): the automatic path is reachable by a normal check-in. With nothing declared for the booking (a booking from a
-/// channel has only a name, the guest page saves nothing typed before the identity step) <c>booking_consistency</c> is <c>not_applicable</c> and a document that is otherwise
-/// coherent passes; a value declared and different from the document is a known conflict, reviewed with <c>document_coherence:booking_mismatch</c>; every other reason that sent
-/// a check-in to a person (the MRZ, the expiry, the sides, an unknown check, Ticino, the segment, the policy) still does. The real checker, rule of the coherence and engine; the
-/// closures run the real flow on the world of <see cref="PresenceClosureTests"/>, and their records feed the real counters and lines of the pilot file.
-/// </summary>
 public sealed class BookingConsistencyDeclaredTests
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -28,15 +21,12 @@ public sealed class BookingConsistencyDeclaredTests
     private static readonly IdentityDecisionEngine Engine = new();
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    /// <summary>The day of the stay of the tests.</summary>
     private static readonly DateOnly Day = new(2026, 12, 10);
 
     private static readonly VerificationReason NothingCompared = new(VerificationReasons.Checks.BookingConsistency, VerificationReasons.Results.NotApplicable);
 
-    /// <summary>A booking that came with nothing the document can be compared with: no name, no birth date, no number, no citizenship.</summary>
     private static readonly CheckInIdentity NothingDeclared = new(null, " ", null, "", null);
 
-    /// <summary>The card of the specimen holder: every field printed as its MRZ (<see cref="IdentityTestDocuments.Mrz"/>) has it.</summary>
     private static List<ZonedField> Card(string expiryDate = "2032-03-12", string surname = IdentityTestDocuments.Surname) =>
     [
         Printed(ZonedFieldNames.Surname, surname),
@@ -67,9 +57,6 @@ public sealed class BookingConsistencyDeclaredTests
     [Fact]
     public void NothingDeclared_ACoherentDocumentAMatchingFaceAndAPassedPresence_AreApprovedAutomatically_InAQualifiedSegment()
     {
-        // AC1: the booking holds nothing comparable (nothing at all, or blanks), the card is coherent, the face matches and the presence passed; the segment is qualified for
-        // the policy and the weights in force on a policy that is not provisional (what EvidenceBundles.Allowed stands for). The automatic approval, with every reason passed
-        // but the one that says nothing was compared with the booking.
         foreach (var declared in new[] { null, NothingDeclared })
         {
             var report = Report(declared);
@@ -95,10 +82,10 @@ public sealed class BookingConsistencyDeclaredTests
     }
 
     [Theory]
-    [InlineData("MARIA GIUSEPPINA", "ROSSI", null, null, null)] // a booking from a channel: the name only
-    [InlineData(null, null, null, "CA12345AA", null)] // the number only
-    [InlineData(null, null, "1985-03-12", null, "ITALIA")] // the birth date and the citizenship
-    [InlineData("Maria Giuseppina", "Rossi", "1985-03-12", "ca 12345 aa", "Italia")] // everything, as it was typed
+    [InlineData("MARIA GIUSEPPINA", "ROSSI", null, null, null)]
+    [InlineData(null, null, null, "CA12345AA", null)]
+    [InlineData(null, null, "1985-03-12", null, "ITALIA")]
+    [InlineData("Maria Giuseppina", "Rossi", "1985-03-12", "ca 12345 aa", "Italia")]
     public void ADeclaredValueEqualToTheDocument_Passes_AndAFieldWithNothingDeclaredIsNeutral(string? first, string? last, string? birth, string? number, string? citizenship)
     {
         var report = Report(new CheckInIdentity(first, last, DayOf(birth), number, citizenship));
@@ -115,23 +102,20 @@ public sealed class BookingConsistencyDeclaredTests
 
     [Theory]
     [InlineData(DocumentCoherenceFields.Names, "GIOVANNI", "VERDI", null, null, null)]
-    [InlineData(DocumentCoherenceFields.Names, null, "ROSSI", null, null, null)] // a surname alone is not enough to say it is the holder: as the comparison has it, a difference
+    [InlineData(DocumentCoherenceFields.Names, null, "ROSSI", null, null, null)] // a lone surname is a difference, as MrzCheckInConsistency compares names
     [InlineData(ZonedFieldNames.BirthDate, null, null, "1990-01-01", null, null)]
     [InlineData(ZonedFieldNames.DocumentNumber, null, null, null, "CA99999ZZ", null)]
     [InlineData(ZonedFieldNames.Nationality, null, null, null, null, "FRANCIA")]
-    [InlineData(ZonedFieldNames.DocumentNumber, "MARIA GIUSEPPINA", "ROSSI", "1985-03-12", "CA12345AB", "ITALIA")] // everything else agrees
+    [InlineData(ZonedFieldNames.DocumentNumber, "MARIA GIUSEPPINA", "ROSSI", "1985-03-12", "CA12345AB", "ITALIA")]
     public void ADeclaredValueThatDiffers_IsAKnownConflict_ReviewedWithItsCode_NeverApproved(
         string field, string? first, string? last, string? birth, string? number, string? citizenship)
     {
-        // Proof (safety, AC2): a value declared and different from the document is a conflict, whatever was not declared; in every segment, with every other piece of evidence
-        // perfect, it is the review of a person with the stable code of the conflict, never an approval and never a shadow approval.
         var report = Report(new CheckInIdentity(first, last, DayOf(birth), number, citizenship));
 
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, field));
         Assert.Equal(DocumentCoherenceResults.Failed, report.Summary(DocumentFormatChecks.BookingConsistency));
         Assert.False(report.AllPassed(Cie.RequiredChecks));
 
-        // What was declared is not what two sides of the document say: no identifying conflict, and no guidance code for the guest.
         Assert.False(report.IdentifyingConflict);
         Assert.Empty(report.Codes);
 
@@ -153,8 +137,6 @@ public sealed class BookingConsistencyDeclaredTests
     [Fact]
     public void ADeclaredValueThatCannotBeCompared_StaysUnknown_AndIsReviewed()
     {
-        // A citizenship that is no name of the table of the states is never guessed, and a birth date the reading of the MRZ does not have (its own digit failed) cannot be
-        // compared: unknown, never a pass, whatever else agrees.
         var demonym = Report(new CheckInIdentity("MARIA GIUSEPPINA", "ROSSI", null, null, "Italiana"));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(demonym, ZonedFieldNames.Nationality));
         Assert.Equal(DocumentCoherenceResults.Unknown, demonym.Summary(DocumentFormatChecks.BookingConsistency));
@@ -170,8 +152,6 @@ public sealed class BookingConsistencyDeclaredTests
     [Fact]
     public void NothingDeclared_EveryOtherReasonOfTheDocument_StillSendsToAPerson()
     {
-        // The neutral value of the booking never covers for the rest of the document: a failed check digit, an expired card, two sides that disagree, a check that could not be
-        // made (a field read on one side only, an MRZ that was not read) and a side that was not read are reviews, in a segment that would allow the approval.
         var cases = new (string Name, DocumentCoherenceReport Report, IdentityDocumentCoherence Expected)[]
         {
             ("check digit", Report(NothingDeclared, mrz: Reading(IdentityTestDocuments.Mrz(birthDigit: '9'))), IdentityDocumentCoherence.MrzInvalid),
@@ -191,11 +171,9 @@ public sealed class BookingConsistencyDeclaredTests
             Assert.True(decision.Shadow == IdentityShadowDecision.Review, $"{name}: shadow {decision.Shadow}");
         }
 
-        // Without an MRZ the check of the booking could not run: unknown, not the neutral value, even with nothing declared.
         var unread = cases[^1].Report;
         Assert.Equal(DocumentCoherenceResults.Unknown, unread.Summary(DocumentFormatChecks.BookingConsistency));
 
-        // A coherent document whose side was not read (the document is not complete) is a review too.
         var incomplete = Engine.Decide(EvidenceBundles.Perfect(EvidenceBundles.Allowed) with
         {
             DocumentCoherence = IdentityDocumentCoherences.Of(Report(NothingDeclared), Cie),
@@ -216,8 +194,6 @@ public sealed class BookingConsistencyDeclaredTests
     [InlineData(IdentitySegmentReasonCodes.PolicyUnavailable)]
     public void NothingDeclared_ASegmentThatDoesNotAllowTheApproval_IsAReviewInObservation(string reason)
     {
-        // A provisional policy, a segment in observation, one not qualified (or for another policy or other weights), suspended, the platform permission off: the policy would
-        // approve (the shadow decision), a person decides, and the reason says which condition of the segment failed.
         var coherence = IdentityDocumentCoherences.Of(Report(NothingDeclared), Cie);
         Assert.Equal(IdentityDocumentCoherence.PassedWithoutBooking, coherence);
 
@@ -234,8 +210,6 @@ public sealed class BookingConsistencyDeclaredTests
     [Fact]
     public void NotApplicable_SatisfiesTheRequirementOfTheBookingOnly_InTheRuleOfTheDecision()
     {
-        // Proof (safety): over every check of the report and every result, a document whose every other entry passed is a pass for the decision only when that check passed or
-        // is the booking with nothing declared (the pass that says so); not_applicable in any other check is never a pass (it is unknown), and failed is the conflict of its check.
         var results = DocumentCoherenceResults.All.Append("maybe").ToList();
         foreach (var check in DocumentCoherenceReport.CarriedChecks)
         {
@@ -274,7 +248,6 @@ public sealed class BookingConsistencyDeclaredTests
             }
         }
 
-        // A known conflict never depends on the checks a format lists: a format that leaves the booking out is no way round it. A format the registry does not hold is never a pass.
         var conflict = Report(new CheckInIdentity(null, null, null, "CA99999ZZ", null));
         IReadOnlyList<string>[] lists =
         [
@@ -292,8 +265,6 @@ public sealed class BookingConsistencyDeclaredTests
     [Fact]
     public void QualificationRunner_WritesABookingConflict_AsItsOwnCode_NeverAsAPassedDocument()
     {
-        // The metrics of the document stage count a document as let through only when its coherence is the code of a pass: a booking conflict is not one, and a pass that compared
-        // nothing with the booking is.
         var conflict = QualificationRunner.CoherenceOf(Report(new CheckInIdentity(null, null, null, "CA99999ZZ", null)), Cie);
         Assert.Equal(IdentityDocumentCoherence.BookingConflict, conflict);
         Assert.Equal("booking_conflict", QualificationRunner.CoherenceCode(conflict));
@@ -328,9 +299,6 @@ public sealed class BookingConsistencyDeclaredTests
     [Fact]
     public async Task Closure_NothingDeclared_IsApproved_AConflictIsReviewedWithItsCode_AndTheCountersAndThePilotFileKeepTheirShape()
     {
-        // The real flow on the entries the document step keeps for these cards: nothing declared approves through the success path in a qualified segment; a declared number
-        // that differs is the review of a person with the code of the conflict. Then the counters of the pilot (S016) add up to the steps opened and the lines of its file
-        // keep their columns (the reasons as codes).
         await using var world = await PresenceClosureWorld.CreateAsync();
         world.Segment = EvidenceBundles.Allowed;
 
@@ -362,7 +330,6 @@ public sealed class BookingConsistencyDeclaredTests
         Assert.NotNull(reviewedSaved.OperatorRequestedAt);
         Assert.Equal([(reviewed.Id, VerificationAlertReasons.Review)], world.Alerts.Raised);
 
-        // The counters: two steps opened, one automatic approval and one review, and the ten categories add up to them.
         var records = await IdentityVerificationLedger.ReadAsync(
             world.Db,
             new HostScope(world.OrgId),
@@ -378,7 +345,6 @@ public sealed class BookingConsistencyDeclaredTests
         Assert.Equal(metrics.Opened, metrics.Outcomes.Total);
         Assert.Equal(metrics.Opened, IdentityOutcomeCategories.All.Sum(category => metrics.Outcomes.Of(category)));
 
-        // The pilot file: the same columns, one cell each, the conflict as a code of the review and, for the approval, the code that says nothing was compared with the booking.
         Assert.Equal(
             [
                 "attempt_ref", "property_id", "opened_at", "closed_at", "format_id", "channel", "outcome_code", "decision_mode", "shadow_outcome", "reason_codes",
@@ -396,7 +362,6 @@ public sealed class BookingConsistencyDeclaredTests
                 Assert.Equal("document_coherence:booking_mismatch", cells[reasonColumn]);
         }
 
-        // No value, declared or read, is in the reasons of the log or in a line of the file: codes only.
         foreach (var text in records.SelectMany(record => new[] { IdentityPilotExport.Line(record), record.Decided?.ReasonsJson ?? string.Empty }))
         {
             Assert.DoesNotContain("CA99999ZZ", text, StringComparison.OrdinalIgnoreCase);
@@ -409,8 +374,6 @@ public sealed class BookingConsistencyDeclaredTests
     [Fact]
     public async Task Closure_InTicino_NothingDeclared_IsStillReviewedByAPerson()
     {
-        // Where nothing is kept (Ticino, or Switzerland with a canton CasaZen does not know) the two sides are never read together: the coherence cannot be told, and nothing
-        // declared does not change it. A person decides, in a segment that would allow the approval.
         await using var world = await PresenceClosureWorld.CreateAsync();
         world.Segment = EvidenceBundles.Allowed;
         var session = await world.ReadyStayAsync(keepsNoDocument: true);
@@ -429,7 +392,6 @@ public sealed class BookingConsistencyDeclaredTests
         Assert.Equal(IdentityOutcomeCodes.Review, (await world.ReadBackAsync(session.Id)).IdentityOutcomeCode);
     }
 
-    /// <summary>Keeps <paramref name="entries"/> as the coherence the document step found for <paramref name="session"/> (names and results only, as the step keeps them).</summary>
     private static async Task KeepCoherenceAsync(PresenceClosureWorld world, GuestCheckInSession session, IReadOnlyList<DocumentCoherenceCheck> entries)
     {
         session.DocumentCheckJson = JsonSerializer.Serialize(PresenceClosureKit.ReadCheck(session) with { Coherence = entries }, Web);

@@ -256,12 +256,6 @@ public sealed partial class IdentityVerificationFlowService
             policy?.Closure.GuidedRetries ?? 0);
     }
 
-    /// <summary>
-    /// The coherence of the document from the entries the document step kept (<see cref="StoredDocumentCheck.Coherence"/>), by the one rule of <see cref="IdentityDocumentCoherences"/>:
-    /// an identifying conflict, a failed check digit of the MRZ, an expired document and a value declared for the booking that differs from the document (IDENT-DECLARED) in this
-    /// order; a pass only when every check the format requires holds (nothing declared for the booking is <c>not_applicable</c>, no conflict); unknown otherwise (no entries, as in
-    /// Ticino, or a format the registry does not hold): never a pass.
-    /// </summary>
     private IdentityDocumentCoherence CoherenceOf(StoredDocumentCheck stored, string? formatId)
     {
         if (stored.Coherence is not { Count: > 0 } entries)

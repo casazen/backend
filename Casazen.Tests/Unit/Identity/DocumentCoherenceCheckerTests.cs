@@ -14,14 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E71/F01/US02/T02 (NF-190, NF-191, D11): the coherence of the fields of a document. The MRZ and the visual zone must agree on what identifies the holder, after the
-/// normalization the MRZ makes of a name and with the century of a date inferred; a field read on one side only is unknown, never a conflict and never an agreement, and
-/// no flag of the report says «ok» for an unknown; an expired document, an impossible date, a printed expiry, sex or nationality that is not the MRZ one and a failed
-/// check digit are told apart; the flags of <see cref="MrzCheckInConsistency"/> appear (the citizenship typed as the name of a state is compared as its code), a field of the
-/// booking with nothing declared is <c>not_applicable</c> (IDENT-DECLARED: neutral in <c>booking_consistency</c>, no pass anywhere else); the report holds no value read on the
-/// document, nor does the text of its context. The MRZ of these tests is built with its own check digits and read by the parser of the application.
-/// </summary>
 public class DocumentCoherenceCheckerTests
 {
     private static readonly DocumentFormat Cie = IdentityTestDocuments.Cie();
@@ -394,7 +386,6 @@ public class DocumentCoherenceCheckerTests
         Assert.Null(report.DatesValid);
         Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.SideConsistency));
         Assert.Equal(DocumentCoherenceResults.Unknown, report.Summary(DocumentFormatChecks.FieldCoherence));
-        // Nothing was declared for the booking: nothing to compare (IDENT-DECLARED), which is neutral and does not make the rest of the document pass.
         Assert.Equal(DocumentCoherenceResults.NotApplicable, report.Summary(DocumentFormatChecks.BookingConsistency));
         Assert.Equal(DocumentCoherenceResults.Passed, report.Summary(DocumentFormatChecks.MrzCheckDigits));
         Assert.Equal(DocumentCoherenceResults.Passed, report.Summary(DocumentFormatChecks.Expiry));
@@ -509,7 +500,6 @@ public class DocumentCoherenceCheckerTests
         Assert.Equal((true, false, (bool?)null, (bool?)null), (expected.Names, expected.BirthDate, expected.DocumentNumber, expected.Nationality));
         Assert.Equal(DocumentCoherenceResults.Passed, Result(report, DocumentFormatChecks.BookingConsistency, DocumentCoherenceFields.Names));
         Assert.Equal(DocumentCoherenceResults.Failed, Result(report, DocumentFormatChecks.BookingConsistency, ZonedFieldNames.BirthDate));
-        // No number was declared: nothing to compare (IDENT-DECLARED), never a conflict. A citizenship that was declared but cannot be compared stays unknown.
         Assert.Equal(DocumentCoherenceResults.NotApplicable, Result(report, DocumentFormatChecks.BookingConsistency, ZonedFieldNames.DocumentNumber));
         Assert.Equal(DocumentCoherenceResults.Unknown, Result(report, DocumentFormatChecks.BookingConsistency, ZonedFieldNames.Nationality));
         Assert.False(report.IdentifyingConflict);
@@ -538,7 +528,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheBookingFlags_AreUnknown_WhenNoMrzIsRead_WhateverWasTyped()
     {
-        // Without an MRZ the check of the booking could not run: unknown, never the neutral value of a field with nothing declared.
         foreach (var report in new[]
                  {
                      Checker.Check(Card(), null, Stay with { Declared = Typed }, Cie, Policy),
@@ -558,8 +547,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_TheBookingFlags_AreNotApplicable_WhileNothingIsDeclared_AndACoherentCardPasses()
     {
-        // IDENT-DECLARED: nothing declared at all, or only blanks, is nothing to compare: every field of the booking is not_applicable (never a conflict, never a pass by
-        // itself), the check is not_applicable, and a card that is coherent on its own passes the checks the format requires.
         foreach (var report in new[]
                  {
                      Checker.Check(Card(), Reading(), Stay, Cie, Policy),
@@ -608,7 +595,6 @@ public class DocumentCoherenceCheckerTests
     public void Check_ADeclaredValueThatDiffers_IsAConflict_WhateverWasNotDeclared(
         string? first, string? last, string? birth, string? number, string? citizenship, string declaredField)
     {
-        // Proof (safety, IDENT-DECLARED): a value declared and different from the document fails the check of the booking, also when nothing else was declared.
         var born = birth is null ? (DateOnly?)null : DateOnly.ParseExact(birth, "yyyy-MM-dd", CultureInfo.InvariantCulture);
 
         var report = Checker.Check(Card(), Reading(), Stay with { Declared = new CheckInIdentity(first, last, born, number, citizenship) }, Cie, Policy);
@@ -621,7 +607,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void Check_WritesNotApplicable_InTheCheckOfTheBookingOnly()
     {
-        // Whatever was read and declared, the neutral value of a field with nothing declared is written in booking_consistency and nowhere else.
         var reports = new[]
         {
             Checker.Check(Card(), Reading(), Stay, Cie, Policy),
@@ -752,9 +737,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void NotApplicable_SatisfiesTheRequirementOfBookingConsistencyOnly_AndNeverMakesAnotherCheckPass()
     {
-        // Proof (safety, IDENT-DECLARED): over every check the report carries and every result (and one nobody knows), a report whose every other entry passed holds for the
-        // format only when that check passed, or is booking_consistency with nothing declared. not_applicable anywhere else is no pass: its check is unknown and its flag
-        // never says «ok».
         var results = DocumentCoherenceResults.All.Append("maybe").ToList();
         foreach (var check in DocumentCoherenceReport.CarriedChecks)
         {
@@ -774,13 +756,11 @@ public class DocumentCoherenceCheckerTests
                 neutral.Summary(check));
         }
 
-        // The flags of the other checks never take not_applicable for «ok».
         Assert.Null(ReportWith(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.NotApplicable).IdentifyingConflict);
         Assert.Null(ReportWith(DocumentFormatChecks.Expiry, DocumentCoherenceResults.NotApplicable).Expired);
         Assert.Null(ReportWith(DocumentFormatChecks.FieldCoherence, DocumentCoherenceResults.NotApplicable).DatesValid);
         Assert.False(ReportWith(DocumentFormatChecks.MrzCheckDigits, DocumentCoherenceResults.NotApplicable).MrzValid);
 
-        // One entry not_applicable next to passed ones: the booking passes on what was compared; any other check is not told.
         List<DocumentCoherenceCheck> mixed =
         [
             new(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Passed, ZonedFieldNames.Surname),
@@ -798,7 +778,6 @@ public class DocumentCoherenceCheckerTests
     [Fact]
     public void AllPassed_NothingDeclaredAlone_VouchesForNothing()
     {
-        // The neutral value satisfies the requirement of the booking, it never makes a document coherent by itself: at least one required check must have passed.
         var onlyTheBooking = DocumentCoherenceReport.FromChecks([new(DocumentFormatChecks.BookingConsistency, DocumentCoherenceResults.NotApplicable, DocumentCoherenceFields.Names)]);
         Assert.False(onlyTheBooking.AllPassed([DocumentFormatChecks.BookingConsistency]));
         Assert.False(onlyTheBooking.AllPassed([DocumentFormatChecks.Layout, DocumentFormatChecks.BookingConsistency]));
