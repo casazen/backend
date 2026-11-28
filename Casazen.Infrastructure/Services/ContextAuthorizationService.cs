@@ -35,15 +35,12 @@ public class ContextAuthorizationService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Unexpected error in GetUserContextsAsync for user {UserId}", userId);
-            // Fallback to JWT-only contexts on any DB error
             return ContextAccessBootstrap.BuildFallbackAccess(ResolveJwtRoles());
         }
     }
 
     private IReadOnlyList<ContextAccess> BuildContexts(UserAuthorizationSnapshot snapshot)
     {
-        // AM-01: a deactivated member of an org reaches nothing (the request itself is refused earlier with 403
-        // member_inactive; this keeps any other reader of the snapshot from granting meanwhile).
         if (snapshot.IsOrgMemberDeactivated)
             return [];
 
@@ -61,7 +58,6 @@ public class ContextAuthorizationService(
         if (HostOnboardingGate.Evaluate(snapshot, legalDocuments).IsComplete)
             return contexts;
 
-        // PL-02: no host context before the onboarding and the current consents. Admin and supplier stay.
         return contexts.Where(c => !HostOnboarding.IsHostContext(c.ContextKey)).ToList();
     }
 
@@ -102,8 +98,6 @@ public class ContextAuthorizationService(
             var existingKeys = fromDb.Select(c => c.ContextKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var jwtContext in jwtContexts)
             {
-                // jwtContexts is already stripped of host keys when the veto applies. When it does not (no org
-                // member, or a member with no rental row yet), the token still completes short-rent / long-rent.
                 if (!existingKeys.Contains(jwtContext.ContextKey))
                 {
                     fromDb.Add(jwtContext);
@@ -162,8 +156,6 @@ public class ContextAuthorizationService(
             return true;
         }
 
-        // A permission counts only in the context that grants it: long-rent property.* never satisfies a
-        // short-rent policy. Endpoints shared by both rental contexts say so in their policy (A7-06).
         var hasPermission = context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
         if (!hasPermission)
         {

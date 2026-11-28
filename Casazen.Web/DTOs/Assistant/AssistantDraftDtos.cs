@@ -4,11 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Assistant;
 
-/// <summary>
-/// What the assistant did with the last message of the guest when a person asked for a draft (<c>POST api/assistant/threads/{threadKey}/draft</c>, E05/F05/US02/T01): the <c>decision</c>
-/// (<c>Drafted</c>, <c>Escalated</c>, <c>NotHandled</c>), the <c>reason</c> code of a decision that is not a draft, the situation with its stable <c>situationCode</c>, the urgency, the
-/// confidence score, and the item of the approval queue that holds the draft (read it with <c>GET api/approval-queue</c>) or the «To do» of an escalated message. No text.
-/// </summary>
 public sealed class AssistantDraftOutcomeDto
 {
     public Guid InboundMessageId { get; init; }
@@ -46,7 +41,6 @@ public sealed class SimulateAssistantRequest
     public string? Language { get; set; }
 }
 
-/// <summary>The confidence of a draft: the score and its three components, 0 to 1.</summary>
 public sealed class AssistantConfidenceDto
 {
     public decimal Score { get; init; }
@@ -55,7 +49,6 @@ public sealed class AssistantConfidenceDto
     public decimal RuleCompliance { get; init; }
 }
 
-/// <summary>A fact the draft of the simulator could use: its topic, its text (the host's own knowledge) and where it comes from (<c>entry:{id}</c> or <c>listing:{field}</c>).</summary>
 public sealed class SimulatedFactDto
 {
     public KnowledgeTopic Topic { get; init; }
@@ -64,11 +57,6 @@ public sealed class SimulatedFactDto
     public bool Inherited { get; init; }
 }
 
-/// <summary>
-/// The answer of <c>POST api/assistant/simulate</c> (AC-NF66-4): what the pipeline would decide for the example (<c>decision</c>, with the <c>reason</c> code when it is not a draft), the
-/// situation, the urgency, the sensitive categories, the confidence, the draft, the facts it used and whether the gate would send it by itself (<c>wouldAutoSend</c>, with the
-/// <c>gateFailures</c>). Nothing was written or sent.
-/// </summary>
 public sealed class AssistantSimulationDto
 {
     public AssistantDecision Decision { get; init; }

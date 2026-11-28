@@ -15,16 +15,13 @@ public class HostInviteAuditEntry
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The invite the action is about (no foreign key: the trail outlives a purged invite).</summary>
     public Guid InviteId { get; set; }
 
     public HostInviteAuditAction Action { get; set; }
 
-    /// <summary>The account that acted.</summary>
     [Required, MaxLength(255)]
     public string ActorUserId { get; set; } = string.Empty;
 
-    /// <summary>The host org of the actor; null for a platform admin (no quota).</summary>
     public Guid? ActorOrgId { get; set; }
 
     public DateTime OccurredAt { get; set; }

@@ -44,15 +44,11 @@ public sealed record ItalianTouristTaxSetupView(IReadOnlyList<ItalianPortalPropo
 /// <summary>A portal the organization confirmed for one comune: the ISTAT code (six digits) and the name of the <see cref="BookingSource"/>.</summary>
 public sealed record ItalianPortalConfirmation(string ComuneIstat, string Channel);
 
-/// <summary>The members the section <c>touristTax</c> of the billing setup carries for an Italian issuer (read only, never saved: the issuer's own answer is <c>platformCollectedTouristTaxChannels</c>).</summary>
 public static class ItalianTouristTaxSetupKeys
 {
-    /// <summary><c>[{ comuneIstat, comune, channel, status }]</c>: the proposals, <c>status</c> being <c>to_confirm</c>.</summary>
     public const string Proposals = "italianPortalProposals";
 
-    /// <summary>A boolean: the records of the stays contradict the organization's rule (the data-quality hint).</summary>
     public const string ChannelDataConflict = "portalTouristTaxConflict";
 
-    /// <summary><c>[{ comuneIstat, channel }]</c>: the portals the organization confirmed for one comune each (the proposals a person confirmed), saved by <c>PUT api/billing-setup/touristTax/portal-comuni</c>.</summary>
     public const string ConfirmedComuni = "confirmedPortalTouristTaxComuni";
 }

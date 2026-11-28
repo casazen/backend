@@ -34,7 +34,6 @@ public class BookingCheckInLinkController(
     ICheckInLinkDeliveryService? deliveries = null,
     AgencyDomainLinks? agencyLinks = null) : ControllerBase
 {
-    /// <summary>409: a link exists only for confirmed or checked-in bookings.</summary>
     public const string BookingNotEligibleCode = "checkin_link_booking_not_eligible";
 
     /// <summary>409: the guest has already completed the check-in (the host corrects the data in the Alloggiati tab).</summary>
@@ -42,7 +41,6 @@ public class BookingCheckInLinkController(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>The current check-in link of the booking and the state of its email.</summary>
     [HttpGet("{id:guid}/checkin-session")]
     [ProducesResponseType(typeof(CheckInSessionStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -77,15 +75,11 @@ public class BookingCheckInLinkController(
 
         var service = deliveries ?? throw new InvalidOperationException("The delivery of the check-in link is not registered (AddCheckInLinkDelivery).");
 
-        // The link only to a caller who can already copy one: the same permission on the same property as the endpoint that generates it.
         var canCopy = IsEligible(booking!.Status) && await CanAsync(booking, BookingOperations.Write);
         var view = await service.GetAsync(booking.OrgId, booking.Id, includeLink: canCopy, HttpContext.RequestAborted);
         return Ok(CheckInLinkDeliveryResponse.From(view));
     }
 
-    /// <summary>
-    /// Generates a new link to copy and send to the guest another way (no email). The previous link stops working.
-    /// </summary>
     [HttpPost("{id:guid}/checkin/link")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(CheckInLinkResponse), StatusCodes.Status200OK)]
@@ -93,11 +87,6 @@ public class BookingCheckInLinkController(
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public Task<ActionResult<CheckInLinkResponse>> CreateCheckInLink(Guid id) => IssueAsync(id, sendEmail: false);
 
-    /// <summary>
-    /// Generates a new link and queues its email to the guest (also the reminder). The link is returned whatever happens
-    /// to the email, with its real state: <c>Queued</c>, or <c>Failed</c> with the reason (no address, no provider).
-    /// The previous link stops working.
-    /// </summary>
     [HttpPost("{id:guid}/checkin/resend-link")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(CheckInLinkResponse), StatusCodes.Status200OK)]
@@ -118,16 +107,11 @@ public class BookingCheckInLinkController(
         if (current?.IsCompleted == true)
             return this.ApiProblem(StatusCodes.Status409Conflict, AlreadyCompletedCode, "CheckInAlreadyCompleted");
 
-        // A missing App:PublicSiteBaseUrl is a configuration error (500) before any link is issued: never a wrong link.
         publicSiteLinks.EnsureConfigured();
 
-        // E40/F01/US01/T03: the link the host copies is the one the guest gets, on the agency's own domain when its guest area is served there;
-        // read before the link is issued.
         var agency = await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId, HttpContext.RequestAborted);
         var link = await checkInService.IssueLinkAsync(booking.Id, booking.OrgId);
 
-        // E23/F01/US01/T01: the host carries the link from here, so the delivery of the link the system was trying to take to the guest ends (the previous link stopped
-        // working) and its «To do» closes. Best effort: the link is issued whatever happens to the record.
         await EndDeliveryAsync(booking);
 
         var email = sendEmail
@@ -174,7 +158,6 @@ public class BookingCheckInLinkController(
         return (booking, null);
     }
 
-    /// <summary>True when the caller holds <paramref name="operation"/> on the property of the booking (the booking is already known to be visible).</summary>
     private async Task<bool> CanAsync(Booking booking, HostOperationRequirement operation)
     {
         var property = await hostResources.ForPropertyAsync(booking.PropertyId, HttpContext.RequestAborted);

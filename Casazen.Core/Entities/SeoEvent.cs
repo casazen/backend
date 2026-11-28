@@ -37,19 +37,15 @@ public class SeoEvent
     [MaxLength(SignupAttributionRules.MaxUtmLength)]
     public string? UtmCampaign { get; set; }
 
-    /// <summary>Host of the site the visitor came from (<c>www.google.com</c>), never the URL.</summary>
     [MaxLength(SignupAttributionRules.MaxReferrerHostLength)]
     public string? ReferrerHost { get; set; }
 
     public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>Events of the SEO funnel. Stored as an integer: never renumber.</summary>
 public enum SeoEventType
 {
-    /// <summary>Click on the "Pubblica la tua casa" CTA of an SEO page (<c>cta_click</c>).</summary>
     CtaClick = 1,
 
-    /// <summary>The signup page opened from an SEO page's CTA (<c>signup_start</c>).</summary>
     SignupStart = 2,
 }

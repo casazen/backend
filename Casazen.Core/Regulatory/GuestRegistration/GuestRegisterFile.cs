@@ -61,37 +61,24 @@ public sealed record GuestRegisterRow(
 /// </remarks>
 public static class GuestRegisterFile
 {
-    /// <summary>The longest period of a register, both ends counted: a year, a leap year included.</summary>
     public const int MaxPeriodDays = 366;
 
-    /// <summary>The code of a period whose end is before its start, or has no day after it (400).</summary>
     public const string PeriodInvalidCode = "swiss_period_invalid";
 
-    /// <summary>The code of a period longer than <see cref="MaxPeriodDays"/> days (400).</summary>
     public const string PeriodTooLongCode = "swiss_period_too_long";
 
-    /// <summary>The content type of the file: UTF-8, with its byte order mark.</summary>
     public const string ContentType = "text/csv; charset=utf-8";
 
-    /// <summary>The resource key of the word «yes» of the column «minor».</summary>
     public const string YesKey = "GuestRegisterYes";
 
-    /// <summary>
-    /// The word «no» of the column «minor»: it reads the same in Italian and in English, so it is not a text to translate and is not in the resource files (the localization test of
-    /// the resource files wants a different English text for every key).
-    /// </summary>
     public const string NoWord = "No";
 
-    /// <summary>The resource key of the word «passport» of the column «document type».</summary>
     public const string PassportKey = "GuestRegisterDocumentPassport";
 
-    /// <summary>The resource key of the words «identity card» of the column «document type».</summary>
     public const string IdentityCardKey = "GuestRegisterDocumentIdentityCard";
 
-    /// <summary>The resource key of the word «other» of the column «document type»: any document that is neither a passport nor an identity card.</summary>
     public const string OtherDocumentKey = "GuestRegisterDocumentOther";
 
-    /// <summary>The resource keys of the header, column by column; the last one is the signature column, whose cells are empty.</summary>
     public static readonly IReadOnlyList<string> HeaderKeys =
     [
         "GuestRegisterColArrival",
@@ -112,13 +99,8 @@ public static class GuestRegisterFile
         "GuestRegisterColSignature",
     ];
 
-    /// <summary>Every resource key the file reads (for the tests that look for it in the two languages).</summary>
     public static IReadOnlyList<string> AllKeys { get; } = [.. HeaderKeys, YesKey, PassportKey, IdentityCardKey, OtherDocumentKey];
 
-    /// <summary>
-    /// What is wrong with a period, as the code of the error, or <c>null</c> when the register can be made: <see cref="PeriodInvalidCode"/> when the end is before the start (or is the
-    /// last day the calendar has), <see cref="PeriodTooLongCode"/> when it is longer than <see cref="MaxPeriodDays"/> days, both ends counted.
-    /// </summary>
     public static string? PeriodErrorOf(DateOnly from, DateOnly to)
     {
         if (to < from || to == DateOnly.MaxValue)
@@ -127,10 +109,6 @@ public static class GuestRegisterFile
         return to.DayNumber - from.DayNumber >= MaxPeriodDays ? PeriodTooLongCode : null;
     }
 
-    /// <summary>
-    /// The lines of one stay: one for each guest of its check-in, in their order (the booker alone when the check-in has none). Nobody is left out for a datum the check-in does not
-    /// have: the cell stays empty.
-    /// </summary>
     public static IReadOnlyList<GuestRegisterRow> RowsOf(TicinoStayFacts stay)
     {
         ArgumentNullException.ThrowIfNull(stay);
@@ -141,11 +119,6 @@ public static class GuestRegisterFile
             .ToList();
     }
 
-    /// <summary>
-    /// The file: the header, then the lines as they come (the caller orders them). <paramref name="text"/> says a resource key in the language of the reader. At most
-    /// <see cref="CsvWriter.MaxRows"/> lines, the header included (422 <c>csv_too_many_rows</c>).
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">There are more lines than the writer takes (422 <c>csv_too_many_rows</c>).</exception>
     public static byte[] Write(IReadOnlyList<GuestRegisterRow> rows, Func<string, string> text)
     {
         ArgumentNullException.ThrowIfNull(rows);
@@ -159,13 +132,11 @@ public static class GuestRegisterFile
         return CsvWriter.Write(lines);
     }
 
-    /// <summary>The suggested name of the file: <c>registro-ospiti-ch-2026-01-01-2026-03-31.csv</c> (the first and the last day of the period).</summary>
     public static string FileName(DateOnly from, DateOnly to) =>
         $"registro-ospiti-ch-{from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}-{to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.csv";
 
     private static GuestRegisterRow RowOf(TicinoStayFacts stay, TicinoGuestFacts guest)
     {
-        // A guest without a date of birth, or with one after the arrival, is neither a minor nor an adult here: the cell stays empty, the line stays.
         bool? minor = guest.BirthDate is { } born && born <= stay.Arrival
             ? TicinoPoliceFile.AgeAt(born, stay.Arrival) < TicinoPoliceFile.AdultAge
             : null;
@@ -208,12 +179,10 @@ public static class GuestRegisterFile
             row.BookingCode,
             MinorWord(row.Minor, text),
 
-            // The signature column of the printed register: always empty, whoever the guest is.
             string.Empty,
         ];
     }
 
-    /// <summary>The cell of the column «minor»: «yes» in the language of the reader, the word «no» of the code, empty while the age is not known.</summary>
     private static string MinorWord(bool? minor, Func<string, string> text)
     {
         return minor switch

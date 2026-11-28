@@ -10,10 +10,8 @@ public sealed class OctoratePartnerTokenCache
 {
     private PartnerToken? _current;
 
-    /// <summary>One renewal at a time: whoever holds it re-reads <see cref="Current"/> before it calls Octorate.</summary>
     internal SemaphoreSlim Gate { get; } = new(1, 1);
 
-    /// <summary>The token last obtained, or <c>null</c> before the first login. Read without the gate, written only under it.</summary>
     internal PartnerToken? Current
     {
         get => Volatile.Read(ref _current);
@@ -21,7 +19,6 @@ public sealed class OctoratePartnerTokenCache
     }
 }
 
-/// <summary>A partner token and the instant it expires (UTC). Never prints the token.</summary>
 internal sealed record PartnerToken(string Value, DateTime ExpiresAt)
 {
     public override string ToString() => $"{nameof(PartnerToken)} {{ Value = ***, ExpiresAt = {ExpiresAt:O} }}";

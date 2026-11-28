@@ -22,10 +22,6 @@ public sealed class ServiceRequestGroupRunService(
 {
     internal const string RunLockKey = "service-request-groups";
 
-    /// <summary>
-    /// Groups one run handles at most: a run that stays short is better than one that holds the lock for minutes, and the next run (5
-    /// minutes later) goes on.
-    /// </summary>
     public const int MaxPerRun = 500;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -93,7 +89,6 @@ public sealed class ServiceRequestGroupRunService(
             .Where(g => g.Phase != ServiceRequestGroupPhase.Closed
                 && ((g.Phase == ServiceRequestGroupPhase.PrimaryWindow && g.PrimaryDueAt <= nowUtc)
                     || (g.Phase == ServiceRequestGroupPhase.BackupWindow && g.BackupDueAt != null && g.BackupDueAt <= nowUtc)
-                    // The request the host follows moved on and the group did not (a crash between the two, a call that failed).
                     || db.ServiceRequests.Any(r => r.GroupId == g.Id
                         && (r.GroupRole == ServiceRequestGroupRole.Primary || r.GroupRole == ServiceRequestGroupRole.PromotedBackup)
                         && (r.Status == ServiceRequestStatus.PresoInCarico

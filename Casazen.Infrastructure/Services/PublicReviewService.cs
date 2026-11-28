@@ -62,7 +62,6 @@ public sealed class PublicReviewService(
             .Select(g => new { Count = g.Count(), Sum = g.Sum(r => (long)r.Rating) })
             .FirstOrDefaultAsync(cancellationToken);
 
-        // Nothing is shown for a property without reviews: not a zero, not an empty star.
         return stats is null || stats.Count == 0
             ? null
             : new PublicRatingSummary(stats.Count, ReviewRules.Average(stats.Sum, stats.Count));
@@ -137,7 +136,6 @@ public sealed class PublicReviewService(
 
         db.Reviews.Add(review);
 
-        // In the unit of work of the review, so a review that is refused leaves no event and one that is saved leaves exactly one: ids only (ADR-022-R21).
         domainEvents?.Record(
             DomainEventType.ReviewReceived,
             review.Id,
@@ -150,7 +148,6 @@ public sealed class PublicReviewService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // The same link opened twice: the other submission committed first. Neither the review nor its event stays in the unit of work.
             db.Entry(review).State = EntityState.Detached;
             foreach (var entry in db.ChangeTracker.Entries<OutboxEvent>().Where(e => e.State == EntityState.Added && e.Entity.EntityId == review.Id).ToList())
                 entry.State = EntityState.Detached;
@@ -165,7 +162,6 @@ public sealed class PublicReviewService(
             review.PublishedAt, review.HostReply, review.HostRepliedAt);
     }
 
-    // The public reviews of a property: published ones and reported ones (they stay visible until the staff decides), never a removed one.
     private IQueryable<Review> PublicReviews(Guid orgId, Guid propertyId) =>
         db.Reviews
             .AsNoTracking()
@@ -176,7 +172,6 @@ public sealed class PublicReviewService(
         if (string.IsNullOrWhiteSpace(propertySlugOrId))
             return null;
 
-        // The same rule as the property page: a property that is not on the site has no reviews on it either.
         var query = db.Properties
             .AsNoTracking()
             .Where(PublicListing.IsPublished)

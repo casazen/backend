@@ -22,7 +22,6 @@ public class OrgInvitationProperty : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key: the org of the invitation and of the property. Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
     public Guid InvitationId { get; set; }

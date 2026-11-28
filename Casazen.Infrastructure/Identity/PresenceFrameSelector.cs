@@ -20,15 +20,8 @@ namespace Casazen.Infrastructure.Identity;
 /// </param>
 public sealed record SelectedFrames(IReadOnlyList<int> MatchIndices, IReadOnlyList<int> LivenessIndices);
 
-/// <summary>
-/// What <see cref="PresenceFrameSelector.Select"/> gives: the frames, or why they could not be chosen. A selection that could not be made is the one failure of the check
-/// <c>presence_quality</c>, correctable (a new recording in better light and nearer the camera can fix it), with the guidance <c>presence_quality</c>.
-/// </summary>
-/// <param name="Frames">The frames; null when there were not enough usable ones.</param>
-/// <param name="Failure">Why not, a failure of the check <c>presence_quality</c>; null when the frames were chosen.</param>
 public sealed record FrameSelection(SelectedFrames? Frames, SequenceFailure? Failure)
 {
-    /// <summary>True when the server chose the frames: then <see cref="Frames"/> is set and <see cref="Failure"/> is null.</summary>
     [MemberNotNullWhen(true, nameof(Frames))]
     [MemberNotNullWhen(false, nameof(Failure))]
     public bool IsSelected => Frames is not null;
@@ -38,7 +31,6 @@ public sealed record FrameSelection(SelectedFrames? Frames, SequenceFailure? Fai
         return new FrameSelection(frames, null);
     }
 
-    /// <summary>Not enough frames with one face, in good quality and near-frontal (for the match), or usable at all (for the liveness): <c>presence_quality</c>, correctable.</summary>
     internal static FrameSelection NotEnoughFrames()
     {
         return new FrameSelection(
@@ -76,22 +68,16 @@ public sealed class PresenceFrameSelector
 {
     private readonly Func<int, int> _draw;
 
-    /// <summary>The selector of the application: every draw is made with <see cref="RandomNumberGenerator"/>.</summary>
     public PresenceFrameSelector()
         : this(RandomNumberGenerator.GetInt32)
     {
     }
 
-    /// <summary>The selector with the draw the tests choose (a value from 0 up to, not including, the number it is given).</summary>
     internal PresenceFrameSelector(Func<int, int> draw)
     {
         _draw = draw;
     }
 
-    /// <summary>
-    /// Chooses the frames of <paramref name="sequence"/>, whose validation gave <paramref name="report"/> (which must have passed), with <paramref name="policy"/>.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">The report did not pass, or it is not the report of <paramref name="sequence"/>.</exception>
     public FrameSelection Select(FrameSequence sequence, SequenceValidationReport report, IdentityDecisionPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(sequence);
@@ -111,10 +97,8 @@ public sealed class PresenceFrameSelector
         return FrameSelection.Chosen(new SelectedFrames([.. match.Select(candidate => candidate.Index).Order()], liveness));
     }
 
-    /// <summary>The guard: the report passed, and it is the report of this very sequence (the same frames at the same times).</summary>
     private static void RequireValidatedSequence(FrameSequence sequence, SequenceValidationReport report)
     {
-        // A report that could not be judged is never Passed (SequenceValidationReport.NotAvailable); a "passed" report that lists a failure is not one either.
         if (!report.Passed || report.Failures.Count > 0)
             throw new InvalidOperationException("Frames are chosen only from a sequence that passed its validation.");
 
@@ -129,10 +113,8 @@ public sealed class PresenceFrameSelector
         }
     }
 
-    /// <summary>One frame that can be chosen: its place and time in the sequence, and its rank (the face area times its sharpness; 0 for a frame that is not ranked).</summary>
     private readonly record struct FrameCandidate(int Index, long TimestampMs, double Rank);
 
-    /// <summary>The frames with exactly one face, good quality and a pose within <c>neutralMaxDegrees</c> of the front on both axes, each with its rank.</summary>
     private static List<FrameCandidate> NearFrontalCandidates(FrameSequence sequence, IReadOnlyList<FrameObservation> observations, IdentityPosePolicy pose)
     {
         var candidates = new List<FrameCandidate>();
@@ -142,7 +124,6 @@ public sealed class PresenceFrameSelector
             if (observation is not { FaceCount: 1, QualityOk: true, Face: { } face })
                 continue;
 
-            // NaN (no estimate of the pose) is not near the front; the comparison is false for it, so it is refused.
             var nearFront = Math.Abs(observation.YawDegrees) <= pose.NeutralMaxDegrees && Math.Abs(observation.PitchDegrees) <= pose.NeutralMaxDegrees;
             if (!nearFront)
                 continue;
@@ -153,10 +134,6 @@ public sealed class PresenceFrameSelector
         return candidates;
     }
 
-    /// <summary>
-    /// The area of the face (the box in the pixels of the frame) times its sharpness: one minus the share of the edge energy of the face that survives a blur, the no-reference
-    /// measure the capture rules use. The gray copy is zeroed before this returns.
-    /// </summary>
     private static double Rank(RasterImage image, DetectedFace face)
     {
         using var region = CaptureQualityAssessor.Statistics(image, face);
@@ -168,20 +145,16 @@ public sealed class PresenceFrameSelector
         return double.IsFinite(rank) ? Math.Max(0, rank) : 0;
     }
 
-    // ───── the match frames ─────
-
     private List<FrameCandidate>? PickMatchFrames(List<FrameCandidate> candidates, IdentityMatchPolicy rules)
     {
         var ranked = candidates.OrderByDescending(candidate => candidate.Rank).ThenBy(candidate => candidate.Index).ToList();
         var picked = new List<FrameCandidate>(rules.Frames);
         while (picked.Count < rules.Frames)
         {
-            // Respecting the gap with every earlier pick.
             var eligible = ranked
                 .Where(candidate => picked.All(earlier => earlier.Index != candidate.Index && Math.Abs(candidate.TimestampMs - earlier.TimestampMs) >= rules.MinFrameGapMs))
                 .ToList();
 
-            // The best ones that do not make the rest of the picks impossible.
             var best = new List<FrameCandidate>(rules.RandomizeAmongTop);
             foreach (var candidate in eligible)
             {
@@ -201,10 +174,6 @@ public sealed class PresenceFrameSelector
         return picked;
     }
 
-    /// <summary>
-    /// Whether <paramref name="needed"/> more frames can still be picked after <paramref name="chosen"/>: among the eligible ones at least the gap from it, the most that are at
-    /// least the gap from each other is found by taking them in time order and keeping each that is far enough from the last one kept.
-    /// </summary>
     private static bool CanComplete(FrameCandidate chosen, List<FrameCandidate> eligible, int needed, int gap)
     {
         if (needed <= 0)
@@ -226,20 +195,16 @@ public sealed class PresenceFrameSelector
         return false;
     }
 
-    // ───── the liveness frames ─────
-
     private int[]? PickLivenessFrames(SequenceValidationReport report, List<FrameCandidate> match, IdentityDecisionPolicy policy)
     {
         var chosen = new List<FrameCandidate>(match);
         var target = Math.Max(policy.Presence.Liveness.Frames, match.Count);
         var top = policy.Match.RandomizeAmongTop;
 
-        // The moves of the challenge: from the end of the lead-in to the end of the last step (the windows of the steps follow each other).
         var steps = report.StepPeaks.Count > 0 ? report.StepPeaks.Count : policy.Presence.Challenge.Steps;
         var movesStart = (long)policy.Presence.Challenge.LeadInMs;
         var movesEnd = movesStart + (steps * (long)policy.Presence.Challenge.StepMs);
 
-        // Every frame that can be judged and is not chosen yet: one face, good quality, whatever the pose (the head turns during the moves).
         var pool = new List<FrameCandidate>();
         foreach (var observation in report.Frames)
         {
@@ -271,7 +236,6 @@ public sealed class PresenceFrameSelector
         return [.. chosen.Select(frame => frame.Index).Order()];
     }
 
-    /// <summary>One of the <paramref name="top"/> frames of <paramref name="pool"/> that are farthest in time from the frames already chosen, drawn at random.</summary>
     private FrameCandidate PickSpread(List<FrameCandidate> pool, List<FrameCandidate> chosen, int top)
     {
         var farthest = pool

@@ -17,10 +17,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class OpenableStayRules
 {
-    /// <summary>
-    /// The property is still there (the soft-delete filter hides one that is not) and the guest record
-    /// is still there and was not deleted.
-    /// </summary>
     public static Expression<Func<Booking, bool>> CanOpen { get; } =
         booking => booking.Property != null && booking.Guest != null && !booking.Guest.IsDeleted;
 

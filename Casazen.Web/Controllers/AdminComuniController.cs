@@ -32,7 +32,6 @@ public class AdminComuniController(
 
     private const long MaxRequestBytes = ComuneImportService.MaxFileBytes + 64 * 1024;
 
-    /// <summary>Rows of the list, last import (file, version, reference date, SHA-256) and the pilot comuni that are not in it.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(ComuneDatasetStatusDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<ComuneDatasetStatusDto>> GetStatus(CancellationToken cancellationToken)
@@ -109,7 +108,6 @@ public class AdminComuniController(
     }
 }
 
-/// <summary>Outcome of an accepted import.</summary>
 public sealed class ComuneImportResultDto
 {
     public Guid ImportId { get; init; }

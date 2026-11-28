@@ -78,52 +78,34 @@ public sealed record ServiceTransferEvent(
     bool Reversed,
     Guid? PaymentId);
 
-/// <summary>What happens after the event is committed, never inside its transaction (SP-15b).</summary>
 public enum ServicePaymentNoticeKind
 {
-    /// <summary>The payment was recorded as paid: the receipt to the supplier.</summary>
     Received,
 
-    /// <summary>A payment that was in flight (e.g. a SEPA debit) failed afterwards: the payer gets a new link.</summary>
     FailedInFlight,
 
-    /// <summary>Money arrived that does not match the payment (or for a payment that was withdrawn): the admins are told.</summary>
     NeedsReview,
 
-    /// <summary>The payer disputed the charge: the admins are told.</summary>
     Disputed,
 
-    /// <summary>A refund succeeded: the payer and the supplier are told.</summary>
     Refunded,
 
-    /// <summary>The money CasaZen held was released to the supplier (SP-15c-a): the receipt to the supplier, the same split as a payment received.</summary>
     Released,
 
-    /// <summary>The supplier is owed money but its Stripe account cannot receive it (SP-15c-a): it is asked to complete the account.</summary>
     SupplierAccountNotReady,
 
-    /// <summary>An admin must look at the money of a payment held by CasaZen (SP-15c-a): a transfer that keeps failing, money held for too long, a transfer reversed.</summary>
     FundsAlert,
 
-    /// <summary>A complaint about the job was opened (SP-15c-c): the supplier is asked to reply and the payer gets a receipt.</summary>
     DisputeOpened,
 
-    /// <summary>The supplier replied to a complaint (SP-15c-c): the payer is told it went to CasaZen's team.</summary>
     DisputeReplied,
 
-    /// <summary>A complaint was decided (SP-15c-c): the payer and the supplier are told the outcome.</summary>
     DisputeResolved,
 
-    /// <summary>A complaint was withdrawn by the payer (SP-15c-c): the supplier is told it will be paid.</summary>
     DisputeWithdrawn,
 
-    /// <summary>An admin must look at a complaint (SP-15c-c): it waits for a decision, the target to decide passed, or the refund that was decided did not go through.</summary>
     DisputeAdminAlert,
 
-    /// <summary>
-    /// The customer's card was blocked for the offer it accepted on a request on measure (SP-10b-b): the request is taken now. Sends nothing by
-    /// itself; the handler of the webhook completes the acceptance (<see cref="IServiceRequestOfferCompletion"/>) once the event is committed.
-    /// </summary>
     OfferBlocked,
 }
 
@@ -142,12 +124,8 @@ public sealed record ServicePaymentNotice(
     Guid? DisputeId = null,
     Guid? RequestId = null);
 
-/// <summary>What the service payments did with a refund or dispute event.</summary>
-/// <param name="Handled">The PaymentIntent belongs to a service payment. False: it is not one of ours, and the caller treats the event as before (the refunds of the booking payments).</param>
-/// <param name="Notices">The emails to send after the commit.</param>
 public sealed record ServicePaymentEventResult(bool Handled, IReadOnlyList<ServicePaymentNotice> Notices)
 {
-    /// <summary>The PaymentIntent is not a service payment's.</summary>
     public static ServicePaymentEventResult NotOurs { get; } = new(false, []);
 }
 
@@ -189,32 +167,15 @@ public interface ISupplierPaymentWebhookService
         string? accountId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A <c>refund.created</c>, <c>.updated</c> or <c>.failed</c>: applies that refund (a refund made outside CasaZen is recorded)
-    /// and recomputes the payment. <see cref="ServicePaymentEventResult.Handled"/> is false when its PaymentIntent is not a service
-    /// payment's.
-    /// </summary>
     Task<ServicePaymentEventResult> ApplyRefundChangedAsync(
         ServiceChargeRefund refund,
         string? accountId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A <c>charge.dispute.created</c>: logs an error and tells the admins. Nothing else changes (the payment stays as it is; the
-    /// admin answers the dispute on Stripe). <see cref="ServicePaymentEventResult.Handled"/> is false when the PaymentIntent is not
-    /// a service payment's.
-    /// </summary>
     Task<ServicePaymentEventResult> ApplyDisputeCreatedAsync(
         ServiceDisputeEvent dispute,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A <c>charge.dispute.updated</c>, <c>.closed</c>, <c>.funds_withdrawn</c> or <c>.funds_reinstated</c> (SP-15c-a): records the new state
-    /// of the card dispute on the payment, for the admin console (a dispute after the release is CasaZen's loss: nothing is recovered
-    /// automatically). A payment that does not carry the dispute yet records it. The admins are told when it is a loss
-    /// (<c>funds_withdrawn</c>, or <c>closed</c> as lost). <see cref="ServicePaymentEventResult.Handled"/> is false when the PaymentIntent is
-    /// not a service payment's.
-    /// </summary>
     Task<ServicePaymentEventResult> ApplyDisputeChangedAsync(
         ServiceDisputeEvent dispute,
         CancellationToken cancellationToken = default);
@@ -229,7 +190,6 @@ public interface ISupplierPaymentWebhookService
         ServiceTransferEvent transfer,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Sends the emails of the notices, after the webhook transaction committed. A failure is logged: the event is already applied.</summary>
     Task CompleteAsync(IReadOnlyList<ServicePaymentNotice> notices, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -246,6 +206,5 @@ public interface ISupplierPaymentWebhookService
 /// </summary>
 public interface ISupplierPaymentJobScheduler
 {
-    /// <summary>Enqueues <c>SendPendingPaymentRequestsJob</c> for the supplier org. Does not throw: a failure is logged.</summary>
     void SchedulePendingRequests(Guid supplierOrgId);
 }

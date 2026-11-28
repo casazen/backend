@@ -91,7 +91,6 @@ public sealed class PublicCalendarService(
             var takenDates = taken.Select(DateOnly.FromDateTime).ToHashSet();
             var hostPrices = await pricing.GetAppliedNightlyPricesAsync(property.Id, first, end, cancellationToken);
 
-            // The rules of the days (NF-36): dates, numbers and flags of the property, public like its price; no guest data.
             IReadOnlyDictionary<DateOnly, DayRuleValues> rules = DayRuleStayChecks.NoRules;
             if ((await dayRules.GetRulesForSiteAsync([property.Id], first, end, cancellationToken)).TryGetValue(property.Id, out var ofProperty))
             {
@@ -118,7 +117,6 @@ public sealed class PublicCalendarService(
         return new PublicCalendar(property.Id, first, end, today, StayCurrency.Normalize(property.Currency), days, _clock.GetUtcNow().UtcDateTime);
     }
 
-    /// <summary>The range asked for, or its defaults, and the 422 for one that cannot be answered.</summary>
     private (DateOnly Start, DateOnly End) ValidateRange(DateOnly? from, DateOnly? to)
     {
         var start = from ?? _clock.TodayInRomeAsDateOnly();

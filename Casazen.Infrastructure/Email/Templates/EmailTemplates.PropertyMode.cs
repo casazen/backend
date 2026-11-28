@@ -5,10 +5,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>
-/// Host emails about the scheduled change of rental mode of a property (PM-02): programmed, applied, failed. Italian by
-/// default, English; every dynamic value is HTML-encoded by <see cref="EmailHtmlBuilder"/>.
-/// </summary>
 public static partial class EmailTemplates
 {
     public static partial class Names
@@ -18,11 +14,6 @@ public static partial class EmailTemplates
         public const string PropertyModeChangeFailed = "property-mode-change-failed";
     }
 
-    /// <summary>
-    /// A change of mode was programmed, to the host: from when, what stays as it is until then, what closes (to long-term the
-    /// calendar, from the night before the day), how to withdraw it. <paramref name="propertyUrl"/> is the property page of
-    /// the area the property is in now.
-    /// </summary>
     public static EmailContent PropertyModeChangeScheduled(
         CultureInfo culture,
         string propertyName,
@@ -51,12 +42,6 @@ public static partial class EmailTemplates
         return builder.Build($"{prefix}_Subject", propertyName);
     }
 
-    /// <summary>
-    /// The property changed mode, to the host. To long-term: it is not published nor bookable any more, the dates stay closed
-    /// until <paramref name="calendarClosedUntil"/>, the portals' listings are the host's to remove. To short stays: the dates
-    /// closed by the change are free, the short-stay requirements are to check. <paramref name="actionUrl"/> is the
-    /// property page (to long-term) or its activation wizard (to short stays).
-    /// </summary>
     public static EmailContent PropertyModeChangeApplied(
         CultureInfo culture,
         string propertyName,
@@ -97,11 +82,6 @@ public static partial class EmailTemplates
         return builder.Build($"{prefix}_Subject", propertyName);
     }
 
-    /// <summary>
-    /// The change could not be applied on its day, to the host: the property kept its mode and why (<paramref name="reason"/>
-    /// is a <see cref="PropertyModeChange.FailureReason"/>: stays or portal reservations, a lease, a draft lease, or anything
-    /// else). With <paramref name="earliestDate"/> it suggests the first day that is free now.
-    /// </summary>
     public static EmailContent PropertyModeChangeFailed(
         CultureInfo culture,
         string propertyName,
@@ -124,7 +104,6 @@ public static partial class EmailTemplates
             .Paragraph("PropertyModeFailed_Body", propertyName, target, effectiveDate, current)
             .Paragraph(reasonKey);
 
-        // The calendar the change had closed (to long-term) is open again when the stays stood in its way.
         if (toMode == RentalMode.Long && reason is PropertyModeErrorCodes.BlockedByBookings)
             builder = builder.Paragraph("PropertyModeFailed_CalendarReopened");
 
@@ -141,7 +120,6 @@ public static partial class EmailTemplates
         return builder.Build("PropertyModeFailed_Subject", propertyName);
     }
 
-    /// <summary>Localized name of a rental mode ("affitto breve", "affitto lungo"), for the sentences that name two modes.</summary>
     private static string PropertyModeLabel(CultureInfo culture, RentalMode mode) =>
         EmailTexts.Get(mode == RentalMode.Long ? "PropertyModeLabel_Long" : "PropertyModeLabel_Short", culture);
 }

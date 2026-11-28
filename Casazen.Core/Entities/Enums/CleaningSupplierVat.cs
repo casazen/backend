@@ -7,12 +7,10 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum CleaningSupplierVat
 {
-    /// <summary>«Sì»: the supplier applied the standard rate of the country of the cleaning on its day; the gross amount contains it.</summary>
     Applied = 1,
 
     /// <summary>«No, senza IVA»: the supplier applied no VAT (below the Swiss threshold, a flat-rate regime): the recharge carries none.</summary>
     NotApplied = 2,
 
-    /// <summary>«Non lo so»: the amount stays gross and not decomposed, the recharge is made as before the question, and the «Da fare» comes back once at the close of the month.</summary>
     Unknown = 3,
 }

@@ -33,7 +33,6 @@ public sealed class AiResponseCache(IOptions<AiCacheOptions> options, TimeProvid
         }
     }
 
-    /// <summary>Entries held for <paramref name="orgId"/> now (diagnostics and tests).</summary>
     public int CountForOrg(Guid orgId)
     {
         lock (_gate)
@@ -68,7 +67,6 @@ public sealed class AiResponseCache(IOptions<AiCacheOptions> options, TimeProvid
         {
             PurgeExpired();
 
-            // A new answer for a key replaces the old one and starts its time again.
             if (_index.TryGetValue(composite, out var existing))
                 Remove(existing);
 
@@ -92,7 +90,6 @@ public sealed class AiResponseCache(IOptions<AiCacheOptions> options, TimeProvid
     private static string Compose(Guid? orgId, string key) =>
         $"{(orgId is { } id ? id.ToString("N") : PlatformScope)}|{key}";
 
-    /// <summary>Every entry lives the same time, so the expired ones are the oldest: the front of the list.</summary>
     private void PurgeExpired()
     {
         var now = _clock.GetUtcNow().UtcDateTime;

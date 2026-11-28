@@ -14,16 +14,10 @@ namespace Casazen.Core.Octorate;
 /// <param name="Exclude">True for an exempt guest or a stay the channel collected (<c>excludeCityTax</c>).</param>
 public sealed record OctorateCityTaxValues(decimal Price, string? Exemption, bool Exclude);
 
-/// <summary>
-/// The check-in of a stay as Octorate receives it (E03/F01/US01/T03, NF-41, NF-46), pure: the draft rule of the sender, the mapping of a
-/// registered guest, the hash of what is sent and the tourist tax values. No database, no call.
-/// </summary>
 public static class OctorateCheckInMapper
 {
-    /// <summary>The Alloggiati code of Italy in the "Stati" table.</summary>
     public const string ItalyStateCode = "100000100";
 
-    /// <summary>The country code Octorate's guest example uses for Italy.</summary>
     public const string ItalyCountry = "IT";
 
     /// <summary>
@@ -62,8 +56,6 @@ public static class OctorateCheckInMapper
     /// </summary>
     public static bool DraftFor(ComplianceSenderType sender) => sender != ComplianceSenderType.ChannelManager;
 
-    /// <summary>The <c>accommodatedType</c> of a kind of guest.</summary>
-    /// <exception cref="ArgumentOutOfRangeException">A kind with no Octorate value.</exception>
     public static string AccommodatedTypeOf(StayGuestType type) =>
         AccommodatedTypes.TryGetValue(type, out var value)
             ? value
@@ -130,10 +122,6 @@ public static class OctorateCheckInMapper
         };
     }
 
-    /// <summary>
-    /// The SHA-256 (hex) of the canonical payload of a guest, <c>draft</c> and the tax values included, the Octorate id and the position
-    /// excluded (they are not content): a different hash is a change to send.
-    /// </summary>
     public static string Hash(OctorateCheckInGuestUpsert upsert)
     {
         ArgumentNullException.ThrowIfNull(upsert);
@@ -171,7 +159,6 @@ public static class OctorateCheckInMapper
                 line.ExemptionKind != TouristTaxExemptionKind.None || channelCollected));
     }
 
-    /// <summary>The police code of the document: the code of the official table, or the one of its kind; null when neither is known.</summary>
     private static string? DocumentTypeOf(StayGuest guest) =>
         NullIfBlank(guest.DocumentTypeCode)
         ?? (guest.DocumentType is { } kind && DocumentPoliceCodes.TryGetValue(kind, out var code) ? code : null);

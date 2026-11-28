@@ -57,13 +57,10 @@ public sealed partial class OwnerAccountingService(
     IPortalAccountHolderResolver? holders = null,
     IFiscalTaxRuleResolver? taxRules = null) : IOwnerAccountingService
 {
-    /// <summary>A rate older than this many days before the day of the source is not used.</summary>
     public const int FxMaxAgeDays = 7;
 
-    /// <summary>The recognition rule of a profile that recognizes the revenue on the check-out (any other: on the payment day).</summary>
     public const string StayRecognitionRule = "stay";
 
-    /// <summary>The end of the key of a line computed without a rule version.</summary>
     internal const string NoRuleKeySuffix = ":norule";
 
     private static readonly OwnerLedgerSourceType[] PostedSources =
@@ -72,7 +69,6 @@ public sealed partial class OwnerAccountingService(
         OwnerLedgerSourceType.MandateFlatFee, OwnerLedgerSourceType.CleaningRequest,
     ];
 
-    /// <summary>The states of a payment that collected money: a refund moves it to <c>PartiallyRefunded</c> or <c>Refunded</c> (the revenue is the net).</summary>
     private static readonly PaymentStatus[] CollectedStatuses = [PaymentStatus.Completed, PaymentStatus.PartiallyRefunded, PaymentStatus.Refunded];
 
     public async Task<OwnerPostingResult> PostPeriodAsync(Guid orgId, int year, int month, string? userId, CancellationToken ct = default)
@@ -81,10 +77,6 @@ public sealed partial class OwnerAccountingService(
         return outcome.Result;
     }
 
-    /// <summary>
-    /// The posting of a month, for every owner or only for <paramref name="onlyOwners"/> (the bulk posting of E13/F01/US03/T01: the lines and the stale lines of the other
-    /// owners are left as they are). The result and the plan it was made from, so the bulk step can tell each owner what was kept out of its ledger.
-    /// </summary>
     private async Task<PostOutcome> PostCoreAsync(Guid orgId, Period period, IReadOnlySet<Guid>? onlyOwners, string? userId, CancellationToken ct)
     {
         var year = period.Year;
@@ -99,8 +91,6 @@ public sealed partial class OwnerAccountingService(
         var liveKeys = automated.Select(e => BaseKey(e.IdempotencyKey)).ToHashSet(StringComparer.Ordinal);
         var plannedKeys = plan.Entries.Select(e => e.IdempotencyKey).ToHashSet(StringComparer.Ordinal);
 
-        // A key may already be posted in another month (the recognition rule changed) or have been reversed: posted elsewhere is left alone, a reversed
-        // key is posted again with a suffix (the unique index keeps one row per key).
         var sameKey = await db.OwnerLedgerEntries.AsNoTracking()
             .Where(e => e.OrgId == orgId && plannedKeys.Contains(e.IdempotencyKey))
             .Select(e => new { e.Id, e.IdempotencyKey })
@@ -143,7 +133,6 @@ public sealed partial class OwnerAccountingService(
         // The «Da fare» of the cleanings whose VAT nobody states (E14/F01/US02/T01) comes once the lines are posted: the ledger never waits for it, and posting again finds the same items.
         await SyncCleaningVatTodosAsync(orgId, period, plan, ct);
 
-        // The issues of an owner whose month is closed are not the poster's business (nothing is posted for them), but a source that came after the close is told.
         var issues = plan.Issues
             .Where(i => i.OwnerId is not { } owner || !plan.ClosedOwners.Contains(owner) || i.Code == OwnerReadinessCodes.LateSourceAfterClose)
             .ToList();
@@ -153,7 +142,6 @@ public sealed partial class OwnerAccountingService(
         return new PostOutcome(new OwnerPostingResult(year, month, posted, reversed, unchanged, issues), plan, touched);
     }
 
-    /// <summary>What a posting did, and the plan it followed: the owners it posted or reversed lines of, and the issues of every owner.</summary>
     private sealed record PostOutcome(OwnerPostingResult Result, Plan Plan, IReadOnlySet<Guid> Touched);
 
     public async Task<OwnerCloseReadiness> GetReadinessAsync(Guid orgId, int year, int month, CancellationToken ct = default)
@@ -181,8 +169,6 @@ public sealed partial class OwnerAccountingService(
             .OrderBy(id => id)
             .ToList();
 
-        // What the earlier months say now, against the balance a version carried in: a line posted there after its cut-off makes the version stale. A line for information only
-        // (the commission of a portal the agency bears) is in no balance.
         var openings = (await db.OwnerLedgerEntries.AsNoTracking()
                 .CountingInBalance()
                 .Where(e => e.OrgId == orgId && (e.PeriodYear < year || (e.PeriodYear == year && e.PeriodMonth < month)))
@@ -200,7 +186,6 @@ public sealed partial class OwnerAccountingService(
             List<OwnerReadinessIssue> issues;
             if (status == OwnerClosePeriodStatus.Closed)
             {
-                // The month is closed and stays so: what the sources say after the close is told, never posted.
                 issues = [new OwnerReadinessIssue(OwnerReadinessCodes.PeriodClosed, owner, Blocking: false)];
                 issues.AddRange(plan.Issues.Where(i => i.OwnerId == owner && i.Code == OwnerReadinessCodes.LateSourceAfterClose));
             }
@@ -249,10 +234,6 @@ public sealed partial class OwnerAccountingService(
         return new OwnerCloseReadiness(year, month, plan.Issues.Where(i => i.OwnerId is null).ToList(), result);
     }
 
-    /// <summary>
-    /// The issues of the ledger of an owner's month that block a version: the owner cannot be used (fiscal profile and rule), a source without its rate, a
-    /// source not posted yet (or a posted line whose source changed), the same source posted twice, lines in more than one statement currency.
-    /// </summary>
     private static List<OwnerReadinessIssue> LedgerIssues(Plan plan, IReadOnlyList<OwnerLedgerEntry> live, Guid owner)
     {
         var issues = PlanIssuesOf(plan, owner);
@@ -292,7 +273,6 @@ public sealed partial class OwnerAccountingService(
         return issues;
     }
 
-    /// <summary>The owners of the properties that have an issue without an owner (the ones <see cref="LedgerIssues"/> holds back).</summary>
     private static IEnumerable<Guid> OwnersOfPropertiesWithIssues(Plan plan)
     {
         var properties = plan.Issues.Where(i => i.OwnerId is null && i.PropertyId is not null).Select(i => i.PropertyId!.Value).ToHashSet();
@@ -301,7 +281,6 @@ public sealed partial class OwnerAccountingService(
             : plan.OwnerProperties.Where(o => o.Value.Overlaps(properties)).Select(o => o.Key);
     }
 
-    /// <summary>The lines of the month that count: neither reversals nor reversed.</summary>
     private async Task<List<OwnerLedgerEntry>> LiveEntriesAsync(Guid orgId, Period period, CancellationToken ct)
     {
         var entries = await db.OwnerLedgerEntries.AsNoTracking()
@@ -322,7 +301,6 @@ public sealed partial class OwnerAccountingService(
         return reversed.ToHashSet();
     }
 
-    /// <summary>Marks dirty the months of the owners whose current version was cut before a line just posted.</summary>
     private async Task MarkDirtyAsync(Guid orgId, Period period, IReadOnlyCollection<Guid> owners, DateTime now, CancellationToken ct)
     {
         if (owners.Count == 0)
@@ -345,7 +323,6 @@ public sealed partial class OwnerAccountingService(
         }
     }
 
-    /// <summary>The month row of the owner, tracked, created open when there is none.</summary>
     private async Task<OwnerClosePeriod> PeriodRowAsync(Guid orgId, Guid ownerId, Period period, DateTime now, CancellationToken ct)
     {
         var row = db.OwnerClosePeriods.Local.FirstOrDefault(p => p.OrgId == orgId && p.PropertyOwnerId == ownerId && p.PeriodYear == period.Year && p.PeriodMonth == period.Month)
@@ -366,7 +343,6 @@ public sealed partial class OwnerAccountingService(
         return row;
     }
 
-    /// <summary>The reversal of a line: the same facts with the opposite amounts, in the month of the line or in <paramref name="into"/>.</summary>
     private static OwnerLedgerEntry Reversal(OwnerLedgerEntry original, Period? into, DateTime now, string? userId, string? description = null) => new()
     {
         OrgId = original.OrgId,
@@ -402,11 +378,9 @@ public sealed partial class OwnerAccountingService(
         PostedByUserId = userId,
     };
 
-    /// <summary>The reversal of a line in its own month, or in the month of <paramref name="into"/> (the payouts, E06/F05/US02/T03).</summary>
     internal static OwnerLedgerEntry ReversalOf(OwnerLedgerEntry original, DateOnly? into, DateTime now, string? userId, string? description) =>
         Reversal(original, into is { } day ? Period.Of(day) : null, now, userId, description);
 
-    /// <summary>SHA-256 (hex) of the ids and amounts of the lines, by posting time then id: the proof a version is made of these lines.</summary>
     internal static string Hash(IEnumerable<OwnerLedgerEntry> entries)
     {
         var text = string.Join('\n', entries
@@ -416,7 +390,6 @@ public sealed partial class OwnerAccountingService(
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
     }
 
-    /// <summary>The key without the suffix of a re-posting.</summary>
     private static string BaseKey(string key)
     {
         var hash = key.IndexOf('#', StringComparison.Ordinal);
@@ -440,7 +413,6 @@ public sealed partial class OwnerAccountingService(
             throw new NotFoundException($"Owner {ownerId} was not found") { Code = OwnerFiscalErrors.OwnerNotFound, MessageKey = "OwnerNotFound" };
     }
 
-    /// <summary>A month of the owner accounting.</summary>
     private readonly record struct Period(int Year, int Month)
     {
         public DateOnly First => new(Year, Month, 1);

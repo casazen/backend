@@ -6,7 +6,6 @@ using Casazen.Infrastructure.Email.Templates;
 
 namespace Casazen.Web.DTOs.Supplier;
 
-/// <summary>The order of <c>GET /api/suppliers</c> (SR-09a, SP-REL): <c>?sort=recommended|name|price|response</c>.</summary>
 public enum SupplierPickerSort
 {
     /// <summary>
@@ -16,39 +15,24 @@ public enum SupplierPickerSort
     /// </summary>
     Recommended,
 
-    /// <summary>By the legal name of the supplier.</summary>
     Name,
 
-    /// <summary>The lowest "from" price first; the suppliers without a price last.</summary>
     Price,
 
-    /// <summary>The fastest measured response first; the suppliers whose response is not measured last.</summary>
     Response,
 }
 
-/// <summary>
-/// Search and order of the supplier picker of the marketplace (SR-09a), made on the entries already built: the list of a comune
-/// is short and every entry carries what the order needs (price, response time).
-/// </summary>
 public static class SupplierPickerSearch
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
     private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en");
 
-    /// <summary>
-    /// What a host may type to find a category (MKT): its code and its name in Italian and in English, folded like the words
-    /// typed (<see cref="SearchText.Fold"/>): lower case, no accents, "Check-in ospiti" is "check in ospiti".
-    /// </summary>
     private static readonly FrozenDictionary<string, string> CategoryWords = ServiceCategories.All.ToFrozenDictionary(
         code => code,
         code => SearchText.Fold(
             $"{code} {EmailTemplates.ServiceCategoryLabel(Italian, code)} {EmailTemplates.ServiceCategoryLabel(English, code)}"),
         StringComparer.Ordinal);
 
-    /// <summary>
-    /// Reads <c>?sort=</c>: blank is <see cref="SupplierPickerSort.Recommended"/>; <c>recommended</c>, <c>name</c>, <c>price</c> and
-    /// <c>response</c> (any case) are the four orders. False for anything else.
-    /// </summary>
     public static bool TryParseSort(string? value, out SupplierPickerSort sort)
     {
         sort = SupplierPickerSort.Recommended;
@@ -118,7 +102,6 @@ public static class SupplierPickerSearch
         return list;
     }
 
-    /// <summary>The words a supplier is found by, folded: its name, its categories and the names of its published services.</summary>
     private static string SearchKey(SupplierPickerDto supplier, IReadOnlyDictionary<Guid, IReadOnlyList<SupplierPickerService>>? services)
     {
         var serviceNames = services is not null && services.TryGetValue(supplier.OrgId, out var published)

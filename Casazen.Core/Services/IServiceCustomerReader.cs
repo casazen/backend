@@ -24,7 +24,6 @@ public sealed record ServiceCustomerCard(Guid Id, string FullName, bool Anonymiz
 /// </summary>
 public interface IServiceCustomerReader
 {
-    /// <summary>The contact of the customer <paramref name="customerId"/> of <paramref name="supplierOrgId"/>; <c>null</c> when it is not found.</summary>
     Task<ServiceCustomerContact?> FindContactAsync(Guid supplierOrgId, Guid customerId, CancellationToken cancellationToken = default);
 
     /// <summary>

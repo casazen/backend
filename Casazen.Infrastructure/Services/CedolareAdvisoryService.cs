@@ -8,11 +8,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Tax advisory of a lease (LT-08): loads the lease and the ATA status of its comune with the same rule as the canone
-/// concordato calculator (<see cref="HighTensionArea"/>), then computes with <see cref="LeaseTaxAdvisory"/>. The tax year
-/// is the current year on the Europe/Rome calendar.
-/// </summary>
 public class CedolareAdvisoryService(
     ILeaseContractRepository leases,
     IHighTensionAreaComuneRepository ataComuni,

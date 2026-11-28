@@ -15,47 +15,32 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class HostReportDocuments
 {
-    /// <summary>Title of the revenue by property: by accrual, the nights of the confirmed stays, as the Home.</summary>
     public const string RevenueByPropertyTitle = "Ricavo per immobile, per competenza";
 
-    /// <summary>Title of the occupancy by property.</summary>
     public const string OccupancyByPropertyTitle = "Occupazione per immobile, notti occupate su notti disponibili";
 
-    /// <summary>Title of the bookings by channel: by accrual, the confirmed stays with a night in the period.</summary>
     public const string BookingsByChannelTitle = "Prenotazioni per canale, per competenza";
 
-    /// <summary>Title of the performance of the whole scope (NF-96): occupancy, revenue, ADR and RevPAR, by accrual.</summary>
     public const string PerformanceTotalTitle = "Prestazioni complessive, per competenza";
 
-    /// <summary>Title of the performance per property.</summary>
     public const string PerformanceByPropertyTitle = "Prestazioni per immobile, per competenza";
 
-    /// <summary>Title of the performance per channel.</summary>
     public const string PerformanceByChannelTitle = "Prestazioni per canale, per competenza";
 
-    /// <summary>Title of the trend of the whole scope: the same figures for each week or month.</summary>
     public const string TrendTotalTitle = "Andamento, per competenza";
 
-    /// <summary>Title of the trend per property.</summary>
     public const string TrendByPropertyTitle = "Andamento per immobile, per competenza";
 
-    /// <summary>Title of the trend per channel.</summary>
     public const string TrendByChannelTitle = "Andamento per canale, per competenza";
 
-    /// <summary>Name of the sheet of the revenue by property.</summary>
     public const string RevenueByPropertySheet = "Ricavo per immobile";
 
-    /// <summary>Name of the sheet of the occupancy by property.</summary>
     public const string OccupancyByPropertySheet = "Occupazione per immobile";
 
-    /// <summary>Name of the sheet of the bookings by channel.</summary>
     public const string BookingsByChannelSheet = "Prenotazioni per canale";
 
     private const string Total = "Totale";
 
-    // ---------------------------------------------------------------- tables, files
-
-    /// <summary>The revenue by property as a table: a row for each property and the total.</summary>
     public static ReportTable Table(HostRevenueByProperty report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -71,7 +56,6 @@ public static class HostReportDocuments
 
     public static byte[] Xlsx(HostRevenueByProperty report) => XlsxWriter.Write([new ReportSheet(RevenueByPropertySheet, Table(report))]);
 
-    /// <summary>The occupancy by property as a table: a row for each property and the total.</summary>
     public static ReportTable Table(HostOccupancyByProperty report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -88,7 +72,6 @@ public static class HostReportDocuments
 
     public static byte[] Xlsx(HostOccupancyByProperty report) => XlsxWriter.Write([new ReportSheet(OccupancyByPropertySheet, Table(report))]);
 
-    /// <summary>The bookings by channel as a table: a row for each channel and the total, each with its share of the bookings.</summary>
     public static ReportTable Table(HostBookingsByChannel report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -112,7 +95,6 @@ public static class HostReportDocuments
 
     public static byte[] Xlsx(HostBookingsByChannel report) => XlsxWriter.Write([new ReportSheet(BookingsByChannelSheet, Table(report))]);
 
-    /// <summary>The title of a performance report, with its base: what the file carries on its first row and the JSON as <c>title</c>.</summary>
     public static string PerformanceTitle(HostPerformanceGroupBy groupBy) => groupBy switch
     {
         HostPerformanceGroupBy.Property => PerformanceByPropertyTitle,
@@ -120,7 +102,6 @@ public static class HostReportDocuments
         _ => PerformanceTotalTitle,
     };
 
-    /// <summary>The title of a trend, with its base.</summary>
     public static string TrendTitle(HostPerformanceGroupBy groupBy) => groupBy switch
     {
         HostPerformanceGroupBy.Property => TrendByPropertyTitle,
@@ -128,7 +109,6 @@ public static class HostReportDocuments
         _ => TrendTotalTitle,
     };
 
-    /// <summary>The name of the sheet of a performance report.</summary>
     public static string PerformanceSheet(HostPerformanceGroupBy groupBy) => groupBy switch
     {
         HostPerformanceGroupBy.Property => "Prestazioni per immobile",
@@ -136,7 +116,6 @@ public static class HostReportDocuments
         _ => "Prestazioni",
     };
 
-    /// <summary>The name of the sheet of a trend.</summary>
     public static string TrendSheet(HostPerformanceGroupBy groupBy) => groupBy switch
     {
         HostPerformanceGroupBy.Property => "Andamento per immobile",
@@ -144,7 +123,6 @@ public static class HostReportDocuments
         _ => "Andamento",
     };
 
-    /// <summary>The file name of a performance report or of a trend: <c>prestazioni-per-immobile-competenza</c>, <c>andamento-competenza</c>...</summary>
     public static string PerformanceFileName(HostPerformanceGroupBy groupBy, bool trend) => (trend ? "andamento" : "prestazioni") + groupBy switch
     {
         HostPerformanceGroupBy.Property => "-per-immobile-competenza",
@@ -152,11 +130,6 @@ public static class HostReportDocuments
         _ => "-competenza",
     };
 
-    /// <summary>
-    /// The performance report as a table: the title with its base and the days on the first row, the header, a row for each property or
-    /// channel and the total. The columns of the year before and of the differences are there only when the report compared; a
-    /// channel has no nights (they belong to a property), so those cells are empty.
-    /// </summary>
     public static ReportTable Table(HostPerformanceReport report, HostPerformanceGroupBy groupBy)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -198,10 +171,6 @@ public static class HostReportDocuments
     public static byte[] Xlsx(HostPerformanceReport report, HostPerformanceGroupBy groupBy) =>
         XlsxWriter.Write([new ReportSheet(PerformanceSheet(groupBy), Table(report, groupBy))]);
 
-    /// <summary>
-    /// The trend as a table: the title with its base and the days on the first row, the header, and a row for each bucket of each line
-    /// (the whole scope, a property or a channel), with the same days one year earlier next to it when the trend compared.
-    /// </summary>
     public static ReportTable Table(HostTrendReport report, HostPerformanceGroupBy groupBy)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -282,10 +251,6 @@ public static class HostReportDocuments
     public static byte[] Xlsx(HostTrendReport report, HostPerformanceGroupBy groupBy) =>
         XlsxWriter.Write([new ReportSheet(TrendSheet(groupBy), Table(report, groupBy))]);
 
-    /// <summary>
-    /// The file name of a report: the report, its base where it has one, and the days (<c>casazen-ricavo-per-immobile-competenza-20261001-20261031.csv</c>);
-    /// <paramref name="extension"/> is <c>csv</c> or <c>xlsx</c>.
-    /// </summary>
     public static string FileName(string report, HostDashboardPeriod period, string extension = "csv")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(report);
@@ -295,13 +260,9 @@ public static class HostReportDocuments
         return $"casazen-{report}-{Compact(period.From)}-{Compact(period.To.AddDays(-1))}.{extension}";
     }
 
-    // ---------------------------------------------------------------- shared
-
-    // The table with its title and the days, then the header: the first rows of every file.
     private static ReportTable Start(string title, HostDashboardPeriod period, params string[] header) =>
         new($"{title}, dal {Date(period.From)} al {Date(period.To.AddDays(-1))}", header);
 
-    // The same, for a report that also gives the same days one year earlier: the first row says which days they are.
     private static ReportTable StartCompared(
         string title, HostDashboardPeriod period, HostDashboardPeriod? comparedWith, string[] header)
     {
@@ -312,7 +273,6 @@ public static class HostReportDocuments
         return new ReportTable(days, header);
     }
 
-    // The columns of the year before and of the differences a compared performance report adds.
     private static readonly string[] ComparisonHeader =
     [
         "Occupazione anno precedente (%)",
@@ -325,8 +285,6 @@ public static class HostReportDocuments
         "Variazione RevPAR (%)",
     ];
 
-    // One row of a performance report. The nights are empty for a channel (they belong to a property); the year before is empty when
-    // there was nothing to compare with, and so are the differences. A difference in percent is a percentage; one in points is a number.
     private static IReadOnlyList<ReportCell> PerformanceRow(string label, HostPerformanceRow row, bool compared)
     {
         var figures = row.Figures;
@@ -358,7 +316,6 @@ public static class HostReportDocuments
         return cells;
     }
 
-    // The name of a line of a trend as the file shows it: the whole scope, a property, a channel, or what did not fit in the lines.
     private static string SeriesLabel(HostTrendSeries series, HostPerformanceGroupBy groupBy)
     {
         if (series.Key == HostPerformanceRules.TotalKey)
@@ -379,10 +336,8 @@ public static class HostReportDocuments
             ReportCell.Percent(occupancy.Rate),
         ];
 
-    // The share of the whole a part is, as a fraction; empty without a whole.
     private static ReportCell Share(int part, int whole) => ReportCell.Percent(whole == 0 ? null : (decimal)part / whole);
 
-    // A difference the Home gives in percent (12.3 is 12.3%) as the fraction a percentage cell holds.
     private static decimal? PercentToFraction(decimal? percent) => percent / 100m;
 
     private static string Date(DateTime day) => day.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);

@@ -34,14 +34,11 @@ namespace Casazen.Web.Controllers;
 [ServiceFilter(typeof(GuestPortalTokenFilter), Order = GuestPortalTokenFilter.FilterOrder)]
 public abstract class GuestPortalControllerBase : ControllerBase
 {
-    /// <summary>The route of the portal: the token of the stay link, nothing else.</summary>
     public const string RouteTemplate = "api/public/guest-portal/{" + GuestPortalTokenFilter.TokenRouteValue + "}";
 
-    /// <summary>The stay the token of the request opened, set by <see cref="GuestPortalTokenFilter"/> before the action runs.</summary>
     protected PortalContext Portal =>
         HttpContext.RequestServices.GetRequiredService<IGuestPortalContextAccessor>().Current
         ?? throw new InvalidOperationException("The guest portal context is set by GuestPortalTokenFilter before the action runs.");
 
-    /// <summary>The one 404 of the portal (<c>guest_portal_link_invalid</c>): for a stay that is no longer there, like a token that does not open.</summary>
     protected ObjectResult LinkInvalid() => GuestPortalTokenFilter.LinkInvalid(HttpContext);
 }

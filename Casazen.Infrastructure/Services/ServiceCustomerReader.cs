@@ -53,10 +53,6 @@ public sealed class ServiceCustomerReader(AppDbContext db) : IServiceCustomerRea
             .ToList();
     }
 
-    /// <summary>
-    /// The customers <paramref name="customerIds"/> of <paramref name="supplierOrgId"/>. Static and internal so a test can read the SQL it
-    /// becomes on the PostgreSQL provider without a server.
-    /// </summary>
     internal static IQueryable<ServiceCustomer> CustomersOf(AppDbContext db, Guid supplierOrgId, Guid[] customerIds) =>
         db.ServiceCustomers
             .AsNoTracking()
@@ -79,10 +75,6 @@ public sealed class ServiceCustomerReader(AppDbContext db) : IServiceCustomerRea
                 customer.AnonymizedAt is not null);
     }
 
-    /// <summary>
-    /// The customer <paramref name="customerId"/> of <paramref name="supplierOrgId"/>. Static and internal so a test can read the
-    /// SQL it becomes on the PostgreSQL provider without a server.
-    /// </summary>
     internal static IQueryable<ServiceCustomer> CustomerOf(AppDbContext db, Guid supplierOrgId, Guid customerId) =>
         db.ServiceCustomers
             .AsNoTracking()

@@ -11,7 +11,6 @@ namespace Casazen.Infrastructure.Jobs;
 /// </summary>
 internal static class ListingJobRuns
 {
-    /// <summary>Runs <paramref name="action"/> for each (org, property); returns how many ran and how many failed.</summary>
     internal static async Task<(int Done, int Failed)> RunAsync(
         IEnumerable<(Guid OrgId, Guid PropertyId)> targets,
         Func<Guid, Guid, Task> action,

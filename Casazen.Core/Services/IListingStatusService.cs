@@ -16,14 +16,7 @@ public interface IListingStatusService
     /// </summary>
     Task<ListingStatusView?> GetAsync(Guid propertyId, CancellationToken ct);
 
-    /// <summary>The worst state and the sync alert of each property of the scope that has a channel, narrowed with <c>InScope</c> (a collaborator «Solo alcuni» sees only its properties).</summary>
     Task<IReadOnlyList<ListingPropertySummary>> GetSummaryAsync(HostScope scope, CancellationToken ct);
 
-    /// <summary>
-    /// Reads the publication process of each channel of the property waiting for it (<c>Sending</c> or <c>Accepted</c>) and the photo queue, and moves
-    /// the rows and the photo tasks accordingly; the photos a run left unsent are sent. Every successful read sets <c>LastSyncedAt</c>. A row that becomes <c>ToFix</c> gets one «To do»,
-    /// closed when it recovers. Called by the job every 15 minutes and at once by the notification of the channel manager, for the org of the property.
-    /// Returns how many rows and tasks changed.
-    /// </summary>
     Task<int> SyncPropertyAsync(Guid orgId, Guid propertyId, CancellationToken ct);
 }

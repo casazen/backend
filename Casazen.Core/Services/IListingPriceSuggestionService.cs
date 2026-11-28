@@ -12,17 +12,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IListingPriceSuggestionService
 {
-    /// <summary>
-    /// True when an AI provider could answer now: the one in effect is not the stub and has a key. The step shows the question
-    /// «Vuoi che calcoli io il prezzo con l'AI?» only then, so no host is offered something that cannot work. A budget that runs out
-    /// later, or a provider that does not answer, are told by the suggestion itself.
-    /// </summary>
     Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The suggestion for <paramref name="property"/> (already authorized by the caller). <paramref name="language"/> is the
-    /// language of the explanation, <c>it</c> or <c>en</c>. An answer of the AI for the same data is reused for a while.
-    /// </summary>
     Task<NightlyPriceSuggestion> SuggestAsync(
         Property property,
         PricePositioning positioning,

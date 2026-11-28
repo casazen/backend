@@ -1,6 +1,5 @@
 namespace Casazen.Core.Condominium;
 
-/// <summary>Euro amounts in cents, the way CondoLedger rounds.</summary>
 public static class CondominiumMoney
 {
     public const decimal MaxAmount = 1_000_000m;
@@ -12,10 +11,6 @@ public static class CondominiumMoney
 
     public static bool InRange(decimal amount) => IsCents(amount) && amount >= -MaxAmount && amount <= MaxAmount;
 
-    /// <summary>
-    /// Splits <paramref name="total"/> into <paramref name="parts"/> amounts. Leftover cents stay on the last part
-    /// (CondoLedger <c>splitEqually</c>).
-    /// </summary>
     public static IReadOnlyList<decimal> SplitEqually(decimal total, int parts)
     {
         if (parts < 1)

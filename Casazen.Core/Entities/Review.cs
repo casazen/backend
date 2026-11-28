@@ -27,7 +27,6 @@ public class Review : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the booking (TN-2). Never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Property))]
@@ -38,29 +37,20 @@ public class Review : ITenantOwned
     public Guid BookingId { get; set; }
     public virtual Booking Booking { get; set; } = null!;
 
-    /// <summary>The single mark of the stay, 1 to 5 stars.</summary>
     public int Rating { get; set; }
 
-    /// <summary>What the guest wrote (up to <c>ReviewRules.TextMaxLength</c> characters, plain text); null when the guest wrote nothing.</summary>
     [MaxLength(1500)]
     public string? Text { get; set; }
 
-    /// <summary>
-    /// How the author is shown: the first name of the guest, or «Ospite» when the guest did not agree to the name or the guest was
-    /// erased. The only personal datum of the review the public sees.
-    /// </summary>
     [Required, MaxLength(100)]
     public string AuthorName { get; set; } = string.Empty;
 
-    /// <summary>The Europe/Rome day the stay ended (midnight UTC, the date-only convention): the public sees its month.</summary>
     public DateTime StayEndedOn { get; set; }
 
     public ReviewStatus Status { get; set; } = ReviewStatus.Published;
 
-    /// <summary>When the guest sent it (UTC): the review is public from this instant.</summary>
     public DateTime PublishedAt { get; set; }
 
-    /// <summary>The answer of the host, once and as written (up to <c>ReviewRules.ReplyMaxLength</c> characters); null until the host answers.</summary>
     [MaxLength(800)]
     public string? HostReply { get; set; }
 
@@ -69,21 +59,16 @@ public class Review : ITenantOwned
     /// <summary>When the staff took it down after a report; null otherwise.</summary>
     public DateTime? RemovedAt { get; set; }
 
-    /// <summary>Why the staff took it down (the reason written for the decision). Never shown to the public.</summary>
     [MaxLength(500)]
     public string? RemovedReason { get; set; }
 }
 
-/// <summary>State of a <see cref="Review"/>. Stored as an integer.</summary>
 public enum ReviewStatus
 {
-    /// <summary>Public.</summary>
     Published = 0,
 
-    /// <summary>Reported by the host and still public: it stays visible until the staff decides.</summary>
     Reported = 1,
 
-    /// <summary>Taken down by the staff after a report: not public, not counted in the average.</summary>
     Removed = 2,
 }
 
@@ -103,21 +88,17 @@ public class ReviewReport : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The org that reports: the org of the review.</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Review))]
     public Guid ReviewId { get; set; }
     public virtual Review Review { get; set; } = null!;
 
-    /// <summary>The reason, from a closed list.</summary>
     public ReviewReportReason Reason { get; set; }
 
-    /// <summary>What the host added (up to <c>ReviewRules.ReportNoteMaxLength</c> characters); seen by the staff only.</summary>
     [MaxLength(500)]
     public string? Note { get; set; }
 
-    /// <summary>The user who reported (<c>User.Id</c>), an opaque id with no foreign key: the report outlives the account.</summary>
     [MaxLength(255)]
     public string? ReportedByUserId { get; set; }
 
@@ -127,46 +108,34 @@ public class ReviewReport : ITenantOwned
 
     public DateTime? DecidedAt { get; set; }
 
-    /// <summary>The staff user who decided (<c>User.Id</c>).</summary>
     [MaxLength(255)]
     public string? DecidedByUserId { get; set; }
 
-    /// <summary>The reason written for the decision, required (up to 500 characters).</summary>
     [MaxLength(500)]
     public string? DecisionReason { get; set; }
 }
 
-/// <summary>Why a host reports a review. Stored as an integer.</summary>
 public enum ReviewReportReason
 {
-    /// <summary>Insults, threats or hate.</summary>
     Offensive = 0,
 
-    /// <summary>Advertising, links or text that is not a review.</summary>
     Spam = 1,
 
-    /// <summary>It is about something other than the stay (another place, a person, a dispute).</summary>
     NotAboutTheStay = 2,
 
-    /// <summary>It names a person or gives a phone number, an address or another personal datum.</summary>
     PersonalData = 3,
 
-    /// <summary>The guest never stayed, or it is not the stay of this booking.</summary>
     NotAGuest = 4,
 
     Other = 5,
 }
 
-/// <summary>State of a <see cref="ReviewReport"/>. Stored as an integer.</summary>
 public enum ReviewReportStatus
 {
-    /// <summary>Waiting for the staff.</summary>
     Open = 0,
 
-    /// <summary>The staff decided the review stays public.</summary>
     Kept = 1,
 
-    /// <summary>The staff took the review down.</summary>
     Removed = 2,
 }
 
@@ -190,10 +159,8 @@ public class ReviewInvite : ITenantOwned
     public Guid BookingId { get; set; }
     public virtual Booking Booking { get; set; } = null!;
 
-    /// <summary>When the host asked (UTC).</summary>
     public DateTime SentAt { get; set; }
 
-    /// <summary>The user who asked (<c>User.Id</c>), an opaque id with no foreign key.</summary>
     [MaxLength(255)]
     public string? SentByUserId { get; set; }
 }

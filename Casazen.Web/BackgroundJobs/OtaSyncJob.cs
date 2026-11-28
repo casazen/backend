@@ -3,10 +3,6 @@ using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
 
-/// <summary>
-/// Background job for synchronizing property data across all OTA platforms
-/// Runs on a recurring schedule (hourly by default)
-/// </summary>
 public class OtaSyncJob
 {
     private readonly IOtaManager _otaManager;
@@ -18,11 +14,7 @@ public class OtaSyncJob
         _logger = logger;
     }
 
-    /// <summary>
-    /// Synchronizes all platforms for a specific property
-    /// </summary>
-    /// <param name="propertyId">Property ID to sync</param>
-    [DisableConcurrentExecution("OtaSyncJob.ExecuteAsync:{0}", JobLockTimeouts.DefaultSeconds)] // one sync per property at a time
+    [DisableConcurrentExecution("OtaSyncJob.ExecuteAsync:{0}", JobLockTimeouts.DefaultSeconds)]
     public async Task ExecuteAsync(Guid propertyId)
     {
         try

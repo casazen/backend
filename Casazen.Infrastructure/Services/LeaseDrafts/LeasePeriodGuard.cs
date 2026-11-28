@@ -22,7 +22,6 @@ namespace Casazen.Infrastructure.Services.LeaseDrafts;
 /// </remarks>
 internal static class LeasePeriodGuard
 {
-    /// <summary>The first lease (earliest start) of <paramref name="propertyId"/> that covers some of the days <paramref name="from"/> to <paramref name="to"/>, or <c>null</c>.</summary>
     public static async Task<LeasePeriodConflict?> FindAsync(
         AppDbContext db, Guid propertyId, Guid exceptLeaseId, DateTime from, DateTime to, CancellationToken cancellationToken)
     {
@@ -58,7 +57,6 @@ internal static class LeasePeriodGuard
             if (PostgresAdvisoryLocks.IsSupported(db))
                 await db.Database.ExecuteSqlRawAsync(LeaseDraftLocking.SetLockTimeoutSql, cancellationToken);
 
-            // Null when the caller's transaction is the one that holds the lock; if there were none, the lock lives only for the check.
             await using var own = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                 db, cancellationToken, (PostgresAdvisoryLocks.Scope.LeasePeriod, propertyId.ToString("N")));
 
@@ -71,7 +69,6 @@ internal static class LeasePeriodGuard
         }
     }
 
-    /// <summary>The 409 for a lease in the way: the code, the localized text with the two dates, and the members the client links from.</summary>
     public static DomainConflictException Overlaps(LeasePeriodConflict conflict) =>
         new(LeasePeriodCodes.Overlaps, "LeasePeriodOverlaps", conflict.ConflictingFrom, conflict.ConflictingTo)
         {

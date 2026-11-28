@@ -24,10 +24,6 @@ public class OrgOverviewController(
     IHostScopeResolver hostScopeResolver,
     IOrgContextResolver orgContextResolver) : ControllerBase
 {
-    /// <summary>
-    /// The figures of the home. The properties are counted inside what the caller reaches. 403 when the caller reaches nothing of
-    /// the org's host data (a deactivated member), 404 when it has no org.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(OrgOverviewResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -41,7 +37,6 @@ public class OrgOverviewController(
         if (await hostScopeResolver.ResolveHostScopeAsync(User, caller.OrgId, cancellationToken) is not { } scope)
             return Forbid();
 
-        // The sections the caller may see: each one is behind its own permission of the account context.
         var permissions = new HashSet<string>(StringComparer.Ordinal);
         foreach (var permission in OrgOverviewSections.All)
         {

@@ -26,13 +26,11 @@ namespace Casazen.Core.Suppliers;
 /// </remarks>
 public static class ServiceRequestGroupRules
 {
-    /// <summary>The requests the host sees: the ones outside a group, the primary and the backup that took the job. Never a backup that waits, nor the primary it replaced.</summary>
     public static readonly Expression<Func<ServiceRequest, bool>> VisibleToHost = r =>
         r.GroupRole == ServiceRequestGroupRole.None
         || r.GroupRole == ServiceRequestGroupRole.Primary
         || r.GroupRole == ServiceRequestGroupRole.PromotedBackup;
 
-    /// <summary>The requests that are not a backup waiting for the primary: the ones that are, or may become, a job of the supplier (the backup that accepted included).</summary>
     public static readonly Expression<Func<ServiceRequest, bool>> NotWaitingBackup = r =>
         r.GroupRole != ServiceRequestGroupRole.Backup || r.Status != ServiceRequestStatus.Richiesto;
 
@@ -44,23 +42,15 @@ public static class ServiceRequestGroupRules
     public static readonly Expression<Func<ServiceRequest, bool>> HoldsSupplierTime = r =>
         r.GroupRole != ServiceRequestGroupRole.Backup || r.Status != ServiceRequestStatus.Richiesto || r.BackupAcceptedAt != null;
 
-    /// <summary>The requests the host sees (see <see cref="VisibleToHost"/>).</summary>
     public static IQueryable<ServiceRequest> OnlyVisibleToHost(this IQueryable<ServiceRequest> requests) => requests.Where(VisibleToHost);
 
-    /// <summary>The requests that are not a backup waiting for the primary (see <see cref="NotWaitingBackup"/>).</summary>
     public static IQueryable<ServiceRequest> WithoutWaitingBackups(this IQueryable<ServiceRequest> requests) => requests.Where(NotWaitingBackup);
 
-    /// <summary>The requests that hold, or may hold, a time in the supplier's agenda (see <see cref="HoldsSupplierTime"/>).</summary>
     public static IQueryable<ServiceRequest> OnlyHoldingSupplierTime(this IQueryable<ServiceRequest> requests) => requests.Where(HoldsSupplierTime);
 
-    /// <summary>True for the roles the host's lists show (the compiled form of <see cref="VisibleToHost"/>).</summary>
     public static bool IsVisibleToHost(ServiceRequestGroupRole role) =>
         role is ServiceRequestGroupRole.None or ServiceRequestGroupRole.Primary or ServiceRequestGroupRole.PromotedBackup;
 
-    /// <summary>
-    /// What a member of a group is, as the rules need to know it: the role, the status, the pre-approval and whether the request has
-    /// a time proposed that the host has not answered yet.
-    /// </summary>
     public sealed record Member(
         Guid RequestId,
         ServiceRequestGroupRole Role,
@@ -69,7 +59,6 @@ public static class ServiceRequestGroupRules
         bool HasPendingProposal,
         ServiceRequestActorParty? CancelledBy)
     {
-        /// <summary>The request still waits for its supplier's answer.</summary>
         public bool IsLive => Status == ServiceRequestStatus.Richiesto;
     }
 
@@ -83,11 +72,6 @@ public static class ServiceRequestGroupRules
             .OrderBy(m => m.BackupAcceptedAt)
             .ThenBy(m => m.RequestId)];
 
-    /// <summary>
-    /// True when the primary has lost its turn: it refused, or cancelled the request itself (the host's cancellation closes the group
-    /// instead), or its window passed with no time proposed that the host has to answer. A primary with a proposal waiting is still the
-    /// host's to decide: the group does not move.
-    /// </summary>
     public static bool PrimaryIsOut(Member primary, ServiceRequestGroupPhase phase, DateTime primaryDueAt, DateTime now)
     {
         if (primary.Status == ServiceRequestStatus.Rifiutato)
@@ -104,22 +88,16 @@ public static class ServiceRequestGroupRules
                && now >= primaryDueAt;
     }
 
-    /// <summary>The verdict of <see cref="CanTake"/>.</summary>
     public enum TakeVerdict
     {
-        /// <summary>The request may be taken now.</summary>
         Allowed,
 
-        /// <summary>The group is over (someone took the job, or it lapsed): nothing to take.</summary>
         GroupClosed,
 
-        /// <summary>A backup, while the primary has its window: it can only pre-approve.</summary>
         BackupMustWaitForPrimary,
 
-        /// <summary>The primary, after its window, while a backup holds a pre-approval: the job is that backup's.</summary>
         PrimaryWindowPassed,
 
-        /// <summary>A backup, when another backup holds the earlier pre-approval: it is that one's turn.</summary>
         NotYourTurn,
     }
 
@@ -146,11 +124,9 @@ public static class ServiceRequestGroupRules
         if (requester.Role is ServiceRequestGroupRole.Primary)
             return primaryWindowPassed && preApproved.Count > 0 ? TakeVerdict.PrimaryWindowPassed : TakeVerdict.Allowed;
 
-        // Only a backup that waits can take the job from here on.
         if (requester.Role != ServiceRequestGroupRole.Backup)
             return TakeVerdict.GroupClosed;
 
-        // The primary took the job, or the host cancelled: there is nothing left to take, whatever the group's row says yet.
         if (primary.Status is ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso
                 or ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato
             || (primary.Status == ServiceRequestStatus.Annullato && primary.CancelledBy == ServiceRequestActorParty.Host))
@@ -161,11 +137,9 @@ public static class ServiceRequestGroupRules
         if (phase == ServiceRequestGroupPhase.BackupWindow)
             return TakeVerdict.Allowed;
 
-        // The primary window: the backups wait while the primary has its hour, or has a proposal the host has to answer.
         if (primary.IsLive && (!primaryWindowPassed || primary.HasPendingProposal))
             return TakeVerdict.BackupMustWaitForPrimary;
 
-        // The primary is out: the earliest pre-approval first.
         if (preApproved.Count > 0)
             return preApproved[0].RequestId == requester.RequestId ? TakeVerdict.Allowed : TakeVerdict.NotYourTurn;
 
@@ -173,25 +147,18 @@ public static class ServiceRequestGroupRules
     }
 }
 
-/// <summary>Stable codes (ProblemDetails <c>code</c>) and message keys of the refusals of the backup rules.</summary>
 public static class ServiceRequestGroupErrorCodes
 {
-    /// <summary>422: the supplier is a backup and the primary still has its window: it can accept as a backup, not take the job.</summary>
     public const string BackupWaitsForPrimary = "service_request_backup_waits_for_primary";
 
-    /// <summary>422: the primary's window passed and a backup holds a pre-approval: the job is that backup's.</summary>
     public const string PrimaryWindowPassed = "service_request_primary_window_passed";
 
-    /// <summary>422: another backup accepted before this one: it is that one's turn.</summary>
     public const string BackupNotYourTurn = "service_request_backup_not_your_turn";
 
-    /// <summary>422: the action is for a backup that waits (accept as a backup) and the request is not one.</summary>
     public const string NotAWaitingBackup = "service_request_not_a_waiting_backup";
 
-    /// <summary>422: a backup cannot propose another time (the host would answer a supplier that is not the one it chose).</summary>
     public const string BackupCannotPropose = "service_request_backup_cannot_propose";
 
-    /// <summary>422: a backup cannot send a quote (SP-04b): the host would answer a supplier that is not the one it chose.</summary>
     public const string BackupCannotQuote = "service_request_backup_cannot_quote";
 
     /// <summary>422: the second window of the group is open, so the backup takes the job directly instead of accepting as a backup.</summary>
@@ -212,7 +179,6 @@ public static class ServiceRequestGroupErrorCodes
     public const string BackupAlreadyActiveMessageKey = "ServiceRequestBackupAlreadyActive";
     public const string BackupRaceClosedMessageKey = "ServiceRequestBackupRaceClosed";
 
-    /// <summary>Every <c>SharedResources</c> key the backup rules raise (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
         BackupWaitsForPrimaryMessageKey,
@@ -226,11 +192,6 @@ public static class ServiceRequestGroupErrorCodes
     ];
 }
 
-/// <summary>
-/// A group of requests as the host who sent it sees it: where it is, the primary and the backups with their state, and who took the
-/// job. Names are the suppliers' business names (the host picked the primary and CasaZen declared the backups to it); nothing else of a
-/// supplier is given.
-/// </summary>
 public sealed record ServiceRequestGroupView(
     Guid Id,
     ServiceRequestGroupPhase Phase,
@@ -240,10 +201,6 @@ public sealed record ServiceRequestGroupView(
     DateTime? ClosedAt,
     IReadOnlyList<ServiceRequestGroupMemberView> Members);
 
-/// <summary>One request of a group: whose it is, what it is in the group, its status, and whether it took the job.</summary>
-/// <param name="AcceptedAt">When a backup said it would take the job (the pre-approval); null for the others.</param>
-/// <param name="TookTheJob">True for the request that was taken: the primary, or the backup that replaced it.</param>
-/// <param name="CancellationReason">The code of <see cref="ServiceRequestCancellationReasons"/> of a request cancelled by CasaZen or by the host; null for any other.</param>
 public sealed record ServiceRequestGroupMemberView(
     Guid RequestId,
     ServiceRequestGroupRole Role,
@@ -270,41 +227,29 @@ public sealed record SupplierJobBackup(
     DateTime? BackupDueAt,
     DateTime? AcceptedAt);
 
-/// <summary>The values of <see cref="SupplierJobBackup.Role"/>.</summary>
 public static class SupplierBackupRoles
 {
     public const string Primary = "primary";
     public const string Backup = "backup";
 }
 
-/// <summary>
-/// The values of <see cref="SupplierJobBackup.State"/>, derived once here from the role, the status and the phase of the group (never
-/// stored). An open set.
-/// </summary>
 public static class SupplierBackupStates
 {
-    /// <summary>A backup, the primary has its window: it can accept as a backup.</summary>
     public const string Waiting = "waiting";
 
-    /// <summary>A backup that accepted: the job is its if the primary does not take it.</summary>
     public const string Accepted = "accepted";
 
-    /// <summary>A backup, the second window is open: it can take the job now, and the first to do so has it.</summary>
     public const string Active = "active";
 
-    /// <summary>The backup that took the job.</summary>
     public const string Won = "won";
 
-    /// <summary>The primary, within its window: it has the priority.</summary>
     public const string Priority = "priority";
 
     /// <summary>The primary, after its window and while the second one is open: still in the race, without the priority.</summary>
     public const string Late = "late";
 
-    /// <summary>A request of the group that is over for this supplier (taken by another, lapsed or cancelled).</summary>
     public const string Closed = "closed";
 
-    /// <summary>The state of a request of a group for its supplier.</summary>
     public static string Of(
         ServiceRequestGroupRole role,
         ServiceRequestStatus status,
@@ -316,7 +261,6 @@ public static class SupplierBackupStates
         if (role == ServiceRequestGroupRole.PromotedBackup)
             return Won;
 
-        // A request that is no longer waiting for its supplier's answer (taken, refused, cancelled) or whose group is over is closed.
         if (status != ServiceRequestStatus.Richiesto || phase == ServiceRequestGroupPhase.Closed)
             return Closed;
 
@@ -330,27 +274,19 @@ public static class SupplierBackupStates
     }
 }
 
-/// <summary>What one pass over a group did (<c>IServiceRequestService.ResolveGroupAsync</c>), for the job's counters and the tests.</summary>
 public enum ServiceRequestGroupResolution
 {
-    /// <summary>Nothing was due: the group is as it was (or does not exist, or is closed already).</summary>
     NothingToDo = 0,
 
-    /// <summary>The primary took the job (or was found to have it): the backups were closed.</summary>
     ClosedPrimaryTook = 1,
 
-    /// <summary>A backup that had accepted took the job: the primary and the other backups were closed.</summary>
     ClosedBackupTook = 2,
 
-    /// <summary>The second window opened: nobody had accepted (or no accepted backup could take the job), the backups can take it now.</summary>
     BackupWindowOpened = 3,
 
-    /// <summary>Nobody took the job: the requests lapsed (<c>NoResponse</c>).</summary>
     ClosedLapsed = 4,
 
-    /// <summary>The host cancelled the request: the backups were closed.</summary>
     ClosedCancelled = 5,
 
-    /// <summary>The group changed under the pass (another call got there first): left as it is, the next run looks again.</summary>
     Conflict = 6,
 }

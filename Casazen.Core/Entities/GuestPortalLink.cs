@@ -25,46 +25,33 @@ namespace Casazen.Core.Entities;
 [Table("GuestPortalLinks")]
 public class GuestPortalLink : ITenantOwned
 {
-    /// <summary>Random bytes of a <see cref="Token"/>: 192 bits.</summary>
     public const int TokenBytes = 24;
 
-    /// <summary>Column length of <see cref="Token"/>: room beyond the 32 characters of a base64url token of <see cref="TokenBytes"/> bytes.</summary>
     public const int TokenMaxLength = 64;
 
-    /// <summary>Column length of <see cref="CreatedByUserId"/> and <see cref="AccountUserId"/>: the one of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the booking when the link is created (TN-2). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
     public Guid BookingId { get; set; }
 
-    /// <summary>The random token in the address of the stay link (base64url, unique).</summary>
     [Required, MaxLength(TokenMaxLength)]
     public string Token { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>UTC instant the link stops opening: the end of the 30th day after the departure of the stay.</summary>
     public DateTime ExpiresAt { get; set; }
 
-    /// <summary>UTC instant the link was revoked; <c>null</c> = the link is the active one of its booking.</summary>
     public DateTime? RevokedAt { get; set; }
 
-    /// <summary>The person who created the link (<c>User.Id</c>, the Auth0 subject); <c>null</c> when the system did.</summary>
     [MaxLength(UserIdMaxLength)]
     public string? CreatedByUserId { get; set; }
 
-    /// <summary>
-    /// The guest account (<c>User.Id</c>) the stay was added to from the link («Aggiungi al mio account», D1); <c>null</c> while no account holds it.
-    /// Written by the guest account task of the portal (E50/F01/US02), which has no migration of its own.
-    /// </summary>
     [MaxLength(UserIdMaxLength)]
     public string? AccountUserId { get; set; }
 
-    /// <summary>UTC instant the stay was added to <see cref="AccountUserId"/>; <c>null</c> while no account holds it.</summary>
     public DateTime? AccountAttachedAt { get; set; }
 }

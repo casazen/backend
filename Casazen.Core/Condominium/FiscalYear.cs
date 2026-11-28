@@ -1,6 +1,5 @@
 namespace Casazen.Core.Condominium;
 
-/// <summary>Fiscal-year labels and bounds (CondoLedger <c>fiscal.js</c>). June is the usual start, not January.</summary>
 public static class FiscalYear
 {
     public readonly record struct Bounds(DateOnly Start, DateOnly End, string Label);
@@ -20,7 +19,6 @@ public static class FiscalYear
         return new Bounds(start, end, label);
     }
 
-    /// <summary>Accepts <c>2024/2025</c> or <c>2025</c> (a calendar year when the fiscal year starts in January).</summary>
     public static bool TryParseLabel(string? text, int startMonth, out Bounds bounds, out string? error)
     {
         bounds = default;
@@ -66,10 +64,6 @@ public static class FiscalYear
     public static bool Overlaps(DateOnly start, DateOnly end, DateOnly otherStart, DateOnly otherEnd) =>
         start <= otherEnd && otherStart <= end;
 
-    /// <summary>
-    /// Due date of a conguaglio paid on its own: the last day of the third month of the year.
-    /// A June start is due on 31 August.
-    /// </summary>
     public static DateOnly SeparateBalanceDueDate(DateOnly periodStart) =>
         periodStart.AddMonths(3).AddDays(-1);
 }

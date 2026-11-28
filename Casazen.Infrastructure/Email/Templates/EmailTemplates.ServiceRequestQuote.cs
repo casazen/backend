@@ -68,22 +68,11 @@ public static partial class EmailTemplates
         return builder.Build("ServiceRequestQuoteReceived_Subject", supplierName);
     }
 
-    /// <summary>
-    /// A line of a quote as the mail says it: the label and the amount, and — for a line of the offer on a request on measure (SP-10b-b) — how many
-    /// at what price of one.
-    /// </summary>
     private static string QuoteLineText(CultureInfo culture, ServiceRequestQuoteLine line) =>
         line is { Quantity: > 1, UnitAmountCents: { } unit }
             ? $"{line.Label} ({line.Quantity} × {FormatEuro(unit, culture)}): {FormatEuro(line.AmountCents, culture)}"
             : $"{line.Label}: {FormatEuro(line.AmountCents, culture)}";
 
-    /// <summary>
-    /// The customer (the host, or the private customer of a showcase request) accepted or turned down the quote, to the supplier (Italian).
-    /// Accepted: the price and the time of the work, and that the request is the supplier's. Turned down: the request waits for its answer
-    /// again. The comune and, for a showcase customer, "Nome C." only: the rest comes with the take (decision D9).
-    /// </summary>
-    /// <param name="customerShortName">"Nome C." of a showcase customer; empty for a host, whose mails name no one.</param>
-    /// <param name="startUtc">The time of the work; named only when the quote was accepted.</param>
     public static EmailContent ServiceRequestQuoteAnswered(
         CultureInfo culture,
         string supplierName,
@@ -114,11 +103,6 @@ public static partial class EmailTemplates
             .Build($"{prefix}_Subject", comune);
     }
 
-    /// <summary>
-    /// The customer did not answer the quote and the request was cancelled, to the customer. Not the words of
-    /// <see cref="SupplierBookingExpired"/>: there it is the supplier that did not answer, here it is the customer (decision D24).
-    /// </summary>
-    /// <param name="startUtc">The time the customer had asked for (the request keeps it while a quote waits).</param>
     public static EmailContent SupplierBookingQuoteExpired(
         CultureInfo culture,
         string customerName,
@@ -136,10 +120,6 @@ public static partial class EmailTemplates
             .Build("SupplierBookingQuoteExpired_Subject", supplierName);
     }
 
-    /// <summary>
-    /// The customer did not answer the quote and the request was cancelled, to the supplier (Italian). Not the words of the request nobody
-    /// answered: here the supplier did answer, and it is the customer who did not (decision D24).
-    /// </summary>
     public static EmailContent SupplierBookingQuoteLapsed(
         CultureInfo culture,
         string supplierName,

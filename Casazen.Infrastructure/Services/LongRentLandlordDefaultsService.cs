@@ -37,7 +37,6 @@ public sealed class LongRentLandlordDefaultsService(AppDbContext db) : ILongRent
                 string.IsNullOrWhiteSpace(last.ContactEmail) ? null : last.ContactEmail);
         }
 
-        // No lease yet: what the org declared for the fiscal side and who is asking. Every field can stay empty.
         var org = await db.Orgs.AsNoTracking().Where(o => o.Id == scope.OrgId)
             .Select(o => new { o.FiscalCode, o.PartitaIvaNumber })
             .FirstOrDefaultAsync(cancellationToken);

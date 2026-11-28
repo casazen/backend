@@ -25,34 +25,20 @@ public sealed record RegistrationReceiptDto(
     string? Province,
     IReadOnlyList<string> Warnings);
 
-/// <summary>The reading of one document of a lease, on request (<c>GET api/leases/{id}/documents/{documentId}/reading</c>).</summary>
-/// <param name="State"><see cref="LeaseDocumentReadingStates"/>.</param>
-/// <param name="Receipt">The receipt, when <paramref name="State"/> is <c>Read</c>.</param>
 public sealed record LeaseDocumentReadingDto(Guid DocumentId, string Kind, string State, RegistrationReceiptDto? Receipt);
 
-/// <summary>The values of <see cref="LeaseDocumentReadingDto.State"/>.</summary>
 public static class LeaseDocumentReadingStates
 {
     /// <summary>The PDF is a receipt of the Agenzia delle Entrate and its values are in <see cref="LeaseDocumentReadingDto.Receipt"/>.</summary>
     public const string Read = "Read";
 
-    /// <summary>The PDF holds no text (a scan or a photo): the person types the number and the date.</summary>
     public const string Unreadable = "Unreadable";
 
     /// <summary>The PDF holds text, but it is not a receipt of the Agenzia delle Entrate.</summary>
     public const string NotAReceipt = "NotAReceipt";
 }
 
-/// <summary>
-/// Reads, when the person asks, the receipt of a registration they uploaded to a lease (CF-DOCS-REAL), so the declaration of the registration
-/// is filled in with what the Agenzia wrote and the person checks it. Nothing is declared by the reading and no value is kept: the file is
-/// read again on every request, in process, without OCR.
-/// </summary>
 public interface ILeaseDocumentReadingService
 {
-    /// <summary>
-    /// The reading of a document of kind <c>Registration</c> of this lease, or <c>null</c> when there is no such document (another lease,
-    /// another organization, another kind, or the file is gone): the same answer for every one of those cases.
-    /// </summary>
     Task<LeaseDocumentReadingDto?> ReadAsync(Guid leaseId, Guid documentId, CancellationToken cancellationToken = default);
 }

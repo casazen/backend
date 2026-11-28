@@ -78,12 +78,6 @@ public class GuestMarketingPreferencesController(IGuestMarketingPreferencesServi
         return Ok(GuestMarketingDto.From(result));
     }
 
-    /// <summary>
-    /// Asks for the confirmation e-mail of the pending e-mail consent again, with the limits of the confirmation (three messages, one every ten
-    /// minutes). <c>202 { sent }</c>: <c>true</c> when the message was queued, <c>false</c> when nothing was waiting for a confirmation or the limits
-    /// did not allow another one. 401; 404 <c>guest_booking_not_found</c>; 503 <c>marketing_confirmation_unavailable</c> (the message could not be
-    /// queued); 429.
-    /// </summary>
     [HttpPost("resend-confirmation")]
     [EnableRateLimiting(RateLimitPolicies.PublicMarketingConsent)]
     [ProducesResponseType(typeof(GuestMarketingResendResponse), StatusCodes.Status202Accepted)]

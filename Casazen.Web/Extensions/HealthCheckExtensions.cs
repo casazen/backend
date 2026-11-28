@@ -26,12 +26,10 @@ public static class HealthCheckExtensions
     public const string ReadyPath = "/api/health/ready";
     public const string LegacyPath = "/api/health";
 
-    /// <summary>A dependency that does not answer within this time is reported unhealthy.</summary>
     public static readonly TimeSpan DependencyTimeout = TimeSpan.FromSeconds(5);
 
     public static IServiceCollection AddCasazenHealthChecks(this IServiceCollection services)
     {
-        // Read from the final configuration (environment variables included) when first needed.
         services.AddSingleton(sp => BuildInfo.FromConfiguration(sp.GetRequiredService<IConfiguration>()));
 
         services.AddHealthChecks()

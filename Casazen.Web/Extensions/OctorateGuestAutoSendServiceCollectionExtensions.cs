@@ -15,14 +15,12 @@ public static class OctorateGuestAutoSendServiceCollectionExtensions
 {
     public static IServiceCollection AddCasazenOctorateGuestAutoSend(this IServiceCollection services)
     {
-        // The setting of the org, read by the sender endpoint and by the service below.
         services.AddScoped<IOrgGuestAutoSendSetting, OrgGuestAutoSendSetting>();
 
         // What the setting allows: the stay whose guests are complete and whose identity passed goes through the send path of the wizard, and the retry job
         // sweeps the stays whose event was missed through the same service.
         services.AddScoped<IStayGuestsAutoSendService, StayGuestsAutoSendService>();
 
-        // The consumer of the two facts that make a stay ready: the guests saved and the identity verified.
         services.AddScoped<IEventHandler<DomainEvent>, StayGuestsReadyOctorateHandler>();
         return services;
     }

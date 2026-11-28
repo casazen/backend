@@ -5,11 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One message of an <see cref="OwnerConversation"/> (E07/F07/US01/T02, AC-NF111-5): who wrote it, the words and, optionally, one file. Kept as it was written
-/// (<see cref="IAppendOnlyRecord"/>): the inbox is the record of what the agency and the owner told each other. The file, like a shared document, is stored
-/// only after the scan and is read only through the endpoints of the conversation.
-/// </summary>
 [Table("OwnerMessages")]
 public class OwnerMessage : ITenantOwned, IAppendOnlyRecord
 {
@@ -25,11 +20,9 @@ public class OwnerMessage : ITenantOwned, IAppendOnlyRecord
 
     public OwnerMessageSender Sender { get; set; }
 
-    /// <summary>The person of the agency who wrote it (<c>User.Id</c>).</summary>
     [MaxLength(UserIdMaxLength)]
     public string? SenderUserId { get; set; }
 
-    /// <summary>The person of the portal who wrote it (<c>OwnerUser.Id</c>): the owner or a delegated contact.</summary>
     public Guid? SenderOwnerUserId { get; set; }
 
     /// <summary>
@@ -43,7 +36,6 @@ public class OwnerMessage : ITenantOwned, IAppendOnlyRecord
     [MaxLength(OwnerDocumentVersion.StorageKeyMaxLength)]
     public string? AttachmentKey { get; set; }
 
-    /// <summary>The name the download offers (made by <c>OwnerFileRules.SafeFileName</c>). <b>Encrypted at rest</b>, with <see cref="Body"/>: a name can name a person or a case.</summary>
     public string? AttachmentFileName { get; set; }
 
     [MaxLength(OwnerDocumentVersion.ContentTypeMaxLength)]

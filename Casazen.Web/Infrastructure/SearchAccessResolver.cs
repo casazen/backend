@@ -6,12 +6,8 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>What the caller may search (UI-13a): as a host (its scope and the permissions), as a supplier (its supplier org), or nothing.</summary>
-/// <param name="Host">The host side, null when the caller holds none of the host permissions of the search or has no reach on its org.</param>
-/// <param name="SupplierOrgId">The supplier org whose inbox is searched, null when the caller does not work as a supplier.</param>
 public sealed record SearchAccess(HostSearchAccess? Host, Guid? SupplierOrgId)
 {
-    /// <summary>True when there is nothing the caller may search.</summary>
     public bool IsEmpty => Host is null && SupplierOrgId is null;
 }
 
@@ -24,24 +20,19 @@ public sealed record SearchAccess(HostSearchAccess? Host, Guid? SupplierOrgId)
 /// </summary>
 public interface ISearchAccessResolver
 {
-    /// <summary>The access of <paramref name="user"/>; never throws for a user with no permission (the answer is empty).</summary>
     Task<SearchAccess> ResolveAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default);
 }
 
-/// <inheritdoc cref="ISearchAccessResolver" />
 public sealed class SearchAccessResolver(
     IAuthorizationService authorization,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ISearchAccessResolver
 {
-    /// <inheritdoc />
     public async Task<SearchAccess> ResolveAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        // Each permission counts in the context that grants it: property.read of the short-rent context says nothing about the
-        // long-rent properties (CasazenPolicies). The decisions come from one authorization snapshot, cached for a few seconds.
         var shortRentProperties = await CanAsync(user, CasazenPolicies.PropertyRead);
         var longRentProperties = await CanAsync(user, CasazenPolicies.LongRentPropertyRead);
         var bookings = await CanAsync(user, CasazenPolicies.BookingRead);

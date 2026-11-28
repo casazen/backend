@@ -2,9 +2,6 @@ using System.Text.Json;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>
-/// Parses Auth0 custom role claims, which may arrive as a JSON array, a JSON string, or a plain role name.
-/// </summary>
 public static class Auth0RolesClaimParser
 {
     public static IReadOnlyList<string> Parse(IEnumerable<string?> claimValues)
@@ -38,7 +35,6 @@ public static class Auth0RolesClaimParser
             }
             catch (JsonException)
             {
-                // Fall through to plain-string handling.
             }
         }
 
@@ -52,7 +48,6 @@ public static class Auth0RolesClaimParser
             }
             catch (JsonException)
             {
-                // Fall through to plain-string handling.
             }
         }
 

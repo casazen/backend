@@ -2,25 +2,16 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.TouristTax;
 
-/// <summary>Where the collector of the tourist tax of an Italian stay comes from (<see cref="ItalianPortalTouristTax.Decide"/>), the strongest source first.</summary>
 public enum ItalianTouristTaxOrigin
 {
-    /// <summary>The booking is not of a channel (direct, manual, local): the host collects, nobody has to say so.</summary>
     NotAChannelBooking,
 
-    /// <summary>The active rule of the comune and the channel (platform reference data, added from an official source).</summary>
     ChannelRule,
 
-    /// <summary>The record of the stay's tourist tax (E25): the host's declaration for the stay, or the collector of the calculation the host confirmed.</summary>
     StayRecord,
 
-    /// <summary>
-    /// The organization's own answer: the list of the portals that collect it in every comune (the answer it saved, or the default of the configuration while it saved none), or the portal
-    /// it confirmed for the comune of the property (<see cref="PortalComune"/>).
-    /// </summary>
     Organization,
 
-    /// <summary>Nothing says that the portal collects it: the host collects it at the property (the global default).</summary>
     Default,
 }
 
@@ -37,7 +28,6 @@ public sealed record PortalComune(BookingSource Channel, string ComuneIstat);
 /// <param name="Origin">The source that decided it.</param>
 public sealed record ItalianTouristTaxDecision(TouristTaxCollector Collector, ItalianTouristTaxOrigin Origin)
 {
-    /// <summary>True when the host collects it (at the property): the guest document bills it and says «da pagare in struttura» when a portal collected the rest.</summary>
     public bool HostCollects => Collector == TouristTaxCollector.Host;
 }
 
@@ -122,10 +112,6 @@ public static class ItalianPortalTouristTax
         string? comuneIstat = null) =>
         OrganizationCollects(source, organizationChannels, organizationComuni, comuneIstat) ? TouristTaxCollector.Channel : TouristTaxCollector.Host;
 
-    /// <summary>
-    /// Whether the collector the record of a stay gives (<paramref name="recorded"/>: the host's declaration, else the collector of the calculation it confirmed) contradicts the organization's rule
-    /// for the channel: a record of the tax collected by the portal while the rule says «at the property», or the opposite. Nothing recorded, or a booking that is not of a channel, contradicts nothing.
-    /// </summary>
     public static bool Contradicts(
         BookingSource source,
         TouristTaxCollector? recorded,
@@ -155,16 +141,12 @@ public sealed record ItalianPortalProposal(string ComuneIstat, string Comune, st
 /// </summary>
 public static class ItalianPortalProposals
 {
-    /// <summary>The proposal waits for a person: «Airbnb incassa, da confermare».</summary>
     public const string ToConfirm = "to_confirm";
 
-    /// <summary>The comune is known to have an agreement with the portal, but nobody has read it (not proposed yet).</summary>
     public const string ToVerify = "to_verify";
 
-    /// <summary>The ISTAT code of Milano.</summary>
     public const string MilanoIstat = "015146";
 
-    /// <summary>The ISTAT code of Firenze.</summary>
     public const string FirenzeIstat = "048017";
 
     private static readonly ItalianPortalProposal[] Catalog =

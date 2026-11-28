@@ -8,10 +8,6 @@ namespace Casazen.Core.Services;
 
 public record ComplianceActivationStep(string Id, string Label, string Status, bool Blocker, string? Message = null)
 {
-    /// <summary>
-    /// Resource key of the message (<c>Casazen.Web/Resources/SharedResources.resx</c>), formatted with
-    /// <see cref="MessageArgs"/>. When set, the API sends its localized text in place of <see cref="Message"/>.
-    /// </summary>
     public string? MessageKey { get; init; }
 
     public IReadOnlyList<object>? MessageArgs { get; init; }
@@ -19,32 +15,15 @@ public record ComplianceActivationStep(string Id, string Label, string Status, b
     /// <summary>External guidance link of the step (for the CIN step: <c>Compliance:CinGuidanceUrl</c>).</summary>
     public string? LinkUrl { get; init; }
 
-    /// <summary>
-    /// Resource key of the label (<c>SharedResources</c>). When set, the API sends its localized text in place of
-    /// <see cref="Label"/> (check-out wizard, CO-17).
-    /// </summary>
     public string? LabelKey { get; init; }
 
-    /// <summary>Only on the <c>tourist-tax</c> step: what CasaZen knows about the tax in the property's comune.</summary>
     public TouristTaxActivationInfo? TouristTax { get; init; }
 
-    /// <summary>
-    /// What keeps a blocking step from being complete, with stable codes (e.g. the items of the safety checklist,
-    /// <c>safety_gas_detector_missing</c>); empty when the step is complete or not blocking.
-    /// </summary>
     public IReadOnlyList<ActivationBlocker> Blockers { get; init; } = [];
 
-    /// <summary>
-    /// Non-blocking notes of the step, with stable codes (e.g. <c>cin_istat_comune_mismatch</c>, <c>comune_istat_missing</c>):
-    /// they never keep the step from being complete.
-    /// </summary>
     public IReadOnlyList<ActivationWarning> Warnings { get; init; } = [];
 }
 
-/// <summary>
-/// A note on an activation step that does not block it (SU-04): stable snake_case <see cref="Code"/> (the frontend translates
-/// it) and the resource key of its message in <c>SharedResources</c>, formatted with <see cref="MessageArgs"/>.
-/// </summary>
 public sealed record ActivationWarning(string Code, string MessageKey, IReadOnlyList<object> MessageArgs)
 {
     public ActivationWarning(string code, string messageKey)
@@ -53,10 +32,6 @@ public sealed record ActivationWarning(string Code, string MessageKey, IReadOnly
     }
 }
 
-/// <summary>
-/// One reason why the activation is blocked: stable snake_case <see cref="Code"/> (the frontend translates it) and the
-/// resource key of its message in <c>SharedResources</c>, formatted with <see cref="MessageArgs"/>.
-/// </summary>
 public sealed record ActivationBlocker(string Code, string MessageKey, IReadOnlyList<object> MessageArgs)
 {
     public ActivationBlocker(string code, string messageKey)
@@ -65,20 +40,8 @@ public sealed record ActivationBlocker(string Code, string MessageKey, IReadOnly
     }
 }
 
-/// <summary>
-/// Tourist tax of the property's comune as shown to the host in the activation wizard (A5-06, A8-28).
-/// </summary>
-/// <param name="City">City of the property, as entered by the host.</param>
-/// <param name="Rate">Active rate in force today (Europe/Rome), or null when CasaZen has none for the comune.</param>
-/// <param name="PublicPageSlug">
-/// Comune slug of the reviewed public SEO page <c>/p/tassa-soggiorno/{slug}</c>, or null when there is no such page.
-/// </param>
 public record TouristTaxActivationInfo(string City, TouristTaxRate? Rate, string? PublicPageSlug)
 {
-    /// <summary>
-    /// True when the comune has rates only for specific accommodation categories (Roma, Venezia): CasaZen does not know
-    /// the category of the property, so it cannot pick one.
-    /// </summary>
     public bool CategoryRequired { get; init; }
 }
 
@@ -105,17 +68,13 @@ public record CompleteCheckoutWizardInput(
     /// </summary>
     public CheckoutCleaningChoice? CleaningChoice { get; init; }
 
-    /// <summary>Step 4: how the tourist tax was collected; null = not declared.</summary>
     public TouristTaxCollection? TouristTaxCollection { get; init; }
 
-    /// <summary>Step 5: the property is ready for the next guest; null or false = not ready yet (cockpit turnover).</summary>
     public bool? PropertyReady { get; init; }
 
-    /// <summary>Step 5: notes on the state of the property.</summary>
     public string? PropertyNotes { get; init; }
 }
 
-/// <summary>The 5 steps of the check-out wizard as the API names them (<c>steps[].id</c>, <c>currentStep</c>).</summary>
 public static class CheckoutWizardSteps
 {
     public const string StaySummary = "stay-summary";
@@ -133,10 +92,8 @@ public static class CheckoutWizardSteps
         [CheckoutWizardStep.PropertyReady] = PropertyReady,
     };
 
-    /// <summary>Id of <paramref name="step"/>; the first step for a value that is not a step.</summary>
     public static string IdOf(CheckoutWizardStep step) => Ids.TryGetValue(step, out var id) ? id : StaySummary;
 
-    /// <summary>The step named <paramref name="id"/>, or false when it is not one of the 5 steps.</summary>
     public static bool TryParse(string? id, out CheckoutWizardStep step)
     {
         foreach (var (candidate, candidateId) in Ids)
@@ -153,15 +110,6 @@ public static class CheckoutWizardSteps
     }
 }
 
-/// <summary>
-/// The check-out wizard of a stay as the host sees it (CO-17, A5-24): the booking (with property and guest), its
-/// saved progress or outcome, the 5 steps with their status and what each step shows.
-/// </summary>
-/// <param name="Booking">The booking, with its property and guest, as committed now.</param>
-/// <param name="Checkout">Progress and outcome of the check-out; null before the wizard is started.</param>
-/// <param name="Steps">The 5 steps, in order.</param>
-/// <param name="Alloggiati">Step 2.</param>
-/// <param name="TouristTax">Step 4.</param>
 public sealed record CheckoutWizardState(
     Booking Booking,
     StayCheckout? Checkout,
@@ -169,13 +117,11 @@ public sealed record CheckoutWizardState(
     CheckoutAlloggiatiSummary Alloggiati,
     CheckoutTouristTaxSummary TouristTax)
 {
-    /// <summary>The step the wizard opens on: the saved one, the last one once the stay is checked out.</summary>
     public CheckoutWizardStep CurrentStep =>
         Booking.Status == BookingStatus.CheckedOut
             ? CheckoutWizardStep.PropertyReady
             : Checkout?.CurrentStep ?? CheckoutWizardStep.StaySummary;
 
-    /// <summary>The property was declared ready for the next guest.</summary>
     public bool PropertyReady => Checkout?.PropertyReadyAt is not null;
 }
 
@@ -237,44 +183,24 @@ public interface IComplianceWizardService
     /// </summary>
     Task<ComplianceSummaryResult> GetSummaryAsync(HostScope scope, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Opens the check-out wizard of a booking the caller has already been authorized on (TN-3), with the rules of
-    /// <see cref="IStayLifecycleService.StartCheckOutAsync"/>: <paramref name="registerArrival"/> registers first the
-    /// arrival of a confirmed booking ("registra arrivo e procedi"). Opened again, the wizard keeps its progress.
-    /// </summary>
     Task<CheckoutWizardState> StartCheckoutWizardAsync(
         Guid bookingId,
         bool registerArrival = false,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The check-out wizard of a booking the caller has already been authorized on, without any transition: after the
-    /// check-out it shows what was declared and lets the host declare the property ready (CO-17).
-    /// </summary>
     Task<CheckoutWizardState> GetCheckoutWizardAsync(Guid bookingId, CancellationToken cancellationToken = default);
 
-    /// <summary>Saves the progress of the wizard (<see cref="IStayLifecycleService.SaveCheckoutProgressAsync"/>).</summary>
     Task<CheckoutWizardState> SaveCheckoutProgressAsync(
         Guid bookingId,
         StayCheckoutProgress progress,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Completes the checkout of a booking the caller has already been authorized on (TN-3), through
-    /// <see cref="IStayLifecycleService.CheckOutAsync"/> (same rules as <c>POST /api/bookings/{id}/check-out</c>), once
-    /// the wizard was started (409 <c>checkout_wizard_not_started</c>): the cleaning request of step 3 is created for the
-    /// stay on behalf of <paramref name="userId"/> without further role checks, and the tax collection and the property
-    /// readiness are recorded as declared. Nothing is assumed: a property not declared ready stays a turnover to close.
-    /// </summary>
     Task<CheckoutWizardState> CompleteCheckoutWizardAsync(
         Guid bookingId,
         string userId,
         CompleteCheckoutWizardInput input,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The host declares the property ready after the check-out (<see cref="IStayLifecycleService.ConfirmPropertyReadyAsync"/>).
-    /// </summary>
     Task<CheckoutWizardState> ConfirmPropertyReadyAsync(
         Guid bookingId,
         string? notes,
@@ -309,10 +235,6 @@ public sealed record ComplianceSummaryItem
 
     public Guid? BookingId { get; }
 
-    /// <summary>
-    /// What the item still lacks, with stable codes and fields (SR-03). Empty as the cockpit builds it:
-    /// <see cref="IComplianceMissingService"/> fills it, so a reader that does not show it pays nothing for it.
-    /// </summary>
     public IReadOnlyList<ComplianceMissing> Missing { get; init; } = [];
 
     /// <summary>
@@ -322,28 +244,19 @@ public sealed record ComplianceSummaryItem
     /// </summary>
     public DateTime? DueAt { get; init; }
 
-    /// <summary>
-    /// The traffic light (NF-52): green only with an archived proof, yellow while in progress, red when the host has to act. <c>null</c> only
-    /// for an item built by a reader that did not ask for the status.
-    /// </summary>
     public ComplianceLight? Light { get; init; }
 
-    /// <summary>A stable snake_case code that says why the item has its light (<see cref="ComplianceReasonCodes"/>); the client translates it.</summary>
     public string? Reason { get; init; }
 
     /// <summary>The month (<c>yyyy-MM</c>) of an item about an ISTAT or tourist tax period; <c>null</c> for the others.</summary>
     public string? Period { get; init; }
 
-    /// <summary>What backs the light: an archived proof, the outcome held only by Octorate, nothing yet.</summary>
     public ComplianceEvidenceClass? EvidenceClass { get; init; }
 
-    /// <summary>Where the evidence comes from (<see cref="ComplianceEvidenceSources"/>); <c>null</c> when there is none.</summary>
     public string? EvidenceSource { get; init; }
 
-    /// <summary>When the proof was archived or the verification passed (UTC); <c>null</c> when there is none.</summary>
     public DateTime? LastVerifiedAt { get; init; }
 
-    /// <summary>The Octorate handoff topic of an outcome CasaZen cannot see (the client starts <c>POST api/compliance/octorate-handoffs</c> with it); <c>null</c> when none applies.</summary>
     public OctorateHandoffTopic? HandoffTopic { get; init; }
 
     /// <summary>
@@ -392,7 +305,6 @@ public static class ComplianceDeadlines
 
 public record ComplianceSummarySection(int Count, IReadOnlyList<ComplianceSummaryItem> Items)
 {
-    /// <summary>A section with nothing in it: the default of the sections a reader did not fill.</summary>
     public static ComplianceSummarySection Empty { get; } = new(0, []);
 }
 
@@ -413,15 +325,6 @@ public record ComplianceSummaryResult(
     ComplianceSummarySection AlloggiatiManualRequired,
     ComplianceSummarySection TurnoversPending)
 {
-    // The sections of CHK-12 (E03/F02/US01/T03) come after the six above and are empty by default (a positional record cannot give a section
-    // a default value, so they are init members): no caller or test that builds a result with six sections breaks, and a reader that does
-    // not ask for the status simply has them empty. They list, for the stays and properties the caller reaches, every item of the kind with its
-    // light, the green ones too; the count of a section is the number of items that need attention (not green).
-
-    /// <summary>
-    /// The identity of the guest who leaves the document, for the stays arriving soon (CHK-11, NF-50): green when verified, yellow while the
-    /// selfie is awaited, red close to the arrival or when an operator has to decide. Empty while the identity verification is off.
-    /// </summary>
     public ComplianceSummarySection IdentityPending { get; init; } = ComplianceSummarySection.Empty;
 
     /// <summary>
@@ -430,13 +333,8 @@ public record ComplianceSummaryResult(
     /// </summary>
     public ComplianceSummarySection ReceiptsToUpload { get; init; } = ComplianceSummarySection.Empty;
 
-    /// <summary>
-    /// The stays the channel manager does not send by itself (over 30 nights, a short stay not entrusted, a connection that is not active): the
-    /// host sends them by hand. A stay here is not in <see cref="AlloggiatiManualRequired"/> either.
-    /// </summary>
     public ComplianceSummarySection ManualSendsRequired { get; init; } = ComplianceSummarySection.Empty;
 
-    /// <summary>The police send of the channel manager that is not active or cannot be verified, and the police credentials that were refused.</summary>
     public ComplianceSummarySection ConnectionsToFix { get; init; } = ComplianceSummarySection.Empty;
 
     /// <summary>The ISTAT and tourist tax of the closed months, and the tourist tax rates that are not known.</summary>

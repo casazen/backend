@@ -34,17 +34,8 @@ public class CancellationPolicy
 
     public int PartialRefundHours { get; set; }
 
-    /// <summary>
-    /// Number of days before check-in that the booking must have been made to qualify for the
-    /// grace-period cancellation window (PC-02). Standard catalog value: 7.
-    /// </summary>
     public int GraceBookingDaysBeforeCheckin { get; set; }
 
-    /// <summary>
-    /// Hours after the booking is confirmed within which a guest may cancel for free, provided
-    /// the booking was made at least <see cref="GraceBookingDaysBeforeCheckin"/> days before
-    /// check-in (PC-02). Standard catalog value: 24.
-    /// </summary>
     public int GraceWindowHours { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

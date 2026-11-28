@@ -101,7 +101,6 @@ public sealed class PropertyIstatCredentialsController(
 
     private async Task<(HostResource? Resource, ActionResult? Denied)> AuthorizePropertyAsync(Guid propertyId, HostOperationRequirement operation)
     {
-        // Tenant filter: another org's property is not found.
         var resource = await hostResources.ForPropertyAsync(propertyId, HttpContext.RequestAborted);
         if (resource is null || (!flags.IsEnabled(FeatureFlags.OctorateOnboarding) &&
             (!Ross1000DayService.IsEnabled(configuration, environment) || !await db.Properties.AnyAsync(p => p.Id == propertyId &&

@@ -16,7 +16,6 @@ public class OtaIntegration : ITenantOwned
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
 
-    /// <summary>Tenant of the row, copied from <see cref="Property"/> when it is created (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [Required, MaxLength(50)]

@@ -8,11 +8,6 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The presence of the self-hosted identity step (E72/F01/US01, NF-192, ADR-013-R17) and its closure (E73/F01/US01/T02, NF-194, ADR-013-R18, R19). This part of the controller holds the
-/// endpoints of the presence; its services come as <c>[FromServices]</c> parameters, so the constructor of the class does not change, and they are registered in
-/// <c>IdentityVerificationServiceCollectionExtensions.Presence.cs</c> and <c>.Decision.cs</c>.
-/// </summary>
 public partial class PublicGuestCheckInController
 {
     /// <summary>
@@ -43,7 +38,6 @@ public partial class PublicGuestCheckInController
         if (session is null)
             return NotFound();
 
-        // A closed verification takes no presence step any more; the request for a person stays open.
         if (session.IdentityClosedAt is not null)
             return this.ApiProblem(StatusCodes.Status409Conflict, IdentityApiErrors.IdentityAlreadyClosed, "CheckInIdentityAlreadyClosed");
 
@@ -92,7 +86,6 @@ public partial class PublicGuestCheckInController
         [FromForm] IFormFile? documentPhotoBack = null,
         [FromHeader(Name = IdentityHeaders.IdempotencyKey)] string? idempotencyKey = null)
     {
-        // The gates answer first; this keeps a direct call honest too.
         if (!SelfHostedIdentityOn())
             return NotFound();
 
@@ -100,7 +93,6 @@ public partial class PublicGuestCheckInController
         if (session is null)
             return NotFound();
 
-        // The explicit key of the attempt: without it a request the network repeated could not be told from a new attempt, so nothing is run.
         if (!IdentityHeaders.IsValidIdempotencyKey(idempotencyKey))
             return this.ApiProblem(StatusCodes.Status400BadRequest, IdentityApiErrors.IdempotencyKeyRequired, "CheckInIdempotencyKeyRequired");
 
@@ -114,7 +106,6 @@ public partial class PublicGuestCheckInController
         PresenceStepResult result;
         try
         {
-            // ADR-013-R17: in the request, not in a job. ADR-013-R2: the body is in memory (RequestFormLimits); the flow reads each part once and zeroes its copies.
             var parts = new List<PresenceFrameUpload>();
             foreach (var frame in frames ?? [])
             {
@@ -132,7 +123,6 @@ public partial class PublicGuestCheckInController
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("Error processing the presence of session {SessionId} ({ErrorType})", session.Id, ex.GetType().Name);
             return this.ApiProblem(StatusCodes.Status500InternalServerError, "presence_processing_failed", "CheckInPresenceProcessingFailed");
         }
@@ -170,14 +160,9 @@ public partial class PublicGuestCheckInController
         };
     }
 
-    /// <summary>
-    /// 409 <c>presence_sequence_required</c> (AC-NF192-4): with the self-hosted flow on the two-frame selfie of the legacy path is closed, its routes refuse, and the presence sequence
-    /// (<c>/presence-challenge</c>, <c>/presence</c>) takes its place.
-    /// </summary>
     private ObjectResult PresenceSequenceRequired() =>
         this.ApiProblem(StatusCodes.Status409Conflict, IdentityApiErrors.PresenceSequenceRequired, "CheckInPresenceSequenceRequired");
 
-    /// <summary>A picture of the document that came again is a JPEG or a PNG with a content; absent is fine.</summary>
     private static bool IsPictureOrAbsent(IFormFile? file) => file is null || (file.Length > 0 && IsImage(file));
 
     private static Stream? Open(IFormFile? file, List<Stream> opened)

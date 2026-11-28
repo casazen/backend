@@ -19,34 +19,27 @@ namespace Casazen.Core.Entities;
 [Table("OnboardingPartStates")]
 public class OnboardingPartState : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="PartKey"/>): a part has one state for each org.</summary>
     public const string OrgPartIndexName = "UIX_OnboardingPartStates_OrgId_PartKey";
 
-    /// <summary>Longest <see cref="UpdatedByUserId"/>: the column length of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row (TN-2): the org the plan belongs to. Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
     public OnboardingPartKey PartKey { get; set; }
 
     public OnboardingPartStatus Status { get; set; } = OnboardingPartStatus.Open;
 
-    /// <summary>When the host deferred the part (UTC); <c>null</c> while it is open.</summary>
     public DateTime? DeferredAt { get; set; }
 
-    /// <summary>When the plan reminds the host of a deferred part (UTC); <c>null</c> = no reminder.</summary>
     public DateTime? RemindAt { get; set; }
 
-    /// <summary>The "To do" item (<c>InternalActivity</c>) a deferral or an exit created; a reference, not a foreign key.</summary>
     public Guid? ActivityId { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Who changed the row last: the Auth0 subject of the account.</summary>
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string UpdatedByUserId { get; set; } = string.Empty;

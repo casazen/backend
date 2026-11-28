@@ -40,7 +40,6 @@ public sealed class InProcessEventBus(IServiceScopeFactory scopeFactory, ILogger
         {
             var handlerType = typeof(IEventHandler<>).MakeGenericType(eventType);
 
-            // The handlers are counted in the first scope; every handler then gets a scope of its own, in registration order.
             var count = 1;
             for (var index = 0; index < count; index++)
             {
@@ -86,7 +85,6 @@ public sealed class InProcessEventBus(IServiceScopeFactory scopeFactory, ILogger
         }
     }
 
-    /// <summary>The event's CLR type and its base types down to <see cref="DomainEvent"/>, the most specific first.</summary>
     private static IEnumerable<Type> HandledTypesOf(Type eventType)
     {
         for (var type = eventType; type is not null && typeof(DomainEvent).IsAssignableFrom(type); type = type.BaseType)

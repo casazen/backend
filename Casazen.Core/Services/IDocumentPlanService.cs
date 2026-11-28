@@ -23,20 +23,11 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IDocumentPlanService
 {
-    /// <summary>
-    /// The plan of the booking: its documents in order (the document of the stay first), or none with the owners who still need an issuer profile. 404
-    /// <c>booking_not_found</c>; 422 <c>issuer_profile_incomplete</c> when the organization has no issuer profile.
-    /// </summary>
     Task<DocumentPlan> PlanAsync(Guid bookingId, CancellationToken ct = default);
 }
 
-/// <summary>What a booking needs: its documents, or the owners whose issuer profile is missing (then no document at all).</summary>
-/// <param name="BookingId">The booking.</param>
-/// <param name="Documents">The documents, the one of the stay first; empty while an owner has no issuer profile that can issue.</param>
-/// <param name="OwnersWithoutIssuer">The owners who issue the stay and have no issuer profile that can issue: the «Da fare» <c>owner_issuer_missing</c>.</param>
 public sealed record DocumentPlan(Guid BookingId, IReadOnlyList<PlannedDocument> Documents, IReadOnlyList<Guid> OwnersWithoutIssuer)
 {
-    /// <summary>The planned document of the services of the agency (<paramref name="agencyServices"/>) or of the stay; <c>null</c> when the plan has none.</summary>
     public PlannedDocument? Of(bool agencyServices) => Documents.FirstOrDefault(document => document.ForAgencyServices == agencyServices);
 }
 
@@ -53,33 +44,20 @@ public sealed record PlannedDocument(
     IReadOnlyCollection<FiscalLineType> LineTypes,
     IReadOnlyList<PlannedCoOwner> CoOwners)
 {
-    /// <summary>Every document of a booking is a document to the guest about the stay.</summary>
     public FiscalDocumentPurpose Purpose => FiscalDocumentPurpose.GuestStay;
 
-    /// <summary>The document bills the lines of <paramref name="type"/>.</summary>
     public bool Bills(FiscalLineType type) => LineTypes.Contains(type);
 }
 
-/// <summary>A co-owner listed on the document of the stay: the name the document prints and the share in percent.</summary>
 public sealed record PlannedCoOwner(Guid OwnerId, string Name, decimal SharePercent);
 
-/// <summary>The rules of the plan that the documents and their corrections share (E17/F01/US01/T02).</summary>
 public static class DocumentPlanRules
 {
-    /// <summary>Every type of line.</summary>
     public static IReadOnlyCollection<FiscalLineType> AllLineTypes { get; } = Enum.GetValues<FiscalLineType>();
 
-    /// <summary>
-    /// The lines the agency bills in its own name when an owner issues the document of the stay: the extras, and the cleaning when the agency treats it as a
-    /// service (<see cref="CleaningFeeTreatment.Service"/> on the profile of the organization); a cleaning that follows the stay stays in the owner's document.
-    /// </summary>
     public static IReadOnlyCollection<FiscalLineType> AgencyServiceLineTypes(CleaningFeeTreatment agencyCleaning) =>
         agencyCleaning == CleaningFeeTreatment.Service ? [FiscalLineType.Cleaning, FiscalLineType.ExtraService] : [FiscalLineType.ExtraService];
 
-    /// <summary>
-    /// True when an ownership that started at <paramref name="ownershipStart"/> and ended at <paramref name="ownershipEnd"/> (<c>null</c> = still in force) is in force on
-    /// <paramref name="day"/>: started on or before it and not ended on it (the definition of the owner ledger, so the document names the owner the ledger credits the stay to).
-    /// </summary>
     public static bool IsActiveOn(DateTime ownershipStart, DateTime? ownershipEnd, DateOnly day) =>
         DateOnly.FromDateTime(ownershipStart) <= day && (ownershipEnd is not { } end || DateOnly.FromDateTime(end) > day);
 
@@ -104,9 +82,4 @@ public static class DocumentPlanRules
     }
 }
 
-/// <summary>An ownership in force on a day: the one rule of who signs for several co-owners reads these (<see cref="DocumentPlanRules.SignatoryOf"/>).</summary>
-/// <param name="OwnershipId">The ownership.</param>
-/// <param name="OwnerId">The owner.</param>
-/// <param name="SharePercent">The share in percent.</param>
-/// <param name="OwnershipStart">When the ownership started.</param>
 public readonly record struct ActiveOwnership(Guid OwnershipId, Guid OwnerId, decimal SharePercent, DateTime OwnershipStart);

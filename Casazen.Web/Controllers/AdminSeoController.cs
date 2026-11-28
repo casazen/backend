@@ -12,10 +12,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Admin SEO dashboard (US-020, SE-01): pages, review (preview, approve, withdraw), generation, AI budget. Every text is
-/// published only by an explicit approval of the revision the admin read, recorded in the audit (A8-04, A8-05, A8-21).
-/// </summary>
 [ApiController]
 [Route("api/admin/seo")]
 [Authorize(Policy = CasazenPolicies.AdminOnly)]
@@ -57,7 +53,6 @@ public class AdminSeoController(
         });
     }
 
-    /// <summary>Review screen: the published text and the one waiting for a review (sanitized), and the review audit.</summary>
     [HttpGet("pages/{id:guid}")]
     [ProducesResponseType(typeof(SeoPageAdminDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -69,10 +64,6 @@ public class AdminSeoController(
             : Ok(page);
     }
 
-    /// <summary>
-    /// Publishes the revision the admin read (<c>revisionId</c>): 409 when a newer revision arrived meanwhile, 422 when it
-    /// has no publishable text or when the page needs the legal review confirmation (<c>counselApproved</c>).
-    /// </summary>
     [HttpPost("pages/{id:guid}/approve")]
     [ProducesResponseType(typeof(SeoPageAdminDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -90,7 +81,6 @@ public class AdminSeoController(
         return Ok(updated);
     }
 
-    /// <summary>Withdraws the published text: the page goes back to draft and leaves the public site and the sitemap.</summary>
     [HttpPost("pages/{id:guid}/withdraw")]
     [ProducesResponseType(typeof(SeoPageAdminDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -122,11 +112,6 @@ public class AdminSeoController(
         return Ok(items);
     }
 
-    /// <summary>
-    /// Queues AI generation of SEO pages. Rate limited per user (<see cref="AiRateLimitAttribute"/>); the job stops at
-    /// the first page the monthly AI budget cannot cover. Every generated text is a draft waiting for a review: nothing
-    /// is approved automatically (SE-01).
-    /// </summary>
     [HttpPost("generate")]
     [AiRateLimit]
     [ProducesResponseType(typeof(SeoGenerateAcceptedDto), StatusCodes.Status202Accepted)]
@@ -142,7 +127,6 @@ public class AdminSeoController(
             : (await comuneCatalog.GetPilotsAsync(cancellationToken)).Select(c => c.Code).ToList();
         if (comuneCodes.Count == 0)
         {
-            // No comune named and none of the pilots found: the official list is not imported (never "0 pages queued").
             return this.ApiProblem(
                 StatusCodes.Status422UnprocessableEntity,
                 ComuneErrorCodes.DatasetUnavailable,
@@ -171,9 +155,6 @@ public class AdminSeoController(
             comuneCodes.Count * filteredTypes.Count));
     }
 
-    /// <summary>
-    /// The AI provider in effect. The API key is never returned: only whether one is set and its last characters.
-    /// </summary>
     [HttpGet("ai")]
     [ProducesResponseType(typeof(AiAdminSettingsDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<AiAdminSettingsDto>> GetAiSettings(CancellationToken cancellationToken)
@@ -181,10 +162,6 @@ public class AdminSeoController(
         return Ok(await aiSettings.GetAdminViewAsync(cancellationToken));
     }
 
-    /// <summary>
-    /// Saves the provider an admin chose. A key sent here replaces the stored one and is encrypted at rest; it takes
-    /// effect on the next generation, without a restart. <c>Stub</c> sends nothing to an external provider.
-    /// </summary>
     [HttpPut("ai")]
     [ProducesResponseType(typeof(AiAdminSettingsDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -202,9 +179,6 @@ public class AdminSeoController(
         return Ok(updated);
     }
 
-    /// <summary>
-    /// Stores a draft the admin wrote for this page. It is not published: the admin still approves the revision they read.
-    /// </summary>
     [HttpPost("pages/{id:guid}/draft")]
     [ProducesResponseType(typeof(SeoPageAdminDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -229,22 +203,13 @@ public class AdminSeoController(
     }
 }
 
-/// <summary>
-/// Approval of a revision. <c>CounselApproved</c>: the admin confirms the legal review of the text (explicit, never a
-/// default; required for the first 100 pages). <c>Note</c>: optional, kept in the audit.
-/// </summary>
 public record ApproveSeoRevisionRequest(
     [param: Required] Guid? RevisionId,
     bool CounselApproved = false,
     [param: MaxLength(1000)] string? Note = null);
 
-/// <summary>Withdrawal of the published text; <c>Note</c> (optional) is kept in the audit.</summary>
 public record WithdrawSeoPageRequest([param: MaxLength(1000)] string? Note = null);
 
-/// <summary>
-/// Provider saved from the admin panel. <c>ApiKey</c> empty: keep the stored key. <c>ClearApiKey</c>: drop it.
-/// <c>Model</c> empty: use the model of the server configuration.
-/// </summary>
 public record UpdateAiSettingsRequest(
     [param: Required, MaxLength(32)] string Provider,
     [param: MaxLength(500)] string? ApiKey = null,
@@ -252,7 +217,6 @@ public record UpdateAiSettingsRequest(
     [param: MaxLength(100)] string? Model = null,
     [param: MaxLength(300)] string? BaseUrl = null);
 
-/// <summary>A draft written by the admin. HTML or plain text; it stays unpublished until the review.</summary>
 public record SaveSeoDraftRequest(
     [param: Required, MaxLength(100_000)] string BodyHtml,
     [param: MaxLength(300)] string? Title = null,

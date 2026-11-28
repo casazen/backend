@@ -47,7 +47,6 @@ public sealed class OnboardingFlowTodoSyncJob(
 {
     public const string RecurringJobId = "onboarding-flow-todo-sync";
 
-    /// <summary>Every hour at minute 20, UTC.</summary>
     public const string Cron = "20 * * * *";
 
     private static readonly OnboardingFlow[] AllFlows = [.. Enum.GetValues<OnboardingFlow>().OrderBy(flow => (int)flow)];
@@ -92,7 +91,6 @@ public sealed class OnboardingFlowTodoSyncJob(
             throw new InvalidOperationException($"The onboarding flow To do sync failed for {failed} of {connections.Count} orgs.");
     }
 
-    /// <summary>One open "To do" for each flow of the org with properties to complete; the one of a flow with none is closed.</summary>
     private async Task SyncFlowsAsync(Guid orgId, CancellationToken ct)
     {
         var statuses = await flowStatus.GetStatusesAsync(new HostScope(orgId), null, AllFlows, ct);
@@ -121,10 +119,6 @@ public sealed class OnboardingFlowTodoSyncJob(
         }
     }
 
-    /// <summary>
-    /// The "To do" of a part the host put off or left half way, closed (and the deferral cleared, as a resume does) once the part is done for the
-    /// whole org or nobody provides it any more. A part still to do keeps its "To do".
-    /// </summary>
     private async Task SyncPartsAsync(Guid orgId, CancellationToken ct)
     {
         var withTodo = await db.OnboardingPartStates
@@ -141,7 +135,6 @@ public sealed class OnboardingFlowTodoSyncJob(
             await plans.ResumeAsync(orgId, InternalActivity.ClosedBySystem, part.Key, ct);
     }
 
-    /// <summary>The high-urgency "To do" of a connection that is disconnected or in error (ADR-023-R12), closed once it is connected again.</summary>
     private async Task SyncConnectionAsync(Guid orgId, Guid connectionId, OctorateConnectionStatus status, CancellationToken ct)
     {
         if (status == OctorateConnectionStatus.Connected)
@@ -183,13 +176,8 @@ public sealed class OnboardingFlowTodoSyncJob(
     }
 }
 
-/// <summary>The id of the "To do" of a flow of an org (E10/F01/US01/T04): stable, so the job finds the item it raised before.</summary>
 public static class OnboardingFlowTodo
 {
-    /// <summary>
-    /// The first 16 bytes of the SHA-256 of <c>onboarding-flow:{orgId}:{flow}</c> (the org as <c>D</c>, lowercase with hyphens; the flow by its member
-    /// name), as a <see cref="Guid"/>.
-    /// </summary>
     public static Guid EntityIdOf(Guid orgId, OnboardingFlow flow)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"onboarding-flow:{orgId:D}:{flow}"));

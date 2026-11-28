@@ -14,7 +14,6 @@ namespace Casazen.Core.Entities;
 [Table("FiscalDocumentLines")]
 public class FiscalDocumentLine : ITenantOwned
 {
-    /// <summary>Unique (<see cref="DocumentId"/>, <see cref="LineNumber"/>).</summary>
     public const string DocumentLineIndexName = "UIX_FiscalDocumentLines_DocumentId_LineNumber";
 
     public const int DescriptionMaxLength = 500;
@@ -23,12 +22,10 @@ public class FiscalDocumentLine : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key: the org of the document.</summary>
     public Guid OrgId { get; set; }
 
     public Guid DocumentId { get; set; }
 
-    /// <summary>The number of the line within the document, from 1.</summary>
     public int LineNumber { get; set; }
 
     /// <summary>What the line is: its type decides the VAT of the tax rule. The lines written before the types existed were migrated (lodging, or tourist tax).</summary>

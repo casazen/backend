@@ -23,7 +23,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class DirectBookingPaymentRules
 {
-    /// <summary>Days before check-in of the free refund deadline when the property has no cancellation policy.</summary>
     public const int DefaultFreeRefundDays = 7;
 
     /// <summary>
@@ -38,30 +37,19 @@ public static class DirectBookingPaymentRules
         && effectivePolicy.FullRefundHours < CancellationRefundPolicy.NeverFullRefundHours
         && RomeCalendar.DateInRome(freeRefundDeadline) >= RomeCalendar.DateInRome(todayInRome);
 
-    /// <summary>
-    /// The free refund deadline of a stay (midnight UTC of the Europe/Rome date, the storage convention of date-only values).
-    /// </summary>
     public static DateTime FreeRefundDeadline(DateTime checkInDate, CancellationPolicy? policy)
     {
         var checkIn = RomeCalendar.DateInRome(checkInDate);
         if (policy is null)
             return ToStoredDate(checkIn.AddDays(-DefaultFreeRefundDays));
 
-        // Full refund while now <= start of the check-in day − FullRefundHours (CancellationRefundPolicy). The last day
-        // entirely in that window is the day before the one containing that instant, daylight saving included.
         return ToStoredDate(CancellationRefundPolicy.LastWholeDayAtLeast(
             RomeCalendar.StartOfDayUtc(ToStoredDate(checkIn)), policy.FullRefundHours));
     }
 
-    /// <summary>"Paga alla scadenza" can be chosen: the charge day is after today (both Europe/Rome calendar dates).</summary>
     public static bool IsDeferredPaymentOffered(DateTime freeRefundDeadline, DateTime todayInRome) =>
         RomeCalendar.DateInRome(freeRefundDeadline) > RomeCalendar.DateInRome(todayInRome);
 
-    /// <summary>
-    /// The payment options of a stay whose free refund deadline is <paramref name="freeRefundDeadline"/>. The free cancellation is
-    /// promised only for a stay whose <paramref name="effectivePolicy"/> is given and refunds in full until that day
-    /// (<see cref="IsFreeCancellationPromised"/>); without it (the default) the checkout promises none.
-    /// </summary>
     public static DirectBookingPaymentOptions OptionsFor(
         DateTime freeRefundDeadline,
         DateTime todayInRome,

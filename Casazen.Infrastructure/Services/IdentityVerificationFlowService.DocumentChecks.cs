@@ -31,7 +31,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class IdentityVerificationFlowService
 {
-    /// <summary>The services and the policy of the step, all there, or null: the step then cannot be checked.</summary>
     private sealed record DocumentStepServices(
         DocumentPictureAnalyzer Pictures,
         DocumentSideClassifier Sides,
@@ -39,7 +38,6 @@ public sealed partial class IdentityVerificationFlowService
         DocumentFormatRegistry Formats,
         IdentityDecisionPolicy Policy);
 
-    /// <summary>What a picture showed and passed: the format it was checked as and whether the MRZ detected it, the side it showed, its difference hash and the values read on its card.</summary>
     private sealed record DocumentPictureChecks(
         DocumentFormat Format,
         bool FormatDetected,
@@ -47,10 +45,8 @@ public sealed partial class IdentityVerificationFlowService
         string DHash,
         IReadOnlyList<ZonedField> Fields);
 
-    /// <summary>The answer of the checks of one picture: either the answer to the guest (a refusal, a hand-off) or the checks it passed.</summary>
     private sealed record DocumentPictureStep(DocumentStepResult? Answer, DocumentPictureChecks? Checks);
 
-    /// <summary>The other side of a document read again from its kept picture: the values read by zone and the reading of its MRZ.</summary>
     private sealed record KeptSide(IReadOnlyList<ZonedField> Fields, MrzReading Mrz);
 
     /// <summary>
@@ -61,7 +57,6 @@ public sealed partial class IdentityVerificationFlowService
     internal bool DocumentChecksWired =>
         documentPictures is not null && sideClassifier is not null && coherenceChecker is not null && formats is not null && identityPolicy is not null;
 
-    /// <summary>The checks of the self-hosted document step run: the flow is on (<see cref="SelfHostedOn"/>) and its services are there (<see cref="DocumentChecksWired"/>).</summary>
     private bool DocumentStepOn => SelfHostedOn && DocumentChecksWired;
 
     /// <summary>
@@ -82,7 +77,6 @@ public sealed partial class IdentityVerificationFlowService
             && !string.IsNullOrEmpty(session.IdentityFormatId);
     }
 
-    /// <summary>The guidance of a picture in which nothing of a document was read: the codes of the capture checks, then «show the whole document» and «not recognized».</summary>
     private static List<string> RejectionGuidance(CaptureAssessment? assessment, MrzReading mrzReading) =>
         (assessment?.GuidanceCodes ?? [])
             .Concat(CaptureGuidanceCodes.FromMrzQuality(mrzReading.Quality))
@@ -100,10 +94,6 @@ public sealed partial class IdentityVerificationFlowService
         return new DocumentStepServices(documentPictures, sideClassifier, coherenceChecker, formats, snapshot.Policy);
     }
 
-    /// <summary>
-    /// Checks one picture of the document (the geometry, the side and the format, the quality), reads its fields by zone and answers: a refusal with its codes, a hand-off to a person,
-    /// or the checks the picture passed. Only called with the self-hosted flow on and after the consent; <paramref name="reading"/> and <paramref name="mrzReading"/> are the readings of today.
-    /// </summary>
     private async Task<DocumentPictureStep> CheckDocumentPictureAsync(
         GuestCheckInSession session,
         FlowContext context,
@@ -122,12 +112,10 @@ public sealed partial class IdentityVerificationFlowService
                 session, context, side, IdentityOutcomeCodes.Unavailable, VerificationAlertReasons.TechnicalError, IdentityGuidanceCodes.DocumentUnreadable, ct));
         }
 
-        // The SHA-256 of this picture: it is what a refusal remembers (the same file refused again is not counted twice) and what the check of a pair of sides compares.
         var pictureSha256 = Sha256(bytes);
         var policy = services.Policy;
         Task<DocumentStepResult> Refuse(IReadOnlyList<string> codes) => RefuseDocumentAsync(session, context, side, codes, pictureSha256, policy, ct);
 
-        // The format: from the MRZ as soon as one is read; before, the one of the attempt, else the card the registry holds.
         DocumentFormat? format;
         var detected = false;
         if (mrzReading.Result is { } machine)
@@ -135,9 +123,6 @@ public sealed partial class IdentityVerificationFlowService
             format = services.Formats.DetectFromMrz(machine.DocumentCode, machine.IssuingState, machine.MrzType);
             if (format is null)
             {
-                // Only an MRZ whose check digits all hold is evidence of a format the registry does not know. The document code and the issuing state of its first line are covered by
-                // no check digit, so one character the OCR read wrong (an I read as 1) would close the verification for good and be counted as an unsupported format: a doubtful MRZ
-                // is a picture to take again, refused with the guidance of an unreadable reading and counted as any refusal.
                 if (!machine.CheckDigitsValid)
                 {
                     logger.LogInformation("Document step of session {SessionId}: the MRZ is doubtful and its format is not in the registry; the picture is asked again", session.Id);
@@ -162,7 +147,6 @@ public sealed partial class IdentityVerificationFlowService
             }
         }
 
-        // A side the format does not have (a card of two sides sent as one picture, a page of one side sent as the front): the guest is asked for a side of the format.
         if (!format.Sides.Contains(DocumentSides.CodeOf(side), StringComparer.Ordinal))
             return Answer(await Refuse([IdentityGuidanceCodes.DocumentWrongSide]));
 
@@ -173,7 +157,6 @@ public sealed partial class IdentityVerificationFlowService
         }
         catch (InvalidDataException)
         {
-            // Not a picture that can be decoded: «retake the picture», the guidance of the capture checks.
             return Answer(await Refuse([CaptureGuidanceCodes.RetakePicture]));
         }
 
@@ -188,7 +171,6 @@ public sealed partial class IdentityVerificationFlowService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // A model that is not there or fails never approves (D8): the type only is logged, a person decides.
                 logger.LogError("Document geometry of session {SessionId} failed ({ErrorType}); a person decides", session.Id, ex.GetType().Name);
                 return Answer(await HandOffDocumentAsync(
                     session, context, side, IdentityOutcomeCodes.TechnicalError, VerificationAlertReasons.TechnicalError, IdentityGuidanceCodes.DocumentUnreadable, ct));
@@ -210,11 +192,9 @@ public sealed partial class IdentityVerificationFlowService
             if (refusal.Count > 0)
                 return Answer(await Refuse(refusal));
 
-            // Nothing of a document was read in a picture whose geometry is good: it is refused as it always was, and counted.
             if (reading.Method == DocumentReadingMethod.None)
                 return Answer(await Refuse(RejectionGuidance(assessment, mrzReading)));
 
-            // The zones are the heaviest reading of the step: read them only when the coherence can use them (see ZonesAreNeeded).
             IReadOnlyList<ZonedField> fields = [];
             if (ZonesAreNeeded(format, side, ReadCheck(session), context))
                 fields = await picture.ReadFieldsAsync(format, side, report, ct);
@@ -248,10 +228,6 @@ public sealed partial class IdentityVerificationFlowService
         };
     }
 
-    /// <summary>
-    /// The picture of the other side of the attempt as the check of a pair of sides needs it (its SHA-256, its difference hash and the side it showed), or null when the other side was
-    /// not sent (or the picture is a single one). A hash the record has not, or cannot be read, is null and never a plain picture's 0.
-    /// </summary>
     private static DocumentPictureFingerprint? OtherSideFingerprint(StoredDocumentCheck? stored, DocumentSide side)
     {
         if (stored is null || side == DocumentSide.Single)
@@ -321,11 +297,6 @@ public sealed partial class IdentityVerificationFlowService
         return new DocumentStepResult(DocumentReading.Nothing, false, codes, false, context.DocumentNotArchived, side, sides);
     }
 
-    /// <summary>
-    /// Hands the verification to a person from the document step: it closes with <paramref name="outcomeCode"/> (a code of <see cref="IdentityOutcomeCodes"/>), the kept pictures
-    /// go, the operators are alerted with <paramref name="alertReason"/> and the guest is answered with <paramref name="guidanceCode"/>, the one code the page needs to say that a person
-    /// takes over (the state says the same: the step is the operator's and the verification is closed).
-    /// </summary>
     private async Task<DocumentStepResult> HandOffDocumentAsync(
         GuestCheckInSession session,
         FlowContext context,
@@ -349,9 +320,6 @@ public sealed partial class IdentityVerificationFlowService
             existing is null ? [] : SidesOf(existing.TwoSided, existing.Front, existing.Back));
     }
 
-    /// <summary>
-    /// The record of a document of which no picture was kept yet, that holds the refusals: of two sides, so it is never complete, and with no picture and no hash.
-    /// </summary>
     private static StoredDocumentCheck NewDocumentCheck(GuestCheckInSession session, FlowContext context, DateTime now) =>
         new(
             new DocumentCheck(false, false, null, null, null, null, null, false),
@@ -361,10 +329,6 @@ public sealed partial class IdentityVerificationFlowService
             VerifyingGuestPosition: context.VerifyingGuestPosition,
             ProofKey: session.TokenHash);
 
-    /// <summary>
-    /// The entries of a record kept for each side (<c>front</c>, <c>back</c>, <c>single</c>) without the one of <paramref name="side"/>, null when none is left: a side that was accepted
-    /// is forgiven what it cost, so the next refusals of it start from none.
-    /// </summary>
     private static IReadOnlyDictionary<string, T>? WithoutSide<T>(IReadOnlyDictionary<string, T>? entries, DocumentSide side)
     {
         if (entries is null)
@@ -453,7 +417,6 @@ public sealed partial class IdentityVerificationFlowService
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The type only: a message could carry what was being read.
                 logger.LogWarning(
                     "Document step of session {SessionId}: the {Side} side kept could not be read again ({ErrorType})", session.Id, DocumentSides.CodeOf(side), ex.GetType().Name);
             }
@@ -466,7 +429,6 @@ public sealed partial class IdentityVerificationFlowService
         }
     }
 
-    /// <summary>The kept picture of one side of the document of the booking, decrypted; null when none is kept.</summary>
     private async Task<byte[]?> LoadStoredSideAsync(GuestCheckInSession session, DocumentSide side, CancellationToken ct)
     {
         var row = await db.DocumentImages

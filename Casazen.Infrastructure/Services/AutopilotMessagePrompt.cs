@@ -18,12 +18,10 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class AutopilotMessagePrompt
 {
-    /// <summary>Version of the prompt: stored in the cache key.</summary>
     public const string Version = "autopilot-chat-2026-11-v1";
 
     private const double Temperature = 0.3;
 
-    /// <summary>The call for the variants asked, in a fixed order (the same variants, the same key).</summary>
     public static AiRequest Build(IReadOnlyCollection<AutopilotChatVariant> variants)
     {
         ArgumentNullException.ThrowIfNull(variants);
@@ -38,7 +36,6 @@ public static class AutopilotMessagePrompt
         return new AiRequest(user.ToString(), [], SystemPrompt(), Temperature);
     }
 
-    /// <summary>The key of the answer: the prompt holds every input, so its hash is the key; the same variants, the same answer.</summary>
     public static string CacheKey(AiRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -47,7 +44,6 @@ public static class AutopilotMessagePrompt
         return $"autopilot-chat:{Version}:{Convert.ToHexString(hash)[..24]}";
     }
 
-    /// <summary>The rules of the answer: who the model is, the format, the placeholders, and what a message to a guest never says.</summary>
     public static string SystemPrompt()
     {
         var sb = new StringBuilder();
@@ -77,11 +73,6 @@ public static class AutopilotMessagePrompt
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>
-    /// The texts of the answer that can be used, by variant key: the last object of the answer that holds at least one (the ones before
-    /// it are drafts), each text checked by <see cref="AutopilotChatText.Check"/>; a key that was not asked for, or whose text does not
-    /// pass, is left out and the caller uses the plain text for it. Empty when the answer is not an object of this kind.
-    /// </summary>
     public static IReadOnlyDictionary<string, string> Parse(string? content, IReadOnlyCollection<AutopilotChatVariant> variants)
     {
         ArgumentNullException.ThrowIfNull(variants);

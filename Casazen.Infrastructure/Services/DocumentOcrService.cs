@@ -24,15 +24,10 @@ public class DocumentOcrService(
     IOptions<MrzOcrOptions>? options = null,
     TimeProvider? timeProvider = null) : IDocumentOcrService
 {
-    /// <summary>The fallback is never presented as certain: the guest confirms every field (the check-in page asks for review under 0.80).</summary>
     internal const double FallbackConfidence = 0.55;
 
     private const int CardWorkingSide = 880;
 
-    /// <summary>
-    /// Performs OCR on an identity document image when MRZ extraction fails or is not applicable.
-    /// Uses Tesseract (Apache-2.0) for text extraction.
-    /// </summary>
     public async Task<DocumentOcrResult?> ExtractAsync(Stream imageStream, CancellationToken cancellationToken = default) =>
         (await ObserveAsync(imageStream, cancellationToken)).Fields;
 
@@ -108,8 +103,6 @@ public class DocumentOcrService(
                         }
                         if (pendingCieDateCheck && read.DocumentKind == "IdentityCard")
                         {
-                            // A partial digit can still give a plausible date. Compare the two CIE rows against
-                            // a second segmentation of their printed values before sending them to the guest.
                             var birth = read.DateOfBirth;
                             var issued = read.DateOfIssue;
                             read.DateOfBirth = null;
@@ -159,7 +152,6 @@ public class DocumentOcrService(
         }
         catch (Exception ex)
         {
-            // The type only: a message could carry what was being read.
             logger.LogError("Document OCR failed ({ErrorType}); the guided manual entry applies", ex.GetType().Name);
             return new(null, "unavailable");
         }
@@ -172,10 +164,6 @@ public class DocumentOcrService(
         }
     }
 
-    /// <summary>
-    /// Finds a candidate for the blue face of an electronic identity card photographed against a neutral background.
-    /// The full image remains a fallback. A crop is only tried if the colour projections describe a card-sized rectangle.
-    /// </summary>
     private static GrayBitmap? CropBlueCard(RasterImage image, GrayBitmap page)
     {
         const int sampleStep = 4;
@@ -288,7 +276,6 @@ public class DocumentOcrService(
         Sex,
     }
 
-    /// <summary>The labels of every field, upper case without accents. A label is matched as a whole word or phrase.</summary>
     private static readonly (Field Field, string[] Labels)[] LabelSets =
     [
         (Field.Surname, ["COGNOME", "SURNAME", "FAMILY NAME", "NOM", "APELLIDOS", "NACHNAME"]),
@@ -304,7 +291,6 @@ public class DocumentOcrService(
         (Field.Sex, ["SESSO", "SEX", "SEXE", "GESCHLECHT", "SEXO"]),
     ];
 
-    /// <summary>The same labels as whole-word expressions, built once.</summary>
     private static readonly (Field Field, Regex[] Matchers)[] LabelMatchers = LabelSets
         .Select(set => (set.Field, set.Labels
             .Select(label => new Regex(@"\b" + Regex.Escape(label) + @"\b", RegexOptions.Compiled | RegexOptions.CultureInvariant))
@@ -327,17 +313,12 @@ public class DocumentOcrService(
 
     private static readonly string[] EnglishMonths = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
-    /// <summary>The number (1 to 12) of a month written as its first three letters in Italian or English; 0 when it is neither.</summary>
     private static int MonthOf(string abbreviation)
     {
         var italian = Array.IndexOf(ItalianMonths, abbreviation);
         return italian >= 0 ? italian + 1 : Array.IndexOf(EnglishMonths, abbreviation) + 1;
     }
 
-    /// <summary>
-    /// Reads the printed fields out of the text of a document page: each value after its own label, on the same line or the next, and only when
-    /// its format is plausible. Null when no field could be read. The text is not kept.
-    /// </summary>
     internal static DocumentOcrResult? ParseOcrText(string ocrText, DateOnly? today = null)
     {
         if (string.IsNullOrWhiteSpace(ocrText))
@@ -415,7 +396,6 @@ public class DocumentOcrService(
         }
         if (italianCard)
         {
-            // The CIE prints town, province and birth date on one line and issue/expiry dates on another.
             var nameRow = lines.FindIndex(line => Regex.IsMatch(line, @"\b(?:NOME|GIVEN NAMES?)\b"));
             var lastBirthRow = nameRow < 0 ? -1 : lines.FindIndex(nameRow + 1, line =>
                 Regex.IsMatch(line, @"\b(?:SESSO|SEX|EMISSIONE|SCADENZA|RESIDENCE)\b"));
@@ -486,7 +466,6 @@ public class DocumentOcrService(
 
     private static void ReadResidence(DocumentOcrResult result, string address)
     {
-        // Only the address printed after the residence label. A town elsewhere may be the birthplace or issuing authority.
         var match = Regex.Match(address, @"^(?<street>(?:VIA(?:LE)?|PIAZZA(?:LE)?|CORSO|VICOLO|LARGO|STRADA|LOCALITA) [A-Z0-9'., /-]{1,110}?\s+\d+(?:/\w+)?)\s*[,;-]?\s*(?:(?<postal>\d{5})\s+)?(?<city>[A-Z][A-Z' -]{1,65})\s*\((?<province>[A-Z]{2})\)\s*$");
         if (!match.Success || !Casazen.Core.Regulatory.AlloggiatiRecordRules.IsValidProvince(match.Groups["province"].Value))
             return;
@@ -496,7 +475,6 @@ public class DocumentOcrService(
         result.ResidenceProvince = match.Groups["province"].Value;
     }
 
-    /// <summary>Upper case, no accents, one space between words, the quotation marks and dashes of the print made plain.</summary>
     private static string Normalize(string line)
     {
         var decomposed = line.ToUpperInvariant().Normalize(NormalizationForm.FormD);
@@ -518,7 +496,6 @@ public class DocumentOcrService(
         return Regex.Replace(builder.ToString(), @"\s+", " ").Trim();
     }
 
-    /// <summary>What follows a label on its line, without the same label in another language and up to the next label.</summary>
     private static string ValueAfter(string line, int start)
     {
         var rest = TrimSeparators(line[start..]);
@@ -591,7 +568,6 @@ public class DocumentOcrService(
         }
     }
 
-    /// <summary>The three-letter code of the nationality when the print has one; the Italian words for Italian are ITA. Anything else is not guessed.</summary>
     private static string? Nationality(string raw)
     {
         foreach (var token in raw.Split(' ', StringSplitOptions.RemoveEmptyEntries))

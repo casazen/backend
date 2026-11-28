@@ -113,7 +113,6 @@ public class RegulatoryReferenceDataAdminService(
             agreement.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
 
         await agreements.SaveChangesAsync(cancellationToken);
-        // Logged under the agreement's id (not the band's) so it shows in the agreement's own audit trail.
         await LogAsync(AgreementEntityType, agreementId, RegulatoryAuditAction.Updated, changedByUserId,
             $"Fascia '{before.ZoneName}':\n" + DescribeChanges(before, input), cancellationToken);
 
@@ -344,7 +343,6 @@ public class RegulatoryReferenceDataAdminService(
 
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
-    /// <summary>Field-by-field diff of two records of the same shape, as "Name: old -> new" lines (only what changed).</summary>
     private static string DescribeChanges<T>(T before, T after)
     {
         var lines = new List<string>();

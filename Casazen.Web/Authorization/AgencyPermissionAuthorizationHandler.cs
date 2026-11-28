@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace Casazen.Web.Authorization;
 
-/// <summary>The agency permission (<see cref="AgencyPermissions"/>) an <c>agency.*</c> policy requires on top of the agency tier (DEB-01).</summary>
 public sealed record AgencyPermissionRequirement(string PermissionKey) : IAuthorizationRequirement;
 
 /// <summary>
@@ -79,7 +78,6 @@ public class AgencyPermissionAuthorizationHandler(
         context.Succeed(requirement);
     }
 
-    /// <summary>The org role the caller acts with in <paramref name="orgId"/>; <c>null</c> when it holds none there (see remarks).</summary>
     private static OrgRole? RoleOf(ClaimsPrincipal user, UserAuthorizationSnapshot snapshot, Guid orgId)
     {
         if (snapshot is { Exists: true, IsActive: false } || snapshot.Role is UserRole.Staff or UserRole.Guest)

@@ -30,19 +30,14 @@ namespace Casazen.Core.Utilities;
 /// </remarks>
 public static class XlsxWriter
 {
-    /// <summary>The content type of an <c>.xlsx</c> file.</summary>
     public const string ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-    /// <summary>The most rows a file may have, the header included: the limit of the CSV.</summary>
     public const int MaxRows = CsvWriter.MaxRows;
 
-    /// <summary>The longest name of a sheet.</summary>
     public const int MaxSheetNameLength = 31;
 
-    /// <summary>The most characters a cell holds.</summary>
     public const int MaxCellTextLength = 32_767;
 
-    /// <summary>The most columns a sheet has (A to XFD).</summary>
     public const int MaxColumns = 16_384;
 
     private const string Main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
@@ -50,7 +45,6 @@ public static class XlsxWriter
     private const string DocumentRelationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private const string ContentTypesNamespace = "http://schemas.openxmlformats.org/package/2006/content-types";
 
-    // The cell formats of xl/styles.xml, by position in cellXfs.
     private const int StyleDefault = 0;
     private const int StyleHeader = 1;
     private const int StyleAmount = 2;
@@ -60,15 +54,12 @@ public static class XlsxWriter
     private const int StylePercent = 6;
     private const int StyleHeaderQuoted = 7;
 
-    // The custom number formats of xl/styles.xml.
     private const int NumberFormatDate = 164;
     private const int NumberFormatMoney = 165;
     private const int NumberFormatPercent = 166;
 
-    // The title row and the header of a report sheet stay on top when the sheet is scrolled.
     private const int ReportFrozenRows = 2;
 
-    // Day 61 is 1 March 1900, the first day the serial numbers of Excel and the calendar agree on (Excel counts a 29 February 1900 that never was).
     private const int FirstSerialOfTheCalendar = 61;
 
     private const double MinColumnWidth = 10;
@@ -78,18 +69,12 @@ public static class XlsxWriter
     private static readonly DateOnly SerialEpoch = new(1899, 12, 30);
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
-    /// <summary>
-    /// The workbook for <paramref name="header"/> and <paramref name="rows"/>: one sheet named <paramref name="sheetName"/> (cleaned to what a sheet may be
-    /// called), the header on the first row.
-    /// </summary>
-    /// <exception cref="DomainRuleException">There are more than <paramref name="maxRows"/> rows, the header included (422 <c>xlsx_too_many_rows</c>).</exception>
     public static byte[] Write(string sheetName, IReadOnlyList<string> header, IEnumerable<IReadOnlyList<object?>> rows, int maxRows = MaxRows)
     {
         ArgumentNullException.ThrowIfNull(header);
         ArgumentNullException.ThrowIfNull(rows);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRows, 1);
 
-        // The rows are read once, and no more than the file may hold: the width of each column is known before the sheet is written.
         var table = new List<IReadOnlyList<object?>> { header };
         foreach (var row in rows)
         {
@@ -130,7 +115,6 @@ public static class XlsxWriter
         ArgumentOutOfRangeException.ThrowIfLessThan(sheets.Count, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxRows, 1);
 
-        // The size of every sheet is known before anything is written: a sheet past the limit stops the file, whole.
         foreach (var sheet in sheets)
         {
             ArgumentNullException.ThrowIfNull(sheet);
@@ -159,10 +143,6 @@ public static class XlsxWriter
         return output.ToArray();
     }
 
-    /// <summary>
-    /// The names of the sheets as the workbook carries them: each cleaned by <see cref="SheetNameOf"/>, and two that are the same whatever the case (a
-    /// workbook refuses them) told apart with <c>(2)</c>, <c>(3)</c>, within the 31 characters a name holds.
-    /// </summary>
     internal static IReadOnlyList<string> SheetNamesOf(IReadOnlyList<ReportSheet> sheets)
     {
         ArgumentNullException.ThrowIfNull(sheets);
@@ -186,10 +166,6 @@ public static class XlsxWriter
         return names;
     }
 
-    /// <summary>
-    /// The name of a sheet: without the characters Excel forbids (<c>[ ] : * ? / \</c>), without an apostrophe at either end, at most
-    /// <see cref="MaxSheetNameLength"/> characters, <c>Sheet1</c> when nothing is left.
-    /// </summary>
     internal static string SheetNameOf(string? name)
     {
         var kept = Clean(name ?? string.Empty);
@@ -201,10 +177,6 @@ public static class XlsxWriter
         return trimmed.Length > MaxSheetNameLength ? trimmed[..MaxSheetNameLength].TrimEnd() : trimmed;
     }
 
-    /// <summary>
-    /// The text of a cell as it is written: the characters XML 1.0 does not allow are left out (a surrogate pair is kept whole, a lone surrogate is
-    /// dropped) and the text is cut at <see cref="MaxCellTextLength"/>.
-    /// </summary>
     internal static string Clean(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -227,14 +199,12 @@ public static class XlsxWriter
         return kept.ToString();
     }
 
-    /// <summary>The serial number of a calendar day (<c>null</c> before 1 March 1900, which a spreadsheet counts differently from the calendar).</summary>
     internal static int? SerialOf(DateOnly day)
     {
         var serial = day.DayNumber - SerialEpoch.DayNumber;
         return serial >= FirstSerialOfTheCalendar ? serial : null;
     }
 
-    /// <summary>The name of the column at <paramref name="index"/> (0 is <c>A</c>, 26 is <c>AA</c>).</summary>
     internal static string ColumnName(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
@@ -244,8 +214,6 @@ public static class XlsxWriter
             name.Insert(0, (char)('A' + ((n - 1) % 26)));
         return name.ToString();
     }
-
-    // ---------------------------------------------------------------- package parts
 
     private static void WritePart(ZipArchive zip, string path, Action<XmlWriter> write)
     {
@@ -257,7 +225,6 @@ public static class XlsxWriter
         writer.WriteEndDocument();
     }
 
-    /// <summary>The path of the part of the sheet that is <paramref name="number"/>th (the first is 1), inside the package.</summary>
     private static string SheetPath(int number) => "xl/worksheets/sheet" + Number(number) + ".xml";
 
     private static void WriteContentTypes(XmlWriter writer, int sheetCount)
@@ -295,7 +262,6 @@ public static class XlsxWriter
         writer.WriteEndElement();
     }
 
-    // The sheets are rId1 to rIdN, the styles the one after them.
     private static void WriteWorkbookRelationships(XmlWriter writer, int sheetCount)
     {
         writer.WriteStartElement("Relationships", PackageRelationships);
@@ -336,11 +302,6 @@ public static class XlsxWriter
         writer.WriteEndElement();
     }
 
-    /// <summary>
-    /// The cell formats: the default, the header (bold), an amount (<c>0.00</c>, the built-in format 2, the one-sheet file), a date (<c>dd/mm/yyyy</c>) and a
-    /// text that carries the quote prefix (a text that looks like a formula); then the ones of the report sheets: an amount with the thousands separator
-    /// (<c>#,##0.00</c>), a percentage (<c>0.00%</c>) and a header that carries the quote prefix. Positions in <c>cellXfs</c> are the <c>Style</c> constants.
-    /// </summary>
     private static void WriteStyles(XmlWriter writer)
     {
         writer.WriteStartElement("styleSheet", Main);
@@ -383,14 +344,14 @@ public static class XlsxWriter
 
         writer.WriteStartElement("cellXfs", Main);
         writer.WriteAttributeString("count", "8");
-        Format(writer, numberFormat: 0, font: 0, withStyleLink: true, applyNumberFormat: false, applyFont: false, quotePrefix: false); // StyleDefault
-        Format(writer, numberFormat: 0, font: 1, withStyleLink: true, applyNumberFormat: false, applyFont: true, quotePrefix: false); // StyleHeader
-        Format(writer, numberFormat: 2, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false); // StyleAmount
-        Format(writer, numberFormat: NumberFormatDate, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false); // StyleDate
-        Format(writer, numberFormat: 0, font: 0, withStyleLink: true, applyNumberFormat: false, applyFont: false, quotePrefix: true); // StyleQuotedText
-        Format(writer, numberFormat: NumberFormatMoney, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false); // StyleMoney
-        Format(writer, numberFormat: NumberFormatPercent, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false); // StylePercent
-        Format(writer, numberFormat: 0, font: 1, withStyleLink: true, applyNumberFormat: false, applyFont: true, quotePrefix: true); // StyleHeaderQuoted
+        Format(writer, numberFormat: 0, font: 0, withStyleLink: true, applyNumberFormat: false, applyFont: false, quotePrefix: false);
+        Format(writer, numberFormat: 0, font: 1, withStyleLink: true, applyNumberFormat: false, applyFont: true, quotePrefix: false);
+        Format(writer, numberFormat: 2, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false);
+        Format(writer, numberFormat: NumberFormatDate, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false);
+        Format(writer, numberFormat: 0, font: 0, withStyleLink: true, applyNumberFormat: false, applyFont: false, quotePrefix: true);
+        Format(writer, numberFormat: NumberFormatMoney, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false);
+        Format(writer, numberFormat: NumberFormatPercent, font: 0, withStyleLink: true, applyNumberFormat: true, applyFont: false, quotePrefix: false);
+        Format(writer, numberFormat: 0, font: 1, withStyleLink: true, applyNumberFormat: false, applyFont: true, quotePrefix: true);
         writer.WriteEndElement();
 
         writer.WriteStartElement("cellStyles", Main);
@@ -458,8 +419,6 @@ public static class XlsxWriter
         writer.WriteEndElement();
     }
 
-    // ---------------------------------------------------------------- sheet
-
     private static void WriteSheet(XmlWriter writer, IReadOnlyList<IReadOnlyList<object?>> table, int columns)
     {
         writer.WriteStartElement("worksheet", Main);
@@ -483,7 +442,6 @@ public static class XlsxWriter
         writer.WriteEndElement();
     }
 
-    /// <summary>The sheet of a report: its title row (the base of the numbers and the days), its header, then its typed rows.</summary>
     private static void WriteReportSheet(XmlWriter writer, ReportTable table)
     {
         var columns = ColumnsOf(table);
@@ -495,7 +453,6 @@ public static class XlsxWriter
 
         writer.WriteStartElement("sheetData", Main);
 
-        // The title is one text on the first row: it runs over the empty cells beside it, and it does not set the width of the first column.
         writer.WriteStartElement("row", Main);
         writer.WriteAttributeString("r", "1");
         WriteText(writer, "A1", table.Title, isHeader: true);
@@ -522,7 +479,6 @@ public static class XlsxWriter
         writer.WriteEndElement();
     }
 
-    // The rows above the cursor stay on top when the sheet is scrolled: the header, and for a report the title row too.
     private static void WriteSheetViews(XmlWriter writer, int frozenRows)
     {
         var firstScrolling = "A" + Number(frozenRows + 1);
@@ -567,7 +523,6 @@ public static class XlsxWriter
         writer.WriteEndElement();
     }
 
-    /// <summary>The number of columns of a table: the widest of its header and its rows.</summary>
     private static int ColumnsOf(ReportTable table)
     {
         var columns = table.Header.Count;
@@ -576,7 +531,6 @@ public static class XlsxWriter
         return columns;
     }
 
-    /// <summary>The width of each column of a report sheet: its header and its longest text, with a little room; the title row does not count.</summary>
     private static double[] WidthsOf(ReportTable table, int columns)
     {
         var widths = new double[columns];
@@ -602,7 +556,6 @@ public static class XlsxWriter
         return widths;
     }
 
-    /// <summary>One typed cell of a report sheet: a number as a number cell with its format, a day as a date, a text as an inline string that is never a formula.</summary>
     private static void WriteReportCell(XmlWriter writer, string reference, ReportCell cell)
     {
         switch (cell.Kind)
@@ -617,7 +570,6 @@ public static class XlsxWriter
                 WriteNumber(writer, reference, cell.DecimalValue.ToString("0.00", CultureInfo.InvariantCulture), StyleMoney);
                 return;
             case ReportCellKind.Percent:
-                // The fraction, as the exact decimal text of the value (four places at most): 0.455 is shown as 45.50%.
                 WriteNumber(writer, reference, cell.DecimalValue.ToString("0.####", CultureInfo.InvariantCulture), StylePercent);
                 return;
             case ReportCellKind.Date:
@@ -636,11 +588,9 @@ public static class XlsxWriter
             return;
         }
 
-        // Before 1 March 1900 a date cell would say another day: the day is written as the text it is.
         WriteText(writer, reference, day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), isHeader);
     }
 
-    /// <summary>The width of each column: the longest text it holds, with a little room, between the least and the most a column should take.</summary>
     private static double[] WidthsOf(IReadOnlyList<IReadOnlyList<object?>> table, int columns)
     {
         var widths = new double[columns];
@@ -702,10 +652,6 @@ public static class XlsxWriter
         writer.WriteEndElement();
     }
 
-    /// <summary>
-    /// A text cell: an inline string, never a formula, whatever it starts with; one that a spreadsheet would run if it were typed (<c>= + - @</c>, a tab or a
-    /// CR first) carries the quote prefix in its style too, so it stays text when someone edits the cell. The header and the title are bold.
-    /// </summary>
     private static void WriteText(XmlWriter writer, string reference, string text, bool isHeader)
     {
         var clean = Clean(text);

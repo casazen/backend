@@ -28,7 +28,6 @@ public interface ISupportVaultService
     /// <summary>What the vault holds for an org: one presence for each credential (kind, property, dates, who), never a value.</summary>
     Task<IReadOnlyList<SupportVaultSecretPresence>> ListAsync(Guid orgId, CancellationToken ct);
 
-    /// <summary>Removes a credential of the vault; false when there was none.</summary>
     Task<bool> DeleteAsync(string staffUserId, Guid secretId, CancellationToken ct);
 
     /// <summary>
@@ -57,7 +56,6 @@ public sealed record SupportVaultSecretInput(
     string Password,
     string? ExtraCode)
 {
-    /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(SupportVaultSecretInput) + " { *** }";
 }
 
@@ -71,10 +69,6 @@ public sealed record SupportVaultSecretPresence(
     DateTime UpdatedAt,
     string UpdatedByUserId);
 
-/// <summary>
-/// The values of one opening, in clear, answered once and never stored again. <see cref="VisibleUntil"/> is the end of the minute the support
-/// person has to use them (decision O5): the client hides them then.
-/// </summary>
 public sealed record SupportVaultReveal(
     SupportVaultCredentialKind Kind,
     string Username,
@@ -84,49 +78,36 @@ public sealed record SupportVaultReveal(
     DateTime VisibleUntil,
     string? UnitCode = null)
 {
-    /// <summary>Hides the values from logs and debugger output.</summary>
     public override string ToString() => nameof(SupportVaultReveal) + " { *** }";
 }
 
-/// <summary>The stable codes of the support vault. Never rename one.</summary>
 public static class SupportVaultCodes
 {
-    /// <summary>422: the reason of an opening is missing, shorter than 10 or longer than 300 characters.</summary>
     public const string ReasonInvalid = "support_vault_reason_invalid";
 
-    /// <summary>422: the kind of credential is not one of the three, or not one of the two a credential of the vault can be.</summary>
     public const string KindInvalid = "support_vault_kind_invalid";
 
     /// <summary>422: the credential is not one the request needs (the police for a request about ISTAT, a credential of a property for a request of the whole org).</summary>
     public const string KindNotForRequest = "support_vault_kind_not_for_request";
 
-    /// <summary>409: the request is done or cancelled: a credential is opened only for an open request.</summary>
     public const string RequestNotOpen = "support_vault_request_not_open";
 
-    /// <summary>429: the request had its openings of the hour already.</summary>
     public const string TooManyOpenings = "support_vault_too_many_openings";
 
-    /// <summary>404: the vault (or the host's form) holds no such credential for the org and the property of the request.</summary>
     public const string SecretMissing = "support_vault_secret_missing";
 
-    /// <summary>404: no host org with that id.</summary>
     public const string OrgNotFound = "support_vault_org_not_found";
 
-    /// <summary>422: the user name or the password is missing or too long, or the further code is too long.</summary>
     public const string ValueInvalid = "support_vault_value_invalid";
 }
 
-/// <summary>The limits of the controlled opening (decision O5). Not configurable: they are the rule.</summary>
 public static class SupportVaultLimits
 {
-    /// <summary>The most openings of one request in an hour, whatever the kind.</summary>
     public const int MaxOpeningsPerRequestPerHour = 5;
 
-    /// <summary>Seconds the opened values are meant to stay on the screen.</summary>
     public const int VisibleSeconds = 60;
 }
 
-/// <summary>The rules of the support vault that do not need the database.</summary>
 public static class SupportVaultRules
 {
     /// <summary>
@@ -147,10 +128,6 @@ public static class SupportVaultRules
         _ => false,
     };
 
-    /// <summary>
-    /// The code of a kind of credential in the activity log of the org (<c>panel</c>, <c>police</c>, <c>regionalIstat</c>): a code of a closed list
-    /// the client turns into its sentence, with no name of a supplier.
-    /// </summary>
     public static string CodeOf(SupportVaultCredentialKind kind) => kind switch
     {
         SupportVaultCredentialKind.OctoratePanel => "panel",
@@ -159,7 +136,6 @@ public static class SupportVaultRules
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a kind of credential of the vault."),
     };
 
-    /// <summary>The reason of an opening, trimmed; false when it is missing, shorter than 10 or longer than 300 characters.</summary>
     public static bool TryNormalizeReason(string? reason, out string normalized)
     {
         normalized = reason?.Trim() ?? string.Empty;

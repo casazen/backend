@@ -56,8 +56,6 @@ public sealed class AgencyUsageJob(AppDbContext db, IStripeBillingService stripe
     {
         while (true)
         {
-            // invoice.created and the recurring sweep may arrive together. Lock this subscription
-            // through submission and cursor advancement, independently of every other agency.
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             var contract = await db.Database.SqlQuery<Contract>($"""
                 SELECT * FROM "AgencyUsageContracts" WHERE "SubscriptionId" = {subscriptionId} FOR UPDATE

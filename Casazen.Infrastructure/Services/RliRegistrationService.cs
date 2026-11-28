@@ -48,7 +48,6 @@ public class RliRegistrationService(
     IOpenapiRegistrationPaymentGate? registrationPayment = null,
     IOpenapiRegistrationPreparation? preparation = null) : IRliRegistrationService
 {
-    /// <summary>A provider reservation still Pending after this long has lost its outcome.</summary>
     public static readonly TimeSpan StaleSubmissionAfter = TimeSpan.FromMinutes(15);
 
     private const string PdfContentType = "application/pdf";
@@ -68,7 +67,6 @@ public class RliRegistrationService(
         ArgumentException.ThrowIfNullOrWhiteSpace(ownerId);
         ArgumentNullException.ThrowIfNull(delega);
 
-        // The flag is required for every filing. DocuEngine can handle every supported residential contract type.
         if (!featureFlags.IsEnabled(FeatureFlags.RliProvider))
             throw new DomainConflictException(RliRegistrationErrorCodes.ProviderUnavailable, "RliProviderUnavailable");
 
@@ -77,9 +75,6 @@ public class RliRegistrationService(
         if (!IsProviderFilingAvailable && !openapiFiling)
             throw new DomainConflictException(RliRegistrationErrorCodes.ProviderUnavailable, "RliProviderUnavailable");
 
-        // The delega is the landlord's: only the holder of the org (its owner or an administrator, S5, AM-03) can authorize a
-        // filing in its name. The creator of the property is the holder only for an account in no org team (before the team,
-        // the creator was the owner); a property manager who created the property is not.
         if (lease.Property is null
             || !await orgHolder.IsHolderAsync(ownerId, lease.OrgId, lease.Property.OwnerId, cancellationToken))
             throw new UnauthorizedAccessException("Only the holder of the org can give the RLI delega.");
@@ -110,7 +105,6 @@ public class RliRegistrationService(
 
         var registration = await ReserveProviderSubmissionAsync(lease, ownerId, delega.TosVersion, cancellationToken, openapiFiling);
 
-        // From here on the outcome is always recorded: a client that disconnects must not leave the reservation behind.
         string externalId;
         try
         {
@@ -185,9 +179,6 @@ public class RliRegistrationService(
 
         var lease = await LoadLeaseAsync(leaseId, cancellationToken);
 
-        // The document has to be a registration document of THIS lease and of its org (stated here, not left to the filter of the request):
-        // the receipt of another lease, another org's, a document of another kind, or none, are all the same «not there», and the bucket
-        // is not opened for them.
         var document = await db.LeaseDocuments
                 .AsNoTracking()
                 .FirstOrDefaultAsync(
@@ -208,7 +199,6 @@ public class RliRegistrationService(
         return await RecordManualRegistrationAsync(lease, userId, code, registrationDate, receipt, cancellationToken);
     }
 
-    /// <summary>The number or protocol and the date of a declaration, checked: 422 <c>rli_registration_code_invalid</c> / <c>rli_registration_date_in_future</c>.</summary>
     private (string Code, DateTime Date) CheckDeclared(string? registrationCode, DateTime registrationDate)
     {
         var code = NormalizeRegistrationCode(registrationCode);
@@ -237,7 +227,6 @@ public class RliRegistrationService(
         MemoryStream receipt,
         CancellationToken cancellationToken)
     {
-        // Receipt first, in the private bucket: a failed upload changes nothing; a failed database update removes it.
         var receiptKey = StorageKeys.LeaseRegistrationReceipt(lease.OrgId, lease.Id, StorageKeys.NewFileName(".pdf"));
         await storage.PutAsync(StorageBucket.Private, receiptKey, receipt, PdfContentType, cancellationToken);
 
@@ -398,7 +387,6 @@ public class RliRegistrationService(
             }
             catch (Exception ex)
             {
-                // The registration stays SentToProvider and is polled again at the next run.
                 errors++;
                 logger.LogError(ex, "RLI provider sync failed. LeaseId={LeaseId}", request.LeaseContractId);
             }
@@ -407,7 +395,6 @@ public class RliRegistrationService(
         return new ProviderSyncResult(registered, failed, inProgress, errors);
     }
 
-    /// <summary>A registration can start (provider or manual) only on a Signed lease with nothing in progress or done.</summary>
     private static void EnsureCanRegister(LeaseContract lease, LeaseRegistration? registration)
     {
         if (lease.Status == LeaseStatus.Registered || registration?.Status == RegistrationStatus.Registered)
@@ -439,7 +426,6 @@ public class RliRegistrationService(
             db.LeaseRegistrations.Add(registration);
         }
 
-        // A Failed row is reused: one registration per lease (unique index), its previous attempt stays in the timeline.
         registration.Status = RegistrationStatus.Pending;
         registration.Channel = RegistrationChannel.Provider;
         registration.ProviderCode = openapiFiling ? "openapi" : "legacy";
@@ -518,7 +504,6 @@ public class RliRegistrationService(
         await RecordProviderFailureAsync(registration.Id, leaseId, failureCode, CancellationToken.None);
     }
 
-    /// <summary>Registration Failed, lease back to Signed, event; false when the registration is no longer in progress.</summary>
     private async Task<bool> RecordProviderFailureAsync(
         Guid registrationId, Guid leaseId, string failureCode, CancellationToken cancellationToken)
     {
@@ -556,10 +541,6 @@ public class RliRegistrationService(
         return true;
     }
 
-    /// <summary>
-    /// Copies the provider's receipt into the private bucket (its download URL expires), then marks registration and
-    /// lease Registered. Without a valid PDF receipt nothing changes and the request is polled again.
-    /// </summary>
     private async Task<bool> ConfirmProviderRegistrationAsync(
         Guid registrationId,
         Guid leaseId,
@@ -682,7 +663,6 @@ public class RliRegistrationService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // Another request created the lease's registration first (one per lease).
             throw new DomainConflictException(RliRegistrationErrorCodes.InProgress, "RliRegistrationInProgress");
         }
     }
@@ -706,7 +686,6 @@ public class RliRegistrationService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>The lease as stored now (a tracked instance is refreshed: its values may predate the lock).</summary>
     private async Task<LeaseContract?> ReloadLeaseAsync(Guid leaseId, CancellationToken cancellationToken)
     {
         var lease = await db.LeaseContracts.SingleOrDefaultAsync(l => l.Id == leaseId, cancellationToken);

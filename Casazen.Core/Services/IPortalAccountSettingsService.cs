@@ -13,7 +13,6 @@ namespace Casazen.Core.Services;
 /// <remarks>The service names the org of everything it reads and writes; the web layer decides who may call it (the whole organization).</remarks>
 public interface IPortalAccountSettingsService
 {
-    /// <summary>The default holder and the recharge; the defaults (the owner, the recharge on) while the org has no profile.</summary>
     Task<PortalAccountSettings> GetAsync(Guid orgId, CancellationToken ct = default);
 
     /// <summary>
@@ -27,7 +26,6 @@ public interface IPortalAccountSettingsService
     /// </summary>
     Task<PortalAccountSettings> SaveAsync(Guid orgId, PortalAccountSettingsCommand command, string? userId, CancellationToken ct = default);
 
-    /// <summary>The holders the listings of the org have on the portals where they differ from the default, by property then portal.</summary>
     Task<IReadOnlyList<ChannelAccountHolderView>> ListAccountHoldersAsync(Guid orgId, CancellationToken ct = default);
 
     /// <summary>
@@ -48,10 +46,8 @@ public interface IPortalAccountSettingsService
         CancellationToken ct = default);
 }
 
-/// <summary>Who holds the accounts of the portals by default (⚖ I10) and whether their commissions are recharged to the owners (⚖ I11).</summary>
 public sealed record PortalAccountSettings(PortalAccountHolder PortalAccountHolder, bool RechargePortalCommissions);
 
-/// <summary>A save of the defaults of the portal accounts: a member left out (<c>null</c>) keeps its value.</summary>
 public sealed record PortalAccountSettingsCommand
 {
     public PortalAccountHolder? PortalAccountHolder { get; init; }
@@ -66,46 +62,32 @@ public sealed record PortalAccountSettingsCommand
     public bool? AcknowledgeRechargeWaiver { get; init; }
 }
 
-/// <summary>The holder of a listing on a portal, as the list answers it.</summary>
 public sealed record ChannelAccountHolderView(Guid PropertyId, string PropertyName, BookingSource Channel, PortalAccountHolder Holder, DateTime UpdatedAt);
 
-/// <summary>One row of a bulk write of the holders: the listing, the portal and the holder (<c>null</c> = back to the default of the org).</summary>
 public sealed record ChannelAccountHolderCommand
 {
     public Guid PropertyId { get; init; }
 
-    /// <summary>The portal (<see cref="FiscalCopy.IsOtaBookingSource"/>).</summary>
     public BookingSource Channel { get; init; }
 
     public PortalAccountHolder? Holder { get; init; }
 }
 
-/// <summary>The names of the values of the portal accounts in the section <c>channels</c> of the billing setup (<c>GET api/billing-setup</c>).</summary>
 public static class PortalAccountFields
 {
     public const string PortalAccountHolder = "portalAccountHolder";
     public const string RechargePortalCommissions = "rechargePortalCommissions";
 }
 
-/// <summary>The stable codes of the settings of the portal accounts.</summary>
 public static class PortalAccountErrors
 {
     public const string ChannelsInvalid = "billing_channels_invalid";
     public const string AccountHoldersInvalid = "channel_account_holders_invalid";
     public const string AccountHoldersConflict = "channel_account_holders_conflict";
 
-    /// <summary>
-    /// 422: a save that starts the waiver of the recharge of the portal commissions without <see cref="PortalAccountSettingsCommand.AcknowledgeRechargeWaiver"/> (message key
-    /// <c>RechargeWaiverNotAcknowledged</c>).
-    /// </summary>
     public const string RechargeWaiverNotAcknowledged = "recharge_waiver_not_acknowledged";
 
-    /// <summary>
-    /// The <c>part</c> of the line <c>OrgSettingsChanged</c> of the activity log that records an acknowledged waiver of the recharge (who and when are the line's actor and
-    /// instant).
-    /// </summary>
     public const string RechargeWaiverActivityPart = "portalCommissionRechargeWaiver";
 
-    /// <summary>The most rows one write of the holders may carry (some hundred flats on a few portals).</summary>
     public const int MaxAccountHolders = 2000;
 }

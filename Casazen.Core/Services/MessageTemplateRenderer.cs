@@ -4,11 +4,6 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// What a template of the host can say about the conversation it is used in (E05/F02/US02/T02): each member is the value of one variable, or
-/// <c>null</c> when this conversation has none (a request with no booking has no dates, a property with no check-in time has no time). The dates are
-/// the Rome dates of the stay and the times are the ones on the clock of the property (<c>Property.CheckInFrom</c>, <c>CheckOutBy</c>).
-/// </summary>
 public sealed record MessageTemplateValues(
     string? GuestName,
     string? PropertyName,
@@ -49,31 +44,22 @@ public static partial class MessageTemplateRenderer
     public const string CheckOutTimeVariable = "check_out_time";
     public const string HostNameVariable = "host_name";
 
-    /// <summary>The link of the online check-in of the stay: a new one is issued when the message is sent (the previous one stops working), never in a preview (E05/F07/US01/T03).</summary>
     public const string CheckInLinkVariable = "check_in_link";
 
-    /// <summary>How the guest gets in (the check-in method of the property, in the language of the guest) (E05/F07/US01/T03).</summary>
     public const string CheckInMethodVariable = "check_in_method";
 
-    /// <summary>The lock code of the property: only after the identity of the guest was verified (ADR-022-R11), never a placeholder in what is sent, never resolved in a preview (E05/F07/US01/T03).</summary>
     public const string AccessCodeVariable = "access_code";
 
-    /// <summary>The address of the property (E05/F07/US01/T03).</summary>
     public const string PropertyAddressVariable = "property_address";
 
-    /// <summary>The link where the guest of a direct booking writes the review of the stay (E05/F07/US01/T03).</summary>
     public const string ReviewLinkVariable = "review_link";
 
-    /// <summary>The 422 of a name that is not one of the variables (or of a brace that opens or closes nothing).</summary>
     public const string UnknownCode = "template_variable_unknown";
 
-    /// <summary>The 422 of a variable the conversation has no value for.</summary>
     public const string MissingCode = "template_variable_missing";
 
-    /// <summary>The longest fragment of a template that an error repeats back (the host wrote it, but a message must stay short).</summary>
     private const int FragmentMaxLength = 40;
 
-    /// <summary>The variables a template may use, in the order the screens list them.</summary>
     public static IReadOnlyList<string> Variables { get; } =
     [
         GuestNameVariable,
@@ -91,11 +77,6 @@ public static partial class MessageTemplateRenderer
         ReviewLinkVariable,
     ];
 
-    /// <summary>
-    /// The variables a body uses, each once, in the order they first appear, lower case. 422 <see cref="UnknownCode"/> for a name that is not one of
-    /// <see cref="Variables"/> or a brace left alone: what a template is saved with is checked here, so a host learns of a typo when it writes the
-    /// template and not in front of a guest.
-    /// </summary>
     public static IReadOnlyList<string> VariablesOf(string body)
     {
         ArgumentNullException.ThrowIfNull(body);
@@ -115,10 +96,6 @@ public static partial class MessageTemplateRenderer
         return used;
     }
 
-    /// <summary>
-    /// The variables <paramref name="body"/> uses that <paramref name="values"/> has no value for, each once, in the order they first appear (E05/F07/US01/T02): what a preview lists as missing and
-    /// what holds a scheduled message back. 422 <see cref="UnknownCode"/> for a name that is not a variable, as <see cref="VariablesOf"/>.
-    /// </summary>
     public static IReadOnlyList<string> MissingVariables(string body, MessageTemplateValues values, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(body);
@@ -128,8 +105,6 @@ public static partial class MessageTemplateRenderer
         return [.. VariablesOf(body).Where(name => string.IsNullOrWhiteSpace(ValueOf(name, values, culture)))];
     }
 
-    /// <summary>The text of <paramref name="body"/> with every variable replaced (see the remarks of the class for what is refused).</summary>
-    /// <param name="culture">The language of the template: how the dates are written.</param>
     public static string Render(string body, MessageTemplateValues values, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(body);
@@ -189,7 +164,6 @@ public static partial class MessageTemplateRenderer
         return GuestMessageRules.NormalizeText(text) ?? string.Empty;
     }
 
-    /// <summary>The value of a variable as it is written in the text; <c>null</c> when the conversation has none.</summary>
     private static string? ValueOf(string name, MessageTemplateValues values, CultureInfo culture) => name switch
     {
         GuestNameVariable => values.GuestName,
@@ -208,10 +182,8 @@ public static partial class MessageTemplateRenderer
         _ => null,
     };
 
-    // A DateOnly takes only the specifiers of a date: the day, the month by name and the year.
     private static string? Date(DateOnly? date, CultureInfo culture) => date?.ToString("d MMMM yyyy", culture);
 
-    // A TimeOnly takes only the specifiers of a time.
     private static string? Time(TimeOnly? time) => time?.ToString("HH:mm", CultureInfo.InvariantCulture);
 
     private static string NameOf(Match match) => match.Groups["name"].Value.Trim().ToLowerInvariant();
@@ -232,22 +204,18 @@ public static partial class MessageTemplateRenderer
     private static DomainRuleException Missing(string name) =>
         new(MissingCode, "MessageTemplateVariableMissing", name);
 
-    /// <summary>The start of a fragment of the template, on one line, short enough to repeat in an error.</summary>
     private static string Shown(string fragment)
     {
         var line = string.Join(' ', fragment.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         return line.Length <= FragmentMaxLength ? line : line[..FragmentMaxLength];
     }
 
-    // {{ name }}: anything between the braces but a brace, so a name with a space or a sign is seen (and refused as unknown), not left in the text.
     [GeneratedRegex(@"\{\{(?<name>[^{}]*)\}\}", RegexOptions.CultureInvariant)]
     private static partial Regex Variable();
 
-    // Spaces or tabs before a punctuation mark, left where a variable was taken out («Ciao , grazie»).
     [GeneratedRegex(@"[ \t]+([,.;:!?])", RegexOptions.CultureInvariant)]
     private static partial Regex SpaceBeforePunctuation();
 
-    // Two or more spaces or tabs in a row on one line.
     [GeneratedRegex(@"[ \t]{2,}", RegexOptions.CultureInvariant)]
     private static partial Regex DoubleSpace();
 }

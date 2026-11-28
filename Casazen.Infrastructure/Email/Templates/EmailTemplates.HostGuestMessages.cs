@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>«The host wrote to you», to the guest of a booking of a channel that has no chat, when the host writes first (E05/F02/US02/T01).</summary>
         public const string HostGuestMessage = "host-guest-message";
     }
 

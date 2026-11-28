@@ -46,19 +46,13 @@ public class PropertyComplianceStatusService(
 {
     private const string RunLockKey = "property-compliance-check";
 
-    /// <summary>The id of the step of a Swiss property that says whether its guests can be notified (E29/F02/US01/T02, NF-129).</summary>
     public const string GuestRegistrationStepId = "guest-registration";
 
-    /// <summary>
-    /// The ids of the compliance steps that are reminders and still open (the documents, the safety checklist): what a host
-    /// acknowledges when activating. Empty when every reminder is complete.
-    /// </summary>
     public static IReadOnlyList<string> OpenReminders(IEnumerable<ComplianceActivationStep> steps) =>
         steps.Where(s => !s.Blocker && s.Status != "complete").Select(s => s.Id).ToList();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    // The one resolver of the place of a Swiss property (E29/F01); a service built by hand without it reads the same directory through the context.
     private readonly IPropertySwissPlaceResolver _swissPlaces = swissPlaces ?? new PropertySwissPlaceResolver(db);
 
     public async Task<IReadOnlyList<ComplianceActivationStep>> GetBlockingStepsAsync(
@@ -79,7 +73,6 @@ public class PropertyComplianceStatusService(
             .Select(type => type.ToString())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // D.L. 145/2023 art. 13-ter (CO-07): only the required items of the checklist block.
         var safetyChecklist = await db.PropertySafetyChecklists
             .AsNoTracking()
             .Include(c => c.Items)
@@ -108,8 +101,6 @@ public class PropertyComplianceStatusService(
         if (properties.Count == 0)
             return stepsOf;
 
-        // The facts of all the properties in one read each — the documents, the checklists (with their items) and the comuni
-        // list, three queries whatever the number of properties — then the very same rules as for one property.
         var ids = properties.Select(p => p.Id).Distinct().ToList();
         var comuneListImported = properties.Any(p => p.ComuneIstatCode is null)
                                  && await db.Comuni.AsNoTracking().AnyAsync(c => c.IsActive, cancellationToken);
@@ -136,7 +127,6 @@ public class PropertyComplianceStatusService(
                 .Where(m => m.PropertyId != null && draftIds.Contains(m.PropertyId.Value) && m.Status == OctorateMappingStatus.Confirmed)
                 .Select(m => m.PropertyId!.Value).ToListAsync(cancellationToken)).ToHashSet();
 
-        // The places of the Swiss properties, all in the queries of the one resolver (two whatever their number).
         var swiss = properties.Where(p => SwissPlace.IsSwissCountry(p.Country)).ToList();
         var placeOf = swiss.Count == 0
             ? new Dictionary<Guid, SwissPlace>()
@@ -214,7 +204,6 @@ public class PropertyComplianceStatusService(
         var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
             ?? ComplianceOptions.DefaultCinGuidanceUrl;
 
-        // Bedrooms are not checked: 0 is a studio flat (monolocale, A2-27).
         var baseDataComplete = !string.IsNullOrWhiteSpace(property.Name)
             && !string.IsNullOrWhiteSpace(property.Address)
             && !string.IsNullOrWhiteSpace(property.City)
@@ -306,7 +295,6 @@ public class PropertyComplianceStatusService(
                 Blockers = safety.Blockers.Select(b => new ActivationBlocker(b.Code, b.MessageKey, b.MessageArgs)).ToList(),
             },
         };
-        // Do not advertise a completed Italian obligation for a Swiss property.
         if (!CinFormat.IsRequiredForCountry(property.Country))
             steps.RemoveAll(step => step.Id == "cin");
         if (property.Country.Length == 2 && !TouristTaxComune.IsItalianCountry(property.Country))
@@ -452,7 +440,6 @@ public class PropertyComplianceStatusService(
             else if (!PropertyRentalModeRules.IsShort(property))
                 return new PropertyComplianceCheck(propertyId, previous, previous, [], false);
 
-            // A pending property is published only by the host's activation (terms accepted), never by a re-evaluation.
             if (!activate && previous == PropertyComplianceStatus.Pending)
                 return new PropertyComplianceCheck(propertyId, previous, previous, [], false);
 
@@ -472,11 +459,8 @@ public class PropertyComplianceStatusService(
 
             if (incomplete.Count == 0)
             {
-                // The activation, or the reactivation of a suspended property whose requirements are complete again.
                 if (activate || previous == PropertyComplianceStatus.Suspended)
                 {
-                    // The host's acknowledgement goes to the activity log of the org, in this same transaction: who, when, and
-                    // which reminders were open. Only when the property becomes active by the host's hand.
                     if (host is not null && reminders.Count > 0 && previous != PropertyComplianceStatus.Active)
                     {
                         activityLog.Record(OrgActivity.Of(
@@ -488,7 +472,6 @@ public class PropertyComplianceStatusService(
                     }
 
                     property.ComplianceStatus = PropertyComplianceStatus.Active;
-                    // An imported draft is visible while inactive; only the host's successful activation promotes it.
                     if (host is not null && !property.IsActive && await db.OctorateListingMappings.AnyAsync(
                             m => m.OrgId == property.OrgId && m.PropertyId == property.Id &&
                                  m.Status == OctorateMappingStatus.Confirmed, cancellationToken))
@@ -560,14 +543,12 @@ public class PropertyComplianceStatusService(
     {
         try
         {
-            // Orgs carry no tenant filter; the org is the property's own.
             var contactEmail = await db.Orgs
                 .AsNoTracking()
                 .Where(o => o.Id == property.OrgId)
                 .Select(o => o.ContactEmail)
                 .FirstOrDefaultAsync(cancellationToken);
 
-            // Validated at startup outside Development/Testing (FD-13); without it the email has no button.
             var activationUrl = links.IsConfigured ? links.HostPropertyActivation(property.Id) : null;
             var email = EmailTemplates.PropertyComplianceSuspended(
                 EmailTemplates.DefaultCulture,
@@ -584,7 +565,6 @@ public class PropertyComplianceStatusService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The suspension is committed: a failed email never undoes it (the host sees it in the console).
             logger.LogError(ex, "Suspension email of property {PropertyId} could not be prepared", property.Id);
             return false;
         }

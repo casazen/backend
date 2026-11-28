@@ -12,14 +12,8 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ITicinoNotificationService
 {
-    /// <summary>How many days back the days still to notify are looked for.</summary>
     public const int PendingLookbackDays = 14;
 
-    /// <summary>
-    /// One arrival day of a Ticino property: the stays that arrive on it, the rows of the file and what the incomplete guests miss, the
-    /// receipts recorded for it, who declared it uploaded and when, how many times its file was generated and the other days still to notify.
-    /// Throws <c>property_not_found</c> or <c>property_not_in_ticino</c>.
-    /// </summary>
     Task<TicinoNotificationDay> GetDayAsync(Guid propertyId, DateOnly day, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -38,19 +32,12 @@ public interface ITicinoNotificationService
         TicinoFileRequest? request = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The arrival days still to notify (stays arrived, no receipt recorded and no declaration) of the Ticino properties of an org, or of every org when
-    /// <paramref name="orgId"/> is <c>null</c>, from <see cref="PendingLookbackDays"/> days before <paramref name="today"/> up to it, oldest
-    /// first. <paramref name="propertyIds"/> limits the properties read (the caller's reach); <c>null</c> reads them all. <b>The one rule of a closed day</b>: a day with a
-    /// <c>Police</c> receipt or a declaration of the notification to the Ticino police (the rows without a regime code) is not listed.
-    /// </summary>
     Task<IReadOnlyList<TicinoPendingDay>> ListPendingDaysAsync(
         Guid? orgId,
         IReadOnlyCollection<Guid>? propertyIds,
         DateOnly today,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Whether a property is in canton Ticino (country CH, municipality of canton TI).</summary>
     Task<bool> IsPropertyInTicinoAsync(Guid propertyId);
 
     /// <summary>
@@ -121,11 +108,6 @@ public sealed record TicinoFileRequest(string? UserId = null, bool ConfirmRegene
 /// <param name="Created">True when this call recorded the declaration, false when the day was declared already.</param>
 public sealed record TicinoDeclaration(Guid PropertyId, DateOnly Day, DateTime DeclaredAtUtc, string? DeclaredBy, Guid? ReceiptId, bool Created);
 
-/// <summary>The sheet of a group (<see cref="ITicinoNotificationService.GetGroupSheetAsync"/>).</summary>
-/// <param name="Content">The CSV, UTF-8 with its byte order mark.</param>
-/// <param name="FileName">Suggested name, e.g. <c>scheda-gruppo-ti-2026-11-19-ABCDE-12345.csv</c> (the arrival day and the code of the booking).</param>
-/// <param name="ContentType"><c>text/csv; charset=utf-8</c>.</param>
-/// <param name="Members">The persons on the sheet, the leader included.</param>
 public sealed record TicinoGroupSheet(byte[] Content, string FileName, string ContentType, int Members);
 
 /// <summary>An arrival day of a Ticino property (<see cref="ITicinoNotificationService.GetDayAsync"/>).</summary>
@@ -180,5 +162,4 @@ public sealed record TicinoNotificationDay(
 public sealed record TicinoNotificationFile(
     byte[] Content, string FileName, string ContentType, string Reference, string FileHash, int Rows, int TransliteratedCount = 0);
 
-/// <summary>An arrival day still to notify.</summary>
 public sealed record TicinoPendingDay(Guid OrgId, Guid PropertyId, string PropertyName, DateOnly Day, int StayCount, DateTime DueAtUtc);

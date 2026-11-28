@@ -57,7 +57,6 @@ public sealed class OrgTeamService(
 
             await membership.ChangeRoleAsync(target.UserId, role, cancellationToken);
 
-            // Same transaction as the change; nothing to say when the person already had the role.
             if (target.Role != role)
             {
                 await RecordAsync(
@@ -101,8 +100,6 @@ public sealed class OrgTeamService(
 
             var change = await membership.SetAreasAsync(target.UserId, areas, cancellationToken);
 
-            // Same transaction as the change; nothing to say when the person already worked in exactly these areas and nobody was
-            // released (a person in charge that is released is a change of state, so it has its line even with the same areas).
             if (change.Matters)
             {
                 var details = new List<(string Key, string Value)>
@@ -188,7 +185,6 @@ public sealed class OrgTeamService(
             (actor, target) = await LoadAsync(orgId, memberId, actorUserId, cancellationToken);
             EnsureCanAct(actor, target);
 
-            // A deactivated member holds no seat: coming back takes one, if the plan has it.
             if (target.Status == OrgMemberStatus.Deactivated)
                 await seats.EnsureSeatAvailableAsync(orgId, cancellationToken);
 
@@ -251,13 +247,6 @@ public sealed class OrgTeamService(
             memberId, orgId, actorUserId);
     }
 
-    // ─── Rules and reads ────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Writes the line of the activity log for what the membership service has just done, <b>inside the transaction that is
-    /// still open</b>: the change was saved by the membership service, the line is saved here, and the caller commits both or,
-    /// if this save fails, neither (the transaction is disposed without a commit).
-    /// </summary>
     private async Task RecordAsync(
         OrgActivityType type,
         Guid orgId,
@@ -270,7 +259,6 @@ public sealed class OrgTeamService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>The caller and the member it acts on, both from their rows (read under the lock), or 404 for a member of another org.</summary>
     private async Task<(OrgMember Actor, OrgMember Target)> LoadAsync(
         Guid orgId,
         Guid memberId,
@@ -279,7 +267,6 @@ public sealed class OrgTeamService(
     {
         var actor = await OrgTeamAccess.RequireManagerAsync(db, orgId, actorUserId, cancellationToken);
 
-        // AsNoTracking: the membership service reads the member again, tracked, under the same lock.
         var target = await db.OrgMembers.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(m => m.Id == memberId && m.OrgId == orgId, cancellationToken)
             ?? throw new NotFoundException($"Org member {memberId} not found")
@@ -291,7 +278,6 @@ public sealed class OrgTeamService(
         return (actor, target);
     }
 
-    /// <summary>The owner is out of reach for everyone; an administrator is in the hands of the owner only.</summary>
     private static void EnsureCanAct(OrgMember actor, OrgMember target)
     {
         if (target.Role == OrgRole.Owner)
@@ -304,7 +290,6 @@ public sealed class OrgTeamService(
     private async Task<OrgMemberView> ViewAsync(Guid orgId, Guid memberId, CancellationToken cancellationToken) =>
         (await ReadMembersAsync(orgId, memberId, cancellationToken)).Single();
 
-    /// <summary>The org's members (or only <paramref name="memberId"/>), owner first, then by name, with the areas each works in.</summary>
     private async Task<IReadOnlyList<OrgMemberView>> ReadMembersAsync(
         Guid orgId,
         Guid? memberId,

@@ -54,16 +54,8 @@ public interface ISupplierService
     /// </exception>
     Task<SupplierClaimResult> ClaimAsync(SupplierClaim claim, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The invite of a link token, to pre-fill the registration page (SU-01). Nothing is changed.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
-    /// Codes <c>supplier_invite_invalid</c> (malformed or unknown token), <c>supplier_invite_expired</c>,
-    /// <c>supplier_invite_used</c>.
-    /// </exception>
     Task<SupplierInvitePreview> GetInviteAsync(string? inviteToken, CancellationToken cancellationToken = default);
 
-    /// <summary>Returns the <see cref="SupplierProfile"/> for the given supplier org.</summary>
     Task<SupplierProfile?> GetProfileAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>Updates mutable profile fields. Returns the updated profile or null if not found.</summary>
@@ -89,11 +81,6 @@ public interface ISupplierService
         CancellationToken cancellationToken = default,
         IEnumerable<string>? comuneIstatCodes = null);
 
-    /// <summary>
-    /// The state of the 5-step activation wizard (SU-05, A4-09): each step derived from the stored profile, the step the
-    /// supplier reached (saved by <see cref="SetActivationStepAsync"/>) and the Terms of Service acceptance. Null when the
-    /// org has no profile.
-    /// </summary>
     Task<SupplierActivationState?> GetActivationAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -102,13 +89,6 @@ public interface ISupplierService
     /// </summary>
     Task SetActivationStepAsync(Guid orgId, int step, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sets the profile to <see cref="SupplierStatus.Active"/> when every requirement of the stored profile is met
-    /// (business name, plausible phone, at least one category, one comune and a description) and the Terms of Service
-    /// version the supplier saw is the current one. Throws <see cref="SupplierActivationBlockedException"/> (409) with the
-    /// missing requirements, and 409 <c>supplier_tos_version_stale</c> when <paramref name="tosVersion"/> is not the current
-    /// version. The acceptance (version, time, IP) is recorded as a consent record of the supplier org.
-    /// </summary>
     Task<SupplierProfile> CompleteActivationAsync(
         Guid orgId,
         bool tosAccepted,
@@ -117,10 +97,6 @@ public interface ISupplierService
         string? clientIpAddress,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Records the acceptance of the current Terms of Service by an already activated supplier (re-acceptance after a new
-    /// version); it never changes the status of the profile. 409 <c>supplier_tos_version_stale</c> for another version.
-    /// </summary>
     Task<SupplierProfile> AcceptTosAsync(
         Guid orgId,
         string? tosVersion,
@@ -136,20 +112,12 @@ public interface ISupplierService
     /// </summary>
     Task<string?> EnsureShowcaseSlugAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Returns availability entries for the supplier within an inclusive date range.
-    /// </summary>
     Task<IReadOnlyList<(DateOnly Date, bool Available)>> GetAvailabilityAsync(
         Guid orgId,
         DateOnly from,
         DateOnly to,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Updates availability entries for the supplier (AC8).
-    /// Returns the number of rows written. A day whose value changes becomes
-    /// <see cref="SupplierAvailabilitySource.Manual"/>; a day sent with its current value keeps its source (SU-15).
-    /// </summary>
     Task<int> UpdateAvailabilityAsync(
         Guid orgId,
         IEnumerable<(DateOnly Date, bool Available)> entries,
@@ -169,11 +137,9 @@ public interface ISupplierService
         string? category,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Marketplace partners and the host's trusted suppliers assigned to the authorised property.</summary>
     Task<PropertySupplierChoices> GetActiveForPropertyAsync(Guid hostOrgId, Guid propertyId,
         IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets, string? category, CancellationToken cancellationToken = default);
 
-    /// <summary>Active suppliers covering any of the specified municipalities.</summary>
     Task<IReadOnlyList<SupplierProfile>> GetActiveByComuniAsync(
         IReadOnlyCollection<Casazen.Core.Suppliers.ComuneTarget> targets,
         string? category,
@@ -256,9 +222,6 @@ public interface ISupplierService
         bool dryRun,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Returns aggregated dashboard statistics for a supplier org.
-    /// </summary>
     Task<SupplierDashboard> GetDashboardStatsAsync(Guid orgId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -284,10 +247,6 @@ public interface ISupplierService
     Task<IReadOnlyList<UnmappedServiceCategory>> GetUnmappedCategoriesAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// A stored category value that is not a known code. <paramref name="Source"/> is <c>supplier_profile</c> (id = supplier
-/// org id), <c>supplier_invite</c> (id = invite id) or <c>service_request</c> (id = request id).
-/// </summary>
 public record UnmappedServiceCategory(string Source, Guid Id, string Value);
 
 /// <param name="Id">One of <see cref="Casazen.Core.Suppliers.SupplierActivation.Steps"/>.</param>
@@ -296,7 +255,6 @@ public record UnmappedServiceCategory(string Source, Guid Id, string Value);
 /// <param name="Required">False for a step that never blocks the activation (showcase photos).</param>
 public record ActivationStep(string Id, string Status, string? Blocker = null, bool Required = true);
 
-/// <param name="CurrentStep">Step number 1-5 to open: the saved one, else the first incomplete required step.</param>
 public record SupplierActivationState(IReadOnlyList<ActivationStep> Steps, int CurrentStep, SupplierTosState Tos);
 
 /// <param name="CurrentVersion">Terms of Service version in force (<c>Legal:Documents:Tos:Version</c>).</param>
@@ -317,13 +275,8 @@ public sealed record SupplierIdentityCandidate(Guid SupplierOrgId, string Name, 
 public sealed record SupplierIdentityReview(Guid Id, string HostName, string Email, SupplierInviteIdentity Supplied,
     DateTime ExpiresAt, IReadOnlyList<SupplierIdentityCandidate> Candidates);
 
-/// <summary>
-/// Outcome of <see cref="ISupplierService.RegisterAsync"/>. <paramref name="Claim"/> is set only for an anonymous
-/// self-serve registration: the secret the web app keeps to link the account created afterwards (SU-02).
-/// </summary>
 public record SupplierRegistrationResult(Org Org, SupplierProfile Profile, SupplierClaimTicket? Claim = null);
 
-/// <summary>A claim token (plain text: returned once, only its hash is stored) and its UTC expiry.</summary>
 public record SupplierClaimTicket(string Token, DateTime ExpiresAt);
 
 /// <summary>
@@ -333,13 +286,8 @@ public record SupplierClaimTicket(string Token, DateTime ExpiresAt);
 /// </summary>
 public record SupplierClaim(string UserId, string? AccountEmail, bool AccountEmailVerified, string? ClaimToken);
 
-/// <summary>The supplier org the caller is linked to; <paramref name="NewlyLinked"/> is false for a repeated claim.</summary>
 public record SupplierClaimResult(Guid OrgId, bool NewlyLinked);
 
-/// <summary>
-/// A supplier registration request. <paramref name="UserId"/> and <paramref name="AccountEmail"/> are the signed-in
-/// caller (Auth0 <c>sub</c> and account email), both null for an anonymous self-serve registration.
-/// </summary>
 public record SupplierRegistration(
     string Email,
     string LegalName,
@@ -349,10 +297,6 @@ public record SupplierRegistration(
     string? UserId = null,
     string? AccountEmail = null);
 
-/// <summary>
-/// What an invite link grants: the email that must register, the comune (with its display name when known) and the
-/// preselected service category codes.
-/// </summary>
 public record SupplierInvitePreview(
     string Email,
     string ComuneCode,
@@ -360,10 +304,6 @@ public record SupplierInvitePreview(
     IReadOnlyList<string> Categories,
     DateTime ExpiresAt);
 
-/// <summary>
-/// Profile, availability and calendar state of a supplier org. The work KPIs are computed from its service requests by
-/// <see cref="ISupplierKpiService"/> (SU-11).
-/// </summary>
 public record SupplierDashboard(
     int ProfileCompletionPercent,
     string Status,
@@ -428,5 +368,4 @@ public record SupplierDuplicateMerge(
     int AgendaRowsMoved = 0,
     int ShowcaseRowsMoved = 0);
 
-/// <summary>A case left untouched for an admin decision (<see cref="Code"/>: see <c>docs/runbooks/suppliers.md</c>).</summary>
 public record SupplierManualIntervention(string Code, IReadOnlyList<Guid> OrgIds, IReadOnlyList<string> UserIds);

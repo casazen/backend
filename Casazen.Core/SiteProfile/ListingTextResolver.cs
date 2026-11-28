@@ -2,28 +2,19 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.SiteProfile;
 
-/// <summary>
-/// The seven text fields of a listing as the channel manager has them (NF-31, ADR-035). The numbers are not stored; the names of the
-/// fields are, in lower case, in the keys of <see cref="SitePropertyProfileDocument.Origins"/> (<see cref="ListingTextResolver.CodeOf"/>).
-/// </summary>
 public enum ListingTextField
 {
     Title = 0,
     Description = 1,
 
-    /// <summary>The spaces of the house: the notes on the floor and on the outdoor spaces.</summary>
     Spaces = 2,
 
-    /// <summary>How guests get in: the way check-in works.</summary>
     Access = 3,
 
-    /// <summary>The surroundings: the zone and what is near.</summary>
     Neighborhood = 4,
 
-    /// <summary>How to get there. It has no column and no profile text: Italian is kept in the document too.</summary>
     Transport = 5,
 
-    /// <summary>The house rules and the note on them.</summary>
     Rules = 6,
 }
 
@@ -49,7 +40,6 @@ public static class ListingTextResolver
 
     public static IReadOnlyList<ListingTextField> Fields { get; } = Enum.GetValues<ListingTextField>();
 
-    /// <summary>The name of the field in the channel manager and in the keys of the origins: <c>title</c>, <c>description</c>, <c>spaces</c>, <c>access</c>, <c>neighborhood</c>, <c>transport</c>, <c>rules</c>.</summary>
     public static string CodeOf(ListingTextField field) => field switch
     {
         ListingTextField.Title => "title",
@@ -62,7 +52,6 @@ public static class ListingTextResolver
         _ => throw new ArgumentOutOfRangeException(nameof(field), field, "Not a field of the listing."),
     };
 
-    /// <summary>The field called <paramref name="code"/> (<see cref="CodeOf"/>, case does not matter); <c>false</c> when there is none.</summary>
     public static bool TryParseField(string? code, out ListingTextField field)
     {
         foreach (var candidate in Fields)
@@ -78,20 +67,14 @@ public static class ListingTextResolver
         return false;
     }
 
-    /// <summary>The key of a text in <see cref="SitePropertyProfileDocument.Origins"/> and in the lists of missing texts: <c>fr.title</c>.</summary>
     public static string Key(string language, ListingTextField field) => language + "." + CodeOf(field);
 
-    /// <summary>
-    /// The text of <paramref name="field"/> in <paramref name="language"/> (a code of <see cref="ListingLanguages.All"/>, case does not
-    /// matter), read from the property and its stored profile; <c>null</c> when the host wrote none, or the language is not one of the listing.
-    /// </summary>
     public static string? Get(Property property, string language, ListingTextField field)
     {
         ArgumentNullException.ThrowIfNull(property);
         return Get(property, SitePropertyProfileJson.Parse(property.SiteProfileJson), language, field);
     }
 
-    /// <summary>The same, over a profile already read (a caller that asks for many texts reads the column once).</summary>
     public static string? Get(Property property, SitePropertyProfileDocument document, string language, ListingTextField field)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -106,7 +89,6 @@ public static class ListingTextResolver
             : OtherText(document, code, field);
     }
 
-    /// <summary>Every field the host wrote in <paramref name="language"/>, by field.</summary>
     public static IReadOnlyDictionary<ListingTextField, string> GetAll(Property property, SitePropertyProfileDocument document, string language)
     {
         var texts = new Dictionary<ListingTextField, string>();
@@ -146,7 +128,6 @@ public static class ListingTextResolver
         };
     }
 
-    // The part of a profile text in a language other than Italian: the English one, or the one of Others.
     private static string? Part(LocalizedText? text, string language) =>
         text is null ? null : language == ListingLanguages.English ? text.En : text.Others?.GetValueOrDefault(language);
 

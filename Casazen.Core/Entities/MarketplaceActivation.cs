@@ -25,10 +25,8 @@ namespace Casazen.Core.Entities;
 [Table("MarketplaceActivations")]
 public class MarketplaceActivation : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="Kind"/>, <see cref="TargetCode"/>) of the rows with no property.</summary>
     public const string OrgLevelIndexName = "UIX_MarketplaceActivations_OrgId_Kind_Target_OrgLevel";
 
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="PropertyId"/>, <see cref="Kind"/>, <see cref="TargetCode"/>) of the rows with a property.</summary>
     public const string PropertyLevelIndexName = "UIX_MarketplaceActivations_OrgId_PropertyId_Kind_Target";
 
     public const int TargetCodeMaxLength = 100;
@@ -38,44 +36,31 @@ public class MarketplaceActivation : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant: the org that activated it.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>
-    /// The property it is activated for; <c>null</c> for an org-level activation (a partner declared for the whole org, and the rows of a licensed
-    /// function written before its license was a property's). A partner may also have a row for a property. FK, cascade.
-    /// </summary>
     public Guid? PropertyId { get; set; }
 
     public MarketplaceActivationKind Kind { get; set; } = MarketplaceActivationKind.Channel;
 
-    /// <summary>The portal code (a channel or a tool), the code of the license module, or the code of the partner, by <see cref="Kind"/>.</summary>
     [Required]
     [MaxLength(TargetCodeMaxLength)]
     public string TargetCode { get; set; } = string.Empty;
 
     public MarketplaceActivationStatus Status { get; set; } = MarketplaceActivationStatus.Requested;
 
-    /// <summary>The status was declared by the user and is not proven by Octorate.</summary>
     public bool IsDeclared { get; set; }
 
-    /// <summary>When the user declared it (UTC).</summary>
     public DateTime? DeclaredAt { get; set; }
 
-    /// <summary>When a connection or the license confirmed it (UTC).</summary>
     public DateTime? VerifiedAt { get; set; }
 
-    /// <summary>When the host asked for it (UTC).</summary>
     public DateTime? RequestedAt { get; set; }
 
-    /// <summary>The connection on Octorate this activation made, for a channel or a tool.</summary>
     [MaxLength(OctorateConnectionIdMaxLength)]
     public string? OctorateConnectionId { get; set; }
 
-    /// <summary>When CasaZen last read the state of the activation from Octorate (UTC).</summary>
     public DateTime? LastSyncedAt { get; set; }
 
-    /// <summary>The code of the last problem found, shown in simple words by the client.</summary>
     [MaxLength(LastErrorCodeMaxLength)]
     public string? LastErrorCode { get; set; }
 
@@ -93,10 +78,8 @@ public class MarketplaceActivation : ITenantOwned
 
     public DateTime? MappingCommittedAt { get; set; }
 
-    /// <summary>The open To do item raised for the problem of this activation; written by the active integrations work. No foreign key.</summary>
     public Guid? TodoActivityId { get; set; }
 
-    /// <summary>When the host asked the channel manager for a change of a licensed function (UTC); written by the active integrations work.</summary>
     public DateTime? ChangeRequestedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

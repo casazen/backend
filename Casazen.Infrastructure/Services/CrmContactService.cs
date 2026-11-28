@@ -31,7 +31,6 @@ public class CrmContactService(
     TimeProvider timeProvider,
     ILogger<CrmContactService> logger) : ICrmContactService
 {
-    /// <summary>The unique index of <c>GuestContacts</c> on the org, the channel and the keyed hash.</summary>
     private const string ContactIndexName = "UIX_GuestContacts_OrgId_Channel_ValueHash";
 
     private const int NoteMaxLength = 500;
@@ -62,7 +61,6 @@ public class CrmContactService(
             input.Language,
             input.BookedVia);
 
-        // The history row is staged once: a second attempt after a conflict must not add it again.
         var historyStaged = false;
         return await StageAndSaveAsync(
             async () =>
@@ -125,7 +123,6 @@ public class CrmContactService(
         var suppressionSource = Truncate(source, GuestContact.SuppressedSourceMaxLength);
         var alreadySuppressed = contact.IsSuppressed;
 
-        // The address goes on the suppression list too (the second barrier of every campaign), in the same unit of work as the contact.
         if (contact.Channel == GuestContactChannel.Email)
             await suppression.StageSuppressionAsync(orgId, contact.Value, suppressionSource, cancellationToken);
 
@@ -136,7 +133,6 @@ public class CrmContactService(
             contact.SuppressedSource = suppressionSource;
         }
 
-        // Back to what the stay needs: a marketing opt-out does not stop the messages of a stay. A contact with no basis stays without one.
         if (contact.LegalBasis > GuestContactLegalBasis.ServiceOnly)
             contact.LegalBasis = GuestContactLegalBasis.ServiceOnly;
 
@@ -206,7 +202,6 @@ public class CrmContactService(
             .FirstOrDefaultAsync(cancellationToken);
         var notice = noticeRow is null ? null : new CrmBasisEvidence(noticeRow.Version, noticeRow.RecordedAt, noticeRow.Source, noticeRow.IpAddress);
 
-        // The single yes/no flag of the check-in and of the checkout before the per-channel consents: a consent, its details from the history.
         CrmBasisEvidence? legacyConsent = null;
         if (guest.MarketingConsent)
         {
@@ -232,9 +227,6 @@ public class CrmContactService(
             .Select(r => new { r.MarketingEmail, r.ConsentEmail, r.ConsentWhatsApp, r.EmailConfirmed, r.ConsentTimestamp, r.ConsentTextVersion, r.IpAddress })
             .ToListAsync(cancellationToken);
 
-        // When the marketing consent of the guest last ended, by the retention (Expired) or by a withdrawal (Withdrawn): the per-channel consents of the
-        // check-in stay on record as proof, and a consent given before that moment is not read again, or the sync that follows any booking event would give
-        // back what the end took away (E07/F06/US02/T01, AC-NF95-7). A consent given after it is a new act of the guest and counts.
         var consentEndedAt = await db.GuestConsentRecords
             .AsNoTracking()
             .Where(r => r.OrgId == orgId
@@ -260,7 +252,6 @@ public class CrmContactService(
                 var purchase = latest is not null && CrmContactRules.IsPurchase(latest.Status);
                 var phone = CrmNormalizer.NormalizePhone(guest.PhoneNumber, settings.DefaultCallingCode);
 
-                // 1. The e-mail address of the guest record. The origin is where the address came from: the booking.
                 if (CrmNormalizer.TryNormalizeEmail(guest.Email, out var email))
                 {
                     var isForward = OtaForwardAddress.IsForward(email, source, settings.OtaForwardDomains);
@@ -281,7 +272,6 @@ public class CrmContactService(
                     Keep(await StageAsync(input, consent, cancellationToken));
                 }
 
-                // 2. The phone number of the guest record: service only, as every phone number a booking brings.
                 if (phone is not null)
                 {
                     var origin = CrmContactRules.OriginOfBooking(source, false, GuestContactChannel.Phone);
@@ -298,9 +288,6 @@ public class CrmContactService(
                     Keep(await StageAsync(input, null, cancellationToken));
                 }
 
-                // 3. The per-channel consents of the check-in. The e-mail is a consent, confirmed only when the guest confirmed it; the time of
-                // the confirmation is not in the record (a flag), so it is the time the sync learned of it. WhatsApp is a consent on the phone.
-                // The marketing e-mail is typed at the check-in, so it does not arrive with the booking: only the domain can make it a forward.
                 foreach (var record in consentRecords)
                 {
                     if (consentEndedAt is { } ended && record.ConsentTimestamp <= ended)
@@ -339,8 +326,6 @@ public class CrmContactService(
             cancellationToken);
     }
 
-    // ---- staging ------------------------------------------------------------------------------------------------------------------
-
     /// <summary>A consent to put on a contact: what it rests on, when the person confirmed it, and whether it is a new act of the person.</summary>
     /// <param name="Evidence">Version, time, source and address of the consent.</param>
     /// <param name="ConfirmedAt">When the person confirmed the address (double opt-in), <c>null</c> when they did not.</param>
@@ -374,9 +359,6 @@ public class CrmContactService(
         }
     }
 
-    /// <summary>
-    /// Creates or changes the contact in the unit of work, without saving, and returns it tracked; <c>null</c> when the value cannot be stored.
-    /// </summary>
     private async Task<GuestContact?> StageAsync(CrmContactInput input, ConsentToApply? consent, CancellationToken cancellationToken)
     {
         if (input.OrgId == Guid.Empty)
@@ -413,8 +395,6 @@ public class CrmContactService(
 
         var changed = FillIn(contact, input);
 
-        // The row an erasure left as an opt-out marker (E07/F06/US02/T01) has its keyed hash and its flag but no value: the same address has come
-        // back, so the value is known again. It stays suppressed (below), whatever the new booking is.
         if (!created && string.IsNullOrEmpty(contact.Value))
         {
             contact.Value = value;
@@ -428,7 +408,6 @@ public class CrmContactService(
             changed = true;
         }
 
-        // An opt-out made before the contact existed, or before this address was a contact, flags it: nothing re-enables it afterwards.
         if (input.Channel == GuestContactChannel.Email
             && !contact.IsSuppressed
             && await suppression.IsSuppressedAsync(input.OrgId, value, cancellationToken))
@@ -441,7 +420,6 @@ public class CrmContactService(
 
         if (contact.Origin == GuestContactOrigin.OtaForward)
         {
-            // Service only, and nothing raises it: a consent on it is in the history, and the address is not marketable.
             changed |= ApplyBasis(contact, GuestContactLegalBasis.ServiceOnly, null, now);
         }
         else
@@ -450,15 +428,12 @@ public class CrmContactService(
             if (input.Origin == GuestContactOrigin.OctorateContactInfo && !settings.BookingEngineSoftOptIn)
                 noticeShown = false;
 
-            // A person who objected is not raised above what a stay needs by a booking.
             var basis = CrmContactRules.ResolveBasis(input.Origin, noticeShown, input.PurchaseConfirmed, input.Channel);
             if (contact.IsSuppressed && basis > GuestContactLegalBasis.ServiceOnly)
                 basis = GuestContactLegalBasis.ServiceOnly;
 
             changed |= ApplyBasis(contact, basis, basis == GuestContactLegalBasis.SoftOptIn ? input.Notice : null, now);
 
-            // A consent read from what the check-in recorded before cannot undo a withdrawal. A consent the person gives now is stored, and the
-            // contact stays suppressed.
             if (consent is not null && (consent.Fresh || !contact.IsSuppressed))
                 changed |= ApplyConsent(contact, consent, now);
         }
@@ -469,7 +444,6 @@ public class CrmContactService(
         return contact;
     }
 
-    /// <summary>The contact in the unit of work (made and not saved yet) or in the database.</summary>
     private async Task<GuestContact?> FindAsync(Guid orgId, GuestContactChannel channel, string hash, CancellationToken cancellationToken)
     {
         var staged = db.GuestContacts.Local.FirstOrDefault(c => c.OrgId == orgId && c.Channel == channel && c.ValueHash == hash);
@@ -478,13 +452,11 @@ public class CrmContactService(
             cancellationToken);
     }
 
-    /// <summary>The value in the form the index hashes and the contact stores: a plain e-mail address, or an E.164 number. <c>null</c> if it is neither.</summary>
     private string? NormalizeValue(GuestContactChannel channel, string? value) =>
         channel == GuestContactChannel.Email
             ? CrmNormalizer.TryNormalizeEmail(value, out var email) ? email : null
             : CrmNormalizer.NormalizePhone(value, options.Value.DefaultCallingCode);
 
-    /// <summary>Fills what the contact has not got and the input gives: profile, guest, display name; sets the language of the latest page. True if something changed.</summary>
     private static bool FillIn(GuestContact contact, CrmContactInput input)
     {
         var changed = false;
@@ -516,10 +488,6 @@ public class CrmContactService(
         return changed;
     }
 
-    /// <summary>
-    /// Raises the basis of the contact to <paramref name="basis"/> with its evidence, never lowers it. The same basis again replaces the evidence
-    /// only for a notice or a consent, and only with newer evidence. True if the contact changed.
-    /// </summary>
     private static bool ApplyBasis(GuestContact contact, GuestContactLegalBasis basis, CrmBasisEvidence? evidence, DateTime now)
     {
         if (basis == GuestContactLegalBasis.None || basis < contact.LegalBasis)
@@ -572,7 +540,6 @@ public class CrmContactService(
         return changed;
     }
 
-    /// <summary>Records the double opt-in: the one place that sets <see cref="GuestContactConfirmation.Confirmed"/>. Never takes it back. True if it changed.</summary>
     private static bool ApplyConfirmed(GuestContact contact, DateTime at)
     {
         if (contact.Confirmation == GuestContactConfirmation.Confirmed)
@@ -582,8 +549,6 @@ public class CrmContactService(
         contact.ConfirmedAt = at;
         return true;
     }
-
-    // ---- small helpers ------------------------------------------------------------------------------------------------------------
 
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 

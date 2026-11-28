@@ -4,7 +4,6 @@ using Casazen.Web.DTOs.Onboarding;
 
 namespace Casazen.Web.Mapping;
 
-/// <summary>The guided panel steps and the «Do it for me» requests (NF-107, NF-15, E10/F01/US03/T01) as the API answers them: codes, ids and instants only.</summary>
 public static class OnboardingAssistMapping
 {
     public static PanelStepDto ToDto(this PanelStepView step) => Fill(new PanelStepDto(), step);
@@ -58,7 +57,6 @@ public static class OnboardingAssistMapping
         ReopenedAt = item.ReopenedAt,
     };
 
-    /// <summary>One request as staff reads it, with the checklist (E20/F03/US01/T02): presence, dates and codes only.</summary>
     public static AdminAssistRequestDetailDto ToDto(this AssistRequestDetail detail) => new()
     {
         Request = detail.Request.ToDto(),

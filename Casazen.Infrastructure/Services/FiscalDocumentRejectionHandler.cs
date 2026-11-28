@@ -65,7 +65,6 @@ public sealed class FiscalDocumentRejectionHandler(
                     await CloseAsync(domainEvent, domainEvent.EntityId, ct, nameof(ActivityAction.ReviewSelfBilling));
                     break;
                 case DomainEventType.FiscalDocumentCorrected:
-                    // The rejected document is discarded: every «To do» still open on it is done, the one of its correction and one to look at it (and the alert of a self-billed invoice).
                     await CloseAsync(domainEvent, domainEvent.EntityId, ct);
                     await CloseAsync(domainEvent, domainEvent.EntityId, ct, nameof(ActivityAction.ReviewFiscalDocument));
                     await CloseAsync(domainEvent, domainEvent.EntityId, ct, nameof(ActivityAction.ReviewSelfBilling));
@@ -97,7 +96,6 @@ public sealed class FiscalDocumentRejectionHandler(
     {
         var documentId = domainEvent.EntityId;
 
-        // The document of the event's own org: an event never raises an item for another organization's document.
         var document = await db.FiscalDocuments
             .AsNoTracking()
             .Where(d => d.Id == documentId && d.OrgId == domainEvent.OrgId)
@@ -132,8 +130,6 @@ public sealed class FiscalDocumentRejectionHandler(
             return;
         }
 
-        // A «To do» is one per document while it is open, whatever its action: an item to look at the document (its booking changed) would take the place of this one, so it is closed first.
-        // The correction makes the replacement from the booking as it is now, so the change is not lost.
         if (await activities.FindOpenAsync(document.OrgId, nameof(ActivityAction.ReviewFiscalDocument), FiscalDocumentTodos.EntityType, documentId, ct) is { } review)
         {
             await activities.CloseAsync(review.Id, InternalActivity.ClosedBySystem, ct);
@@ -163,7 +159,6 @@ public sealed class FiscalDocumentRejectionHandler(
 
         logger.LogInformation("Event {EventId}: «To do» «correct the invoice» raised for document {DocumentId} of org {OrgId}", domainEvent.Id, documentId, domainEvent.OrgId);
 
-        // The live notice (bell, pop-up, open pages) only for a document of a booking. Best effort: the item is saved, so nothing here fails the event.
         if (push is not null && document.BookingId is not null)
             await TellTheHostsAsync(documentId, document.OrgId, document.BookingId, ct);
     }
@@ -214,7 +209,6 @@ public sealed class FiscalDocumentRejectionHandler(
         logger.LogInformation("Event {EventId} ({EventType}): «To do» {Action} of document {DocumentId} of org {OrgId} closed", domainEvent.Id, domainEvent.Type, action, documentId, domainEvent.OrgId);
     }
 
-    /// <summary>The document a credit note credits, from the payload of its event; <c>null</c> when the payload names none.</summary>
     private static Guid? CreditedDocumentOf(DomainEvent domainEvent)
     {
         try

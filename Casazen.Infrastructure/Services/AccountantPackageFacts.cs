@@ -12,11 +12,6 @@ namespace Casazen.Infrastructure.Services;
 /// <summary>A line of an issued fiscal document as the accountant package reads it: its type, its taxable amount, its VAT rate and its stored VAT.</summary>
 internal sealed record PackageDocumentLine(int LineNumber, FiscalLineType LineType, decimal TotalPrice, decimal VatRatePercent, string? VatNatureCode, decimal? VatAmount);
 
-/// <summary>
-/// An issued fiscal document as the accountant package and the agency summary read it (E15/F01/US01/T01): what the document stores, to the cent, with its lines and
-/// without its XML, its recipient's fiscal data or its address. The same read for both, so the register of the package and the figures of the summary are made of
-/// the same documents.
-/// </summary>
 internal sealed record PackageDocument(
     Guid Id,
     FiscalDocumentPurpose Purpose,
@@ -42,7 +37,6 @@ internal sealed record PackageDocument(
     bool HasXml,
     List<PackageDocumentLine> Lines)
 {
-    /// <summary>The sign a document counts with: a credit note takes away what it credits (it stores positive amounts).</summary>
     public decimal Sign => Kind == FiscalDocumentKind.CreditNote ? -1m : 1m;
 
     /// <summary>The state of the document with the SDI (one of <see cref="FiscalDocumentSdiStatuses"/>), as it is stored: the register of the self-billed invoices says it.</summary>
@@ -99,10 +93,6 @@ internal sealed record PackageRejectedOriginal(DateOnly? IssueDate, string SdiSt
 /// </summary>
 internal sealed record PortalCommissionLine(int Year, int Month, Guid OwnerId, BookingSource Source, string Currency, Guid StayId, decimal Amount, bool Recharged);
 
-/// <summary>
-/// The commission of one channel in one currency on the stays of an owner in a statement month (the lines of the portal in the invoice of the agency to that owner), as a positive amount, with
-/// the stays that carry it and whether the organization recharges it to the owner; <paramref name="OwnerName"/> is <c>null</c> until the names are read, and for an owner whose data was anonymized.
-/// </summary>
 internal sealed record PackagePortalCommission(int Year, int Month, Guid OwnerId, string? OwnerName, BookingSource Source, string Currency, int Stays, decimal Amount, bool Recharged);
 
 /// <summary>
@@ -112,12 +102,6 @@ internal sealed record PackagePortalCommission(int Year, int Month, Guid OwnerId
 /// </summary>
 internal static class AccountantPackageFacts
 {
-    /// <summary>The issued documents of <paramref name="purpose"/> of the org in <paramref name="period"/> (the day of the issue), narrowed in SQL to the reach of <paramref name="scope"/>.</summary>
-    /// <remarks>
-    /// The documents of a stay reach a scope that reaches the property of their booking (the narrowing of the list of the documents,
-    /// <c>FiscalDocumentService.Matching</c>); the invoices to the owners have no booking and belong to no property, so they reach the whole org only: a scope that
-    /// does not reach it reads none. A proforma is not a document and a draft or a discarded one is not issued.
-    /// </remarks>
     public static IQueryable<FiscalDocument> IssuedDocuments(AppDbContext db, HostScope scope, AccountantPackagePeriod period, FiscalDocumentPurpose purpose)
     {
         ArgumentNullException.ThrowIfNull(db);
@@ -149,10 +133,6 @@ internal static class AccountantPackageFacts
         return IssuedDocuments(db, scope, period, FiscalDocumentPurpose.SelfBilling).Where(d => d.SdiStatus != FiscalDocumentSdiStatuses.Rejected);
     }
 
-    /// <summary>
-    /// The documents of <see cref="IssuedDocuments"/> as <see cref="PackageDocument"/>, oldest first (the day of the issue, then the series and the number): the query, not run, so a
-    /// test can read how a provider translates it (<see cref="ReadAsync"/> runs it).
-    /// </summary>
     public static IQueryable<PackageDocument> Documents(AppDbContext db, HostScope scope, AccountantPackagePeriod period, FiscalDocumentPurpose purpose)
     {
         return IssuedDocuments(db, scope, period, purpose)
@@ -192,17 +172,12 @@ internal static class AccountantPackageFacts
             });
     }
 
-    /// <summary>The documents of <see cref="Documents"/>, read.</summary>
     public static async Task<List<PackageDocument>> ReadAsync(
         AppDbContext db, HostScope scope, AccountantPackagePeriod period, FiscalDocumentPurpose purpose, CancellationToken cancellationToken)
     {
         return await Documents(db, scope, period, purpose).ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// The issuer of the org as its profile and the org say it today: the issuer of a document issued before the snapshot of the issuer existed. The profile of the
-    /// org, never the one of an owner (E17/F01/US01/T01: the owners' profiles live in the same table).
-    /// </summary>
     public static async Task<FiscalIssuerSnapshot> CurrentIssuerAsync(AppDbContext db, Guid orgId, CancellationToken cancellationToken)
     {
         var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(cancellationToken);
@@ -210,7 +185,6 @@ internal static class AccountantPackageFacts
         return org is null ? new FiscalIssuerSnapshot() : FiscalIssuerSnapshot.From(profile, org);
     }
 
-    /// <summary>The issuer a document was issued with: its snapshot (the issuer as it was at the issue), else <paramref name="fallback"/>.</summary>
     public static AgencyIssuer IssuerOf(string? snapshotJson, FiscalIssuerSnapshot fallback)
     {
         ArgumentNullException.ThrowIfNull(fallback);
@@ -258,13 +232,10 @@ internal static class AccountantPackageFacts
         return line.VatAmount ?? FiscalDocumentTotals.Vat(line.TotalPrice, line.VatRatePercent);
     }
 
-    /// <summary>The quarter of a day, as the Swiss VAT return counts it: <c>2026-Q4</c>.</summary>
     public static string QuarterOf(DateOnly day) => string.Create(CultureInfo.InvariantCulture, $"{day.Year}-Q{((day.Month - 1) / 3) + 1}");
 
-    /// <summary>The month of a day: <c>2026-10</c>.</summary>
     public static string MonthOf(DateOnly day) => day.ToString("yyyy-MM", CultureInfo.InvariantCulture);
 
-    /// <summary>The name the agency keeps for each owner (the legal name, else first and last name); <c>null</c> for an owner whose data was anonymized.</summary>
     public static async Task<Dictionary<Guid, string?>> OwnerNamesAsync(AppDbContext db, Guid orgId, IReadOnlyCollection<Guid> ownerIds, CancellationToken cancellationToken)
     {
         var names = new Dictionary<Guid, string?>();
@@ -285,10 +256,6 @@ internal static class AccountantPackageFacts
         return names;
     }
 
-    /// <summary>
-    /// The canton of each property in Switzerland among <paramref name="propertyIds"/> (the canton of its municipality, an empty text when the property has none): a
-    /// property abroad or in Italy is not in the answer, so the tourist tax of a Swiss document is told from the Italian one.
-    /// </summary>
     public static async Task<Dictionary<Guid, string>> SwissCantonsAsync(AppDbContext db, Guid orgId, IReadOnlyCollection<Guid> propertyIds, CancellationToken cancellationToken)
     {
         if (propertyIds.Count == 0)
@@ -311,10 +278,6 @@ internal static class AccountantPackageFacts
         return properties.ToDictionary(p => p.Id, p => p.SwissMunicipalityCode is { } code && cantons.TryGetValue(code, out var canton) ? canton : string.Empty);
     }
 
-    /// <summary>
-    /// The Swiss tourist tax the documents collected, for each canton and currency (credit notes taken away): the lines of the type tourist tax of the documents of the
-    /// properties in Switzerland. What was remitted to the cantonal office is not recorded in CasaZen.
-    /// </summary>
     public static async Task<IReadOnlyList<AgencySwissTouristTaxRow>> SwissTouristTaxAsync(
         AppDbContext db, Guid orgId, IReadOnlyList<PackageDocument> guestDocuments, CancellationToken cancellationToken)
     {
@@ -386,17 +349,12 @@ internal static class AccountantPackageFacts
             .ToList();
     }
 
-    /// <summary>
-    /// The commissions the portals kept on the stays of the listings whose account the agency holds (⚖ I10, V2), for each channel and currency: the lines of
-    /// <see cref="PortalCommissionLinesAsync"/> as positive amounts, a reversal and the line it reverses cancelling out.
-    /// </summary>
     public static async Task<IReadOnlyList<AgencyPortalCommissionBorneRow>> PortalCommissionsBorneAsync(
         AppDbContext db, IPortalAccountHolderResolver holders, Guid orgId, AccountantPackagePeriod period, CancellationToken cancellationToken)
     {
         return BorneOf(await PortalCommissionLinesAsync(db, holders, orgId, period, cancellationToken));
     }
 
-    /// <summary>The lines of <see cref="PortalCommissionLinesAsync"/> added up for each channel and currency, as positive amounts (what is left of the fees of the period), the zero totals left out.</summary>
     public static IReadOnlyList<AgencyPortalCommissionBorneRow> BorneOf(IReadOnlyList<PortalCommissionLine> lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -410,11 +368,6 @@ internal static class AccountantPackageFacts
             .ToList();
     }
 
-    /// <summary>
-    /// The lines of <see cref="PortalCommissionLinesAsync"/> added up for each statement month, owner, channel and currency (the lines of the invoice of the agency to an owner that
-    /// recharges a portal are one for each channel): the commission as a positive amount, the stays that still carry one (a stay whose lines net to nothing is out), and whether the
-    /// organization recharges it. A group that nets to nothing is left out. The names of the owners are not here: <see cref="OwnerNamesAsync"/> gives them.
-    /// </summary>
     public static IReadOnlyList<PackagePortalCommission> PortalCommissionRowsOf(IReadOnlyList<PortalCommissionLine> lines)
     {
         ArgumentNullException.ThrowIfNull(lines);

@@ -54,7 +54,6 @@ public sealed record PropertySenderDto(
     DateTime? LastChangedAt,
     bool AutoSendGuestsToOctorate = false)
 {
-    /// <summary>The DTO of a view, with the guidance already worded in the language of the request.</summary>
     public static PropertySenderDto From(PropertySenderView view, string? guidance)
     {
         ArgumentNullException.ThrowIfNull(view);
@@ -104,7 +103,6 @@ public sealed record SenderConnectionTestDto(
     DateTime? PoliceLastCron,
     DateTime CheckedAt)
 {
-    /// <summary>The DTO of a result, with the guidance already worded in the language of the request.</summary>
     public static SenderConnectionTestDto From(SenderConnectionTestResult result, string? guidance)
     {
         ArgumentNullException.ThrowIfNull(result);
@@ -126,33 +124,18 @@ public sealed record SenderConnectionTestDto(
 /// </summary>
 public sealed class SwitchSenderRequest
 {
-    /// <summary>The new sender: ChannelManager or Manual (CasaZen is refused: it is not available in this release).</summary>
     [Required(ErrorMessage = "SenderRequired")]
     public ComplianceSenderType? Sender { get; set; }
 
     /// <summary>Optional. When given it has to be the same as <see cref="Sender"/>, otherwise 422 <c>sender_istat_mismatch</c>.</summary>
     public ComplianceSenderType? IstatSender { get; set; }
 
-    /// <summary>The host confirmed that the sender in effect will be off. Without it a change of sender answers 409 <c>sender_switch_confirmation_required</c>.</summary>
     public bool Confirmed { get; set; }
 
-    /// <summary>The host accepts the delegation of the transmission (the text of <c>delegationTextVersion</c>). Needed once for an automatic sender.</summary>
     public bool DelegationConsent { get; set; }
 
-    /// <summary>
-    /// The version of the delegation text the host read and accepted: the <c>delegationTextVersion</c> of the sender the screen was loaded
-    /// from. Optional, but required when <see cref="DelegationConsent"/> is true: 422 <c>alloggiati_delegation_text_version_required</c> without
-    /// it, 409 <c>alloggiati_delegation_text_outdated</c> when it is not the version in force (the problem carries the current
-    /// <c>delegationTextVersion</c>). The consent recorded is the consent to the text the person saw.
-    /// </summary>
     [MaxLength(AlloggiatiDelegationTexts.VersionMaxLength, ErrorMessage = "AlloggiatiDelegationVersionInvalid")]
     public string? DelegationTextVersion { get; set; }
 
-    /// <summary>
-    /// Optional, an org-wide setting (E20/F01/US01/T01, decision O1): <c>true</c> lets CasaZen write the guests of a stay to the channel manager as soon as
-    /// their data is complete and the identity check passed, <c>false</c> goes back to the host's confirmation in the check-in wizard, left out changes
-    /// nothing. It is applied after the sender, when the sender change went through, and only for the organization administrator: another member who
-    /// asks to change it is refused (403), whatever the sender does.
-    /// </summary>
     public bool? AutoSendGuestsToOctorate { get; set; }
 }

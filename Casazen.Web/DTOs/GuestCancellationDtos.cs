@@ -2,13 +2,10 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>The cancellation policy of the stay as the guest reads it: <c>description</c> is the catalog's, <c>null</c> when the host changed its windows.</summary>
 public sealed record GuestCancellationPolicyDto(string Slug, string Name, string? Description);
 
-/// <summary>The stay a preview is about.</summary>
 public sealed record GuestCancellationStayDto(string PropertyName, DateOnly CheckInDate, DateOnly CheckOutDate);
 
-/// <summary>The refund of a cancellation that already happened, and where it stands (<c>none</c>, <c>pending</c>, <c>confirmed</c>, <c>failed</c>).</summary>
 public sealed record GuestCancellationOutcomeDto(decimal RefundAmount, string RefundStatus);
 
 /// <summary>
@@ -76,26 +73,15 @@ public sealed record GuestCancellationPreviewDto(
     }
 }
 
-/// <summary>
-/// Body of <c>POST api/public/guest/bookings/{code}/cancel</c>: the guest confirms and says the amount they were shown. Both are required:
-/// the cancellation does not go on if the refund is no longer that amount (409 <c>refund_changed</c>).
-/// </summary>
 public sealed class GuestCancelRequest
 {
-    /// <summary>Must be <c>true</c>: the guest confirmed the cancellation.</summary>
     public bool? Confirm { get; set; }
 
-    /// <summary>The <c>refundAmount</c> the guest saw (in the currency of the preview, two decimals; 0 when they were shown no refund).</summary>
     public decimal? ExpectedRefundAmount { get; set; }
 }
 
-/// <summary>
-/// Optional body of <c>POST api/public/bookings/{id}/cancel?token=</c>, the page of the host's link (DB-08a): the amount the guest was
-/// shown. Without a body the link cancels as it always did.
-/// </summary>
 public sealed class GuestLinkCancelRequest
 {
-    /// <summary>The <c>refundAmount</c> the guest saw on the page of the link.</summary>
     public decimal? ExpectedRefundAmount { get; set; }
 }
 
@@ -112,7 +98,6 @@ public sealed record GuestCancelResponse(string Status, decimal RefundAmount, st
     }
 }
 
-/// <summary>Answer of the cancellation with the host's link.</summary>
 public sealed record GuestLinkCancelResponse(Guid BookingId, string Status, decimal RefundAmount, string RefundStatus)
 {
     public static GuestLinkCancelResponse From(GuestCancellationResult result)

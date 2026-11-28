@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Push;
 
-/// <summary>Counts of one <see cref="PushReceiptService.CheckReceiptsAsync"/> run, for the log and the tests.</summary>
 public sealed record PushReceiptRunResult(
     int Checked,
     int Delivered,
@@ -27,10 +26,8 @@ public sealed class PushReceiptService(
     TimeProvider timeProvider,
     ILogger<PushReceiptService> logger)
 {
-    /// <summary>Expo advises reading a receipt about 15 minutes after the send.</summary>
     public static readonly TimeSpan ReceiptDelay = TimeSpan.FromMinutes(15);
 
-    /// <summary>Expo keeps receipts for 24 hours: a ticket older than that without a receipt will never get one.</summary>
     public static readonly TimeSpan ReceiptLifetime = TimeSpan.FromHours(24);
 
     /// <summary>
@@ -39,10 +36,8 @@ public sealed class PushReceiptService(
     /// </summary>
     public const int RetentionDays = 7;
 
-    /// <summary>Tickets read per run, at most; the rest waits for the next run.</summary>
     public const int MaxTicketsPerRun = 10 * ExpoPushOptions.MaxReceiptIdsPerRequest;
 
-    /// <summary>Rows purged per run, at most.</summary>
     public const int MaxPurgedPerRun = 5000;
 
     public async Task<PushReceiptRunResult> CheckReceiptsAsync(CancellationToken cancellationToken = default)
@@ -64,7 +59,6 @@ public sealed class PushReceiptService(
             var result = await expoClient.GetReceiptsAsync(batch.Select(d => d.TicketId!).ToList(), cancellationToken);
             if (!result.Succeeded)
             {
-                // Logged by the client; the tickets are read again at the next run (Expo keeps them for a day).
                 logger.LogWarning(
                     "Push receipts not read for {Count} tickets ({Error}): retried at the next run",
                     batch.Length,
@@ -78,7 +72,6 @@ public sealed class PushReceiptService(
             {
                 if (!result.Receipts.TryGetValue(delivery.TicketId!, out var receipt))
                 {
-                    // Not ready yet, or no longer kept by Expo.
                     if (delivery.SentAt < expiredBefore)
                     {
                         delivery.Status = PushDeliveryStatus.ReceiptUnavailable;
@@ -128,7 +121,6 @@ public sealed class PushReceiptService(
         return summary;
     }
 
-    /// <summary>Deletes the delivery rows older than <see cref="RetentionDays"/> days.</summary>
     private async Task<int> PurgeAsync(DateTime now, CancellationToken cancellationToken)
     {
         var cutoff = now.AddDays(-RetentionDays);

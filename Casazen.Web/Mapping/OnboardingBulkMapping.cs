@@ -3,7 +3,6 @@ using Casazen.Web.DTOs.Onboarding;
 
 namespace Casazen.Web.Mapping;
 
-/// <summary>The bulk configuration (E10/F02/US01/T01) as the API takes and answers it: ids, counts and codes only.</summary>
 public static class OnboardingBulkMapping
 {
     public static BulkSelection ToModel(this BulkSelectionDto? dto) => new(
@@ -113,7 +112,6 @@ public static class OnboardingBulkMapping
         dto.ChannelCodes,
         dto.MissingFlow,
         dto.FlowState is { } state
-            // A state without its flow is a body that cannot be read: the service refuses it as an invalid selection.
             ? new BulkFlowStateFilter(state.Flow ?? default, state.State ?? string.Empty)
             : null);
 

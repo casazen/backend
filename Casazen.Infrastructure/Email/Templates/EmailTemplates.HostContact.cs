@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>«A visitor wrote to you», to the host, from the contact form of the booking site (DB-03b).</summary>
         public const string HostContactMessage = "host-contact-message";
     }
 

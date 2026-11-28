@@ -19,52 +19,31 @@ public class AgencyInvoice : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Issuer agency (tenant key). Inherited from the property owner; never client-supplied.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
-    /// <summary>Recipient property owner.</summary>
     [ForeignKey(nameof(PropertyOwner))]
     public Guid OwnerId { get; set; }
     public virtual PropertyOwner PropertyOwner { get; set; } = null!;
 
-    /// <summary>
-    /// Sequential invoice number within the series (no gaps, ADR-019-R4).
-    /// Together with Series identifies the invoice uniquely within the agency.
-    /// </summary>
     [Required]
     [MaxLength(50)]
     public string InvoiceNumber { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Invoice series (configurable per agency, e.g., "2026", "COMM", empty string for default).
-    /// Together with InvoiceNumber identifies the invoice uniquely within the agency.
-    /// </summary>
     [Required]
     [MaxLength(20)]
     public string Series { get; set; } = string.Empty;
 
-    /// <summary>Invoice period: month (1-12).</summary>
     public int Month { get; set; }
 
-    /// <summary>Invoice period: year (e.g., 2026).</summary>
     public int Year { get; set; }
 
-    /// <summary>
-    /// Taxable base (imponibile): commission amount before VAT. Full precision (ADR-019-R10).
-    /// </summary>
     [Precision(18, 2)]
     public decimal TaxableBase { get; set; }
 
-    /// <summary>
-    /// VAT rate as a percentage (e.g., 22.00 for 22%). May be 0.00 for VAT exemption.
-    /// </summary>
     [Precision(5, 2)]
     public decimal VatRate { get; set; }
 
-    /// <summary>
-    /// VAT amount (VatRate * TaxableBase / 100). Full precision.
-    /// </summary>
     [Precision(18, 2)]
     public decimal VatAmount { get; set; }
 
@@ -81,9 +60,6 @@ public class AgencyInvoice : ITenantOwned
     [Precision(18, 2)]
     public decimal StampDuty { get; set; }
 
-    /// <summary>
-    /// Total invoice amount (TaxableBase + VatAmount + StampDuty). Full precision rounded to 2 decimals.
-    /// </summary>
     [Precision(18, 2)]
     public decimal Total { get; set; }
 
@@ -101,25 +77,17 @@ public class AgencyInvoice : ITenantOwned
     [MaxLength]
     public string? FatturapaXml { get; set; }
 
-    /// <summary>When this invoice was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When this invoice was last updated (UTC). Updated on recalculation or status change.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>
-    /// What CasaZen can say of the compliance of this historical record (E06/F01/US02/T05): <see cref="AgencyInvoiceCompliance.LegacyUnverified"/> for
-    /// every invoice the retired generator made (no verifiable delivery or schema evidence is stored); never relabelled as compliant.
-    /// </summary>
     [MaxLength(AgencyInvoiceCompliance.MaxLength)]
     public string ComplianceStatus { get; set; } = AgencyInvoiceCompliance.LegacyUnverified;
 }
 
-/// <summary>The compliance codes of the historical agency invoices (E06/F01/US02/T05).</summary>
 public static class AgencyInvoiceCompliance
 {
     public const int MaxLength = 32;
 
-    /// <summary>Made by the retired internal generator, without independently verifiable delivery or schema evidence.</summary>
     public const string LegacyUnverified = "legacy_unverified";
 }

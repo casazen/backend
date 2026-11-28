@@ -47,8 +47,6 @@ public sealed class FiscalDocumentCorrectionService(
         if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice)
             throw new DomainRuleException(OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
 
-        // A self-billed invoice (TD17, E17/F01/US03) is never replaced from here, whatever its state: the replacement is the copy of an invoice to a guest that follows its booking, and a TD17 has
-        // no guest and no such flow. Its correction is StartSelfBillingCorrectionAsync, behind its own endpoint and permission. Nothing is made or changed, and the answer says so with a code of its own.
         if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
             throw new DomainRuleException(SelfBillingErrors.NotCorrectable, "SelfBillingNotCorrectable");
 
@@ -59,7 +57,6 @@ public sealed class FiscalDocumentCorrectionService(
         if (document.Status != FiscalDocumentStatus.Issued || document.SdiStatus != FiscalDocumentSdiStatuses.Rejected)
             throw new DomainRuleException(FiscalDocumentSdiErrors.NotRejected, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.NotRejected));
 
-        // A document with an issued credit note is not replaced: the credit and the replacement would both bill the same operation (the accountant decides; its «Da fare» says so).
         if (document.SequenceNumber is null
             || string.IsNullOrEmpty(document.Number)
             || await HasIssuedCreditNoteAsync(document.Id, ct))
@@ -100,7 +97,6 @@ public sealed class FiscalDocumentCorrectionService(
     {
         await using var transaction = await LockAsync(documentId, ct);
 
-        // The TD17 of the organization asked for: a document of another organization, a credit note, a document that is not a TD17 and an imported one are not found (404), never refused.
         var document = await db.FiscalDocuments
             .Include(d => d.Lines)
             .FirstOrDefaultAsync(
@@ -141,7 +137,6 @@ public sealed class FiscalDocumentCorrectionService(
         return await db.FiscalDocuments.Include(d => d.Lines).FirstOrDefaultAsync(d => d.ReplacesDocumentId == document.Id && d.Status == FiscalDocumentStatus.Draft, ct);
     }
 
-    /// <summary>The document has a credit note issued: a rejected one is then not corrected (the accountant decides). The draft of a credit note does not count: the correction discards it.</summary>
     private Task<bool> HasIssuedCreditNoteAsync(Guid documentId, CancellationToken ct) =>
         db.FiscalDocuments.AnyAsync(d => d.CreditedDocumentId == documentId && d.Status == FiscalDocumentStatus.Issued, ct);
 
@@ -186,7 +181,6 @@ public sealed class FiscalDocumentCorrectionService(
         return (replacement, plannedCredits.Count);
     }
 
-    /// <summary>The open «Da fare» of the credit note drafts the correction discarded («check and issue the credit note»): nothing is left to issue.</summary>
     private async Task CloseTodosOfAsync(Guid orgId, IReadOnlyList<FiscalDocument> discarded, CancellationToken ct)
     {
         if (activities is null)
@@ -199,10 +193,6 @@ public sealed class FiscalDocumentCorrectionService(
         }
     }
 
-    /// <summary>
-    /// The draft that replaces <paramref name="rejected"/>: its lines, amounts and recipient as stored, its issuer, its part of the booking (or, for a self-billed invoice, its month: the draft is
-    /// made again and issued by it) and the series and sequence number it gave up. The lines are added to the new document before it is added to the context, so they are inserted with it.
-    /// </summary>
     private static FiscalDocument ReplacementOf(FiscalDocument rejected, int sequenceNumber, string? userId, DateTime now)
     {
         var replacement = new FiscalDocument
@@ -233,7 +223,6 @@ public sealed class FiscalDocumentCorrectionService(
             CreditedDocumentId = rejected.CreditedDocumentId,
             ReplacesDocumentId = rejected.Id,
 
-            // The number the correction took from the rejected document, held by the draft from the start: the issue uses it and reserves no other.
             Series = rejected.Series,
             SequenceNumber = sequenceNumber,
             Number = rejected.Number,

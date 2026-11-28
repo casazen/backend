@@ -5,9 +5,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// The cents of one fiscal year in a staged snapshot. They are compared with the book only after the house is confirmed.
-/// </summary>
 [Table("CondominiumImportYears")]
 public class CondominiumImportYear : ITenantOwned
 {

@@ -42,7 +42,6 @@ public sealed record ComplianceArchiveEntryDto(
     IReadOnlyList<ComplianceCoveredPropertyDto>? CoveredProperties = null,
     int? CoveredStays = null)
 {
-    /// <summary>The path a proof is downloaded from.</summary>
     public static string DownloadPathOf(Guid id) => $"/api/compliance/archive/{id}/download";
 
     public static ComplianceArchiveEntryDto From(ComplianceArchiveEntry entry)
@@ -66,15 +65,8 @@ public sealed record ComplianceArchiveEntryDto(
     }
 }
 
-/// <summary>A flat a proof covers (E20/F02/US01/T01): its id and its name.</summary>
-/// <param name="Id">The flat.</param>
-/// <param name="Name">Its name.</param>
 public sealed record ComplianceCoveredPropertyDto(Guid Id, string Name);
 
-/// <summary>What a receipt of one day would prove for one flat: the stays of that flat that arrived that day and owe the communication.</summary>
-/// <param name="PropertyId">The flat.</param>
-/// <param name="PropertyName">Its name.</param>
-/// <param name="Stays">The stays that become proven; zero when none arrived that day.</param>
 public sealed record ComplianceReceiptCoveragePropertyDto(Guid PropertyId, string PropertyName, int Stays);
 
 /// <summary>
@@ -254,7 +246,6 @@ public sealed record ComplianceCoverageReportDto(
     int NotApplicable,
     IReadOnlyList<ComplianceReportRowDto> Rows)
 {
-    /// <summary>The answer for a report (named <c>Of</c>: <c>From</c> is the first day of the period).</summary>
     public static ComplianceCoverageReportDto Of(ComplianceCoverageReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -273,17 +264,11 @@ public sealed record ComplianceCoverageReportDto(
     }
 }
 
-/// <summary>
-/// The form of an upload (<c>POST api/compliance/archive/proofs</c>, <c>multipart/form-data</c>): the property, what the file proves, the day it
-/// is about, and the file (a PDF, a JPEG or a PNG, judged on its content). The person who uploads it is the caller, never a field.
-/// </summary>
 public sealed class UploadComplianceProofForm
 {
-    /// <summary>The property the proof is about.</summary>
     [Required(ErrorMessage = "ComplianceProofPropertyRequired")]
     public Guid? PropertyId { get; set; }
 
-    /// <summary><c>AlloggiatiReceipt</c>, <c>IstatProof</c>, <c>TouristTaxDeclaration</c> or <c>TouristTaxPayment</c>.</summary>
     [Required(ErrorMessage = "ComplianceProofKindRequired")]
     public ManualProofKind? Kind { get; set; }
 
@@ -297,20 +282,13 @@ public sealed class UploadComplianceProofForm
     /// </summary>
     public List<Guid>? PropertyIds { get; set; }
 
-    /// <summary>The file.</summary>
     public IFormFile? File { get; set; }
 }
 
-/// <summary>
-/// The question of the summary before an upload (<c>GET api/compliance/archive/proofs/coverage</c>, E20/F02/US01/T01): the day of the communication and the
-/// flats the receipt would cover, <c>propertyIds</c> repeated.
-/// </summary>
 public sealed class ReceiptCoverageQuery
 {
-    /// <summary>The day of the communication (<c>yyyy-MM-dd</c>).</summary>
     [Required(ErrorMessage = "ComplianceProofDayRequired")]
     public DateOnly? Day { get; set; }
 
-    /// <summary>The flats the receipt would cover; at least one (an empty list is a 422, never «every flat»).</summary>
     public List<Guid>? PropertyIds { get; set; }
 }

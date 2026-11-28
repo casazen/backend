@@ -127,8 +127,6 @@ public sealed class ResendEmailService(
             return new EmailSendResult(false, "resend_error", IsTransient: true);
         }
 
-        // The provider message can quote an address (e.g. the account owner's on a 403): only its masked form is
-        // logged, and the exception object is not passed to the logger for the same reason (FD-17, A9-36).
         var detail = LogRedaction.MaskEmails(ex.Message);
         logger.LogError(
             "Resend API call failed: {ErrorType} (HTTP {StatusCode}, transient={IsTransient}): {Error}",

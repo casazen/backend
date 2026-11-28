@@ -15,9 +15,7 @@ public static class SupplierPaymentsErrors
     /// </summary>
     public const string NotReady = "supplier_payments_not_ready";
 
-    /// <summary>The key of <see cref="NotReady"/>.</summary>
     public const string NotReadyMessageKey = "SupplierPaymentsNotReady";
 
-    /// <summary>Every <c>SharedResources</c> key of this feature (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } = [NotReadyMessageKey];
 }

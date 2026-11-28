@@ -53,12 +53,5 @@ public interface ISuppressionService
     /// <param name="cancellationToken">Cancellation token</param>
     Task AddByHashAsync(Guid orgId, string emailHash, string source, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The same as <see cref="AddToSuppressionListAsync"/> <b>without saving</b>: the entry and the flags of the contacts are added to the
-    /// current unit of work (the <c>AppDbContext</c> of the scope, shared with the caller) and the caller saves them with its own changes, so
-    /// a revocation and its suppression are one commit (the host's withdrawal of a marketing consent, <c>IGdprService</c>). Nothing is
-    /// written until the caller saves. Returns whether a new entry was added (false: the keyed hash was already in the list).
-    /// </summary>
-    /// <exception cref="InvalidOperationException"><c>Crm:ContactIndexKey</c> is not configured outside Development and Testing.</exception>
     Task<bool> StageSuppressionAsync(Guid orgId, string email, string source, CancellationToken cancellationToken = default);
 }

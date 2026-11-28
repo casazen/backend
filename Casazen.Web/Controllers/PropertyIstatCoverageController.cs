@@ -42,7 +42,6 @@ public sealed class PropertyIstatCoverageController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IstatCoverageDto>> Get(Guid propertyId, CancellationToken cancellationToken)
     {
-        // Tenant filter: another org's property is not found, the same answer as a property that does not exist.
         var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
         if (resource is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");

@@ -38,7 +38,6 @@ public sealed class ActivityLog(AppDbContext db, TimeProvider? timeProvider = nu
         });
     }
 
-    /// <summary>.NET counts in 100 ns, PostgreSQL in microseconds: truncated here, a round trip does not change the value.</summary>
     internal static DateTime ToMicroseconds(DateTime utc) =>
         new(utc.Ticks - (utc.Ticks % (TimeSpan.TicksPerMillisecond / 1000)), DateTimeKind.Utc);
 }

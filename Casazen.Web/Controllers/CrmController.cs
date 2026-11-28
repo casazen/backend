@@ -33,10 +33,8 @@ public class CrmController(
     public const int MaxPageSize = CrmProfileRules.MaxPageSize;
     public const int MaxTagsPerGuest = CrmProfileRules.MaxTags;
 
-    /// <summary>404: the profile does not exist, is of another org, is not reached by the caller or was merged into another.</summary>
     public const string ProfileNotFoundCode = "crm_profile_not_found";
 
-    /// <summary>404: the merge proposal does not exist, is of another org, or has a profile the caller does not reach in full.</summary>
     public const string MergeCandidateNotFoundCode = "crm_merge_candidate_not_found";
 
     /// <summary>
@@ -72,7 +70,6 @@ public class CrmController(
     {
         logger.LogInformation("Retrieving CRM guest profiles: search {HasSearch}, sort {Sort}", !string.IsNullOrWhiteSpace(search), sort);
 
-        // No org yet, or no reach on it: nothing is listed and nothing is widened to the whole org.
         var scope = await ResolveScopeAsync(cancellationToken);
         if (scope is null)
             return Forbid();
@@ -89,13 +86,6 @@ public class CrmController(
         });
     }
 
-    /// <summary>
-    /// A profile in detail: who it is, the stays the caller reaches with their channel and amount, the totals (spend per channel, stays per
-    /// property, the typical group, the booking advance), the reviews, the tags and the contacts with the reason why one is not marketable
-    /// (AC-NF88-4). A profile of another org, or one the caller does not reach, is 404 <c>crm_profile_not_found</c>.
-    /// </summary>
-    /// <param name="id">The profile.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
     [HttpGet("guests/{id:guid}")]
     [ProducesResponseType(typeof(CrmProfileDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -217,10 +207,6 @@ public class CrmController(
         return Ok(CrmProfileListItemDto.From(survivor));
     }
 
-    /// <summary>
-    /// What the caller reaches in its org (AM-03): the whole org, or the properties it was given. <c>null</c> when it has no org yet or no
-    /// reach on it; that is never widened to the whole org.
-    /// </summary>
     private async Task<HostScope?> ResolveScopeAsync(CancellationToken cancellationToken = default)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);

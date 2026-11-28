@@ -20,20 +20,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IAssistantKnowledgeService
 {
-    /// <summary>
-    /// The knowledge base of a property in <paramref name="language"/> (<c>en</c>, Italian for anything else): the facts of the listing, the active and inactive entries of
-    /// the property and of the organization (the organization-wide ones flagged <c>inherited</c>) and the topics with no fact and no active entry. 404
-    /// <c>property_not_found</c> for a property that is not the organization's.
-    /// </summary>
     Task<AssistantKnowledgeView> GetViewAsync(Guid orgId, Guid propertyId, string? language, CancellationToken ct = default);
 
-    /// <summary>The organization-wide entries (no property), by topic, active or not.</summary>
     Task<IReadOnlyList<KnowledgeEntryItem>> ListOrganizationEntriesAsync(Guid orgId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Creates an entry of the property, or of the organization with <paramref name="propertyId"/> null. A FAQ needs a title (its question) and a text of 1 to 1,000
-    /// characters: 422 <c>assistant_entry_invalid</c>; 404 <c>property_not_found</c>.
-    /// </summary>
     Task<KnowledgeEntryItem> CreateEntryAsync(Guid orgId, Guid? propertyId, KnowledgeEntryInput entry, string userId, CancellationToken ct = default);
 
     /// <summary>
@@ -42,7 +32,6 @@ public interface IAssistantKnowledgeService
     /// </summary>
     Task<KnowledgeEntryItem> UpdateEntryAsync(Guid orgId, Guid? propertyId, Guid entryId, KnowledgeEntryInput entry, string userId, CancellationToken ct = default);
 
-    /// <summary>Deletes an entry of <paramref name="propertyId"/> (null: of the organization). 404 <c>assistant_entry_not_found</c>.</summary>
     Task DeleteEntryAsync(Guid orgId, Guid? propertyId, Guid entryId, CancellationToken ct = default);
 
     /// <summary>
@@ -59,12 +48,6 @@ public interface IAssistantKnowledgeService
         CancellationToken ct = default);
 }
 
-/// <summary>The knowledge base of a property as the screen reads it.</summary>
-/// <param name="PropertyId">The property.</param>
-/// <param name="Language">The language the facts were built in: <c>it</c> or <c>en</c>.</param>
-/// <param name="Facts">What was read from the listing, each with the field it came from («from your listing»).</param>
-/// <param name="Entries">The entries of the property and of the organization (<see cref="KnowledgeEntryItem.Inherited"/>), by topic.</param>
-/// <param name="TopicsWithoutData">The topics with no fact and no active entry: the gaps the wizard asks the host about.</param>
 public sealed record AssistantKnowledgeView(
     Guid PropertyId,
     string Language,
@@ -72,7 +55,6 @@ public sealed record AssistantKnowledgeView(
     IReadOnlyList<KnowledgeEntryItem> Entries,
     IReadOnlyList<KnowledgeTopic> TopicsWithoutData);
 
-/// <summary>An entry of the knowledge base. <paramref name="Inherited"/> is true for an organization-wide entry shown under a property.</summary>
 public sealed record KnowledgeEntryItem(
     Guid Id,
     Guid? PropertyId,
@@ -88,7 +70,6 @@ public sealed record KnowledgeEntryItem(
     DateTime CreatedAt,
     DateTime UpdatedAt);
 
-/// <summary>An entry as a request gives it: <paramref name="IsActive"/> not given is active. A bad value is a 422 of the service, with its own code.</summary>
 public sealed record KnowledgeEntryInput(
     KnowledgeTopic? Topic,
     KnowledgeEntryKind? Kind,
@@ -97,13 +78,7 @@ public sealed record KnowledgeEntryInput(
     string? Language,
     bool? IsActive);
 
-/// <summary>
-/// A fact for the draft pipeline: the <paramref name="Topic"/>, the <paramref name="Text"/>, and where it comes from: the field of the listing
-/// (<paramref name="SourceField"/>, an entry has none) or the id of the entry (<paramref name="EntryId"/>, a fact of the listing has none).
-/// <paramref name="Inherited"/> is true for an organization-wide entry.
-/// </summary>
 public sealed record RetrievedFact(KnowledgeTopic Topic, string Text, string? SourceField, Guid? EntryId, bool Inherited)
 {
-    /// <summary>The reference the decision log keeps (ids and topics, never the text): <c>entry:{id}</c> or <c>listing:{field}</c>.</summary>
     public string SourceRef => EntryId is { } id ? $"entry:{id}" : $"listing:{SourceField}";
 }

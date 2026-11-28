@@ -20,7 +20,6 @@ public sealed record PaymentEventPayload(
     string Currency,
     [property: JsonConverter(typeof(JsonStringEnumConverter))] PaymentMethod Method)
 {
-    /// <summary>The payload of <paramref name="payment"/> as it is now, in <paramref name="currency"/> (the property's when not given).</summary>
     public static PaymentEventPayload Of(Payment payment, string? currency)
     {
         ArgumentNullException.ThrowIfNull(payment);

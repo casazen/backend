@@ -27,13 +27,8 @@ public sealed record SupplierServiceForRequest(
     string Slug,
     bool UrgentEnabled = false)
 {
-    /// <summary>True for a published service: the only kind a request can be made for.</summary>
     public bool IsRequestable => Status == SupplierServiceListingStatus.Active;
 
-    /// <summary>
-    /// The price a request for this service can carry from the start: the "from" price of a service priced per job. A service on
-    /// quote, or priced per hour, set or square meter, has no price until the supplier gives one (the quantity is unknown).
-    /// </summary>
     public int? EstimatedAmountCents => EstimateOf(RequiresQuote, PriceUnit, PriceFromCents);
 
     /// <summary>
@@ -43,11 +38,6 @@ public sealed record SupplierServiceForRequest(
     public static int? EstimateOf(bool requiresQuote, SupplierServicePriceUnit priceUnit, int? priceFromCents) =>
         !requiresQuote && priceUnit == SupplierServicePriceUnit.PerJob && priceFromCents is > 0 ? priceFromCents : null;
 
-    /// <summary>
-    /// The slot query of the planner for this service (<c>null</c> when it has no duration, so no slot can be computed). With
-    /// <paramref name="urgent"/> the query asks for the urgent slots (SP-04c): the supplier's preview asks only when
-    /// <see cref="UrgentEnabled"/> is on.
-    /// </summary>
     public SupplierSlotQuery? ToSlotQuery(bool urgent = false) =>
         DurationMinutes is > 0 ? new SupplierSlotQuery(DurationMinutes.Value, MinNoticeHours, WeekdaysMask, urgent) : null;
 }

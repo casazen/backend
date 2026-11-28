@@ -65,13 +65,8 @@ public sealed record DocumentCoherenceContext(DateOnly CheckInDate, CheckInIdent
 /// </summary>
 public sealed class DocumentCoherenceChecker
 {
-    /// <summary>
-    /// The most years a holder can have lived on the day of the stay for the birth date to be believed. A bound of plausibility of a date (it sets a flag the engine
-    /// reads, never approves or rejects a person), fixed by the brief of the check; the policy file has no member for it.
-    /// </summary>
     private const int MaxPlausibleAgeYears = 120;
 
-    /// <summary>The length of the name field of an MRZ line of each type (ICAO 9303): TD1 line 3, TD2 line 1 after the code and the state, TD3 line 1 after them.</summary>
     private static readonly Dictionary<string, int> MrzNameFieldLengths = new(StringComparer.Ordinal)
     {
         [DocumentFormatMrzTypes.Td1] = 30,
@@ -79,7 +74,6 @@ public sealed class DocumentCoherenceChecker
         [DocumentFormatMrzTypes.Td3] = 39,
     };
 
-    /// <summary>The fields of the card that are printed and also in the MRZ, and are not among the ones that identify the holder: compared when both were read.</summary>
     private static readonly string[] PrintedAgainstMrz = [ZonedFieldNames.ExpiryDate, ZonedFieldNames.Sex, ZonedFieldNames.Nationality];
 
     private enum Kind
@@ -110,11 +104,9 @@ public sealed class DocumentCoherenceChecker
         var printed = PrintedValues(fields);
         var checks = new List<DocumentCoherenceCheck>();
 
-        // mrz_check_digits: nothing proves an MRZ that was not read, so nothing is assumed.
         var digits = mrz?.Result is not { } read ? DocumentCoherenceResults.Unknown : read.CheckDigitsValid ? DocumentCoherenceResults.Passed : DocumentCoherenceResults.Failed;
         checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.MrzCheckDigits, digits));
 
-        // expiry: the MRZ date first (its own digit protects it), then the printed one; the day of the expiry is still valid.
         var expiry = DateOf(machine, ZonedFieldNames.ExpiryDate) ?? DateOf(printed, ZonedFieldNames.ExpiryDate);
         var expired = expiry is { } expires && expires < context.CheckInDate;
         checks.Add(new DocumentCoherenceCheck(
@@ -122,7 +114,6 @@ public sealed class DocumentCoherenceChecker
             expiry is null ? DocumentCoherenceResults.Unknown : expired ? DocumentCoherenceResults.Failed : DocumentCoherenceResults.Passed,
             ZonedFieldNames.ExpiryDate));
 
-        // side_consistency: the fields that identify the holder, one entry each.
         var nameFieldIsFull = NameFieldIsFull(machine, format);
         var identifying = policy.Document.IdentifyingFields.Distinct(StringComparer.Ordinal).ToList();
         foreach (var name in identifying)
@@ -131,11 +122,9 @@ public sealed class DocumentCoherenceChecker
             checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.SideConsistency, result, name));
         }
 
-        // A policy that names no field is not a policy that compares nothing and passes: the check stays unknown.
         if (identifying.Count == 0)
             checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.SideConsistency, DocumentCoherenceResults.Unknown));
 
-        // field_coherence: the dates are possible. The printed birth date has its century, the MRZ one has it inferred.
         var birth = DateOf(printed, ZonedFieldNames.BirthDate) ?? DateOf(machine, ZonedFieldNames.BirthDate);
         var birthResult = birth is not { } born
             ? DocumentCoherenceResults.Unknown
@@ -155,13 +144,9 @@ public sealed class DocumentCoherenceChecker
         foreach (var twice in PrintedAgainstMrz.Where(candidate => !identifying.Contains(candidate) && Comparable(candidate, machine, printed)))
             checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.FieldCoherence, CompareSides(twice, machine, printed, referenceMayBeCut: false), twice));
 
-        // booking_consistency: MrzCheckInConsistency, reused: true agrees, false disagrees, null was not compared. Only the nationality is brought to a common form
-        // first (NationalityOnTheBooking): the check-in keeps the citizenship as the name of a state, which the comparison alone cannot read. A field with nothing
-        // declared is not_applicable (nothing to compare: no conflict, no pass); without an MRZ the check could not run and every field is unknown.
         foreach (var (field, result) in BookingConsistency(mrz?.Result, context.Declared))
             checks.Add(new DocumentCoherenceCheck(DocumentFormatChecks.BookingConsistency, result, field));
 
-        // The flags and the codes come from the entries and from nothing else: an unknown entry makes a flag unknown, never «ok».
         return DocumentCoherenceReport.FromChecks(checks);
     }
 
@@ -190,7 +175,6 @@ public sealed class DocumentCoherenceChecker
         return values;
     }
 
-    /// <summary>The values of the visual zone by field name, in the order they were read (a field printed on both sides has two).</summary>
     private static Dictionary<string, List<string>> PrintedValues(IReadOnlyList<ZonedField> fields)
     {
         var values = new Dictionary<string, List<string>>(StringComparer.Ordinal);
@@ -211,11 +195,6 @@ public sealed class DocumentCoherenceChecker
         list.Add(value);
     }
 
-    /// <summary>
-    /// Whether the values of one field read on different sides agree. The MRZ value, when there is one, is the reference. Passed when there are at least two usable
-    /// values and all agree, failed when two usable values disagree, unknown when fewer than two can be compared. <paramref name="referenceMayBeCut"/>: the MRZ value
-    /// can be the beginning of a longer name (the line ended inside it).
-    /// </summary>
     private static string CompareSides(
         string name, Dictionary<string, List<string>> machine, Dictionary<string, List<string>> printed, bool referenceMayBeCut)
     {
@@ -245,7 +224,6 @@ public sealed class DocumentCoherenceChecker
         switch (kind)
         {
             case Kind.Name:
-                // The MRZ spells with A to Z only, and some issuers transliterate (the umlaut as two letters): the printed name must equal it in one of the two ways.
                 foreach (var transliterate in new[] { false, true })
                 {
                     var wanted = NameKey(reference, transliterate);
@@ -287,7 +265,6 @@ public sealed class DocumentCoherenceChecker
         _ => Kind.Other,
     };
 
-    /// <summary>Whether the MRZ and the visual zone each gave a value of the field that can be compared (a date that is a date, a country the table knows).</summary>
     private static bool Comparable(string name, Dictionary<string, List<string>> machine, Dictionary<string, List<string>> printed)
     {
         var kind = KindOf(name);
@@ -295,10 +272,6 @@ public sealed class DocumentCoherenceChecker
             && printed.TryGetValue(name, out var fromPrint) && fromPrint.Any(value => Usable(kind, value));
     }
 
-    /// <summary>
-    /// Whether the name field of the MRZ is as long as its line allows, so a name that is shorter than the printed one may have been cut. The length is rebuilt from
-    /// the surname and the given names, which the reading splits at the double filler (one filler between the words of a name is one space).
-    /// </summary>
     private static bool NameFieldIsFull(Dictionary<string, List<string>> machine, DocumentFormat format)
     {
         if (!MrzNameFieldLengths.TryGetValue(format.Mrz.Type, out var capacity) || !machine.TryGetValue(ZonedFieldNames.Surname, out var surnames))
@@ -311,10 +284,6 @@ public sealed class DocumentCoherenceChecker
         return length >= capacity;
     }
 
-    /// <summary>
-    /// Whether the MRZ value of <paramref name="name"/> can be the beginning of the printed one: the given names when the name field is full (it ends inside them), the
-    /// surname only when the field is full and holds no given names at all (it ends inside the surname, so nothing of the given names is left).
-    /// </summary>
     private static bool MayBeCut(string name, Dictionary<string, List<string>> machine, bool nameFieldIsFull) => name switch
     {
         ZonedFieldNames.GivenNames => nameFieldIsFull,
@@ -425,11 +394,9 @@ public sealed class DocumentCoherenceChecker
     private static bool TryDate(string? value, out DateOnly date) =>
         DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
 
-    /// <summary>The first value of the field that is a date, or null.</summary>
     private static DateOnly? DateOf(Dictionary<string, List<string>> values, string name) =>
         values.TryGetValue(name, out var list) && list.FirstOrDefault(value => TryDate(value, out _)) is { } text && TryDate(text, out var date) ? date : null;
 
-    /// <summary>The age in whole years on <paramref name="day"/> of someone born on <paramref name="born"/> (the 29th of February counts on the 28th in the other years).</summary>
     private static int AgeOn(DateOnly born, DateOnly day)
     {
         var age = day.Year - born.Year;

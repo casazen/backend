@@ -74,7 +74,6 @@ public sealed class GuestEmailLanguageProvider(
 
             if (facts is null)
             {
-                // Not a booking of the org: nothing of a guest to read; the language of the guest page is all there is.
                 return GuestLanguages.CultureOf(GuestLanguages.Resolve(sessionLanguage, null));
             }
 
@@ -88,7 +87,6 @@ public sealed class GuestEmailLanguageProvider(
     }
 }
 
-/// <summary>The one way the services read the language when it is an optional dependency of theirs.</summary>
 public static class GuestEmailLanguageProviderExtensions
 {
     /// <summary>

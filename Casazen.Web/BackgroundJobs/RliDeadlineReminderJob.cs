@@ -42,14 +42,10 @@ public class RliDeadlineReminderJob(
     {
         var today = _clock.TodayInRome();
 
-        // Every lease still to be registered (RliRegistrationDeadline.AwaitsRegistration), signed or not.
         var leases = await db.LeaseContracts
             .Include(l => l.Property)
             .Include(l => l.Parties)
             .Include(l => l.Events)
-            // Anonymized parties (LT-12) have no address left to remind. A draft the landlord is still typing (the wizard keeps its
-            // values in DraftData, LR-12) is not a contract yet: its dates may be starting values, and nobody is reminded of it. Only a
-            // lease that is still a draft: whatever DraftData a lease has left behind, a lease that is signed is reminded.
             .Where(l => l.Status != LeaseStatus.Registered && l.Status != LeaseStatus.Rejected && l.PartiesAnonymizedAt == null
                 && (l.DraftData == null || l.Status != LeaseStatus.Draft))
             .ToListAsync();
@@ -127,8 +123,6 @@ public class RliDeadlineReminderJob(
     {
         if (RliRegistrationDeadline.Resolve(lease, today) is not { } deadline)
         {
-            // Not signed yet with the start date still ahead: the deadline is at least 30 days away. Signed without a
-            // recorded stipula (older leases): to be determined, never guessed.
             if (!RliRegistrationDeadline.IsBeforeFullSignature(lease.Status))
             {
                 logger.LogWarning(
@@ -154,13 +148,6 @@ public class RliDeadlineReminderJob(
                     EmailTemplates.DefaultCulture, propertyName, deadline, daysRemaining, notSignedYet));
     }
 
-    /// <summary>
-    /// Sends the reminder <paramref name="payload"/> once to <b>every landlord</b> of the lease (LT-14, A7-28: co-owners
-    /// each have the obligation), recorded per landlord as <c>{payload}:{partyId}</c> only when the email was accepted,
-    /// so a failed send is retried for that landlord alone. A reminder recorded before LT-14 with the bare payload
-    /// (sent to the first landlord only) counts as sent to all. Anonymized parties (LT-12) and repeated addresses are
-    /// skipped.
-    /// </summary>
     private async Task SendOnceAsync(LeaseContract lease, string payload, Func<EmailContent> render)
     {
         var sentPayloads = lease.Events
@@ -188,12 +175,10 @@ public class RliDeadlineReminderJob(
             if (sentPayloads.Contains(landlordPayload))
                 continue;
 
-            // Already inside a Hangfire job: sent directly (FD-13).
             content ??= render();
             var result = await emailService.SendEmailAsync(landlord.ContactEmail.Trim(), content.Subject, content.HtmlBody);
             if (!result.Success)
             {
-                // Not recorded: the same threshold is tried again for this landlord at the next run.
                 logger.LogWarning(
                     "RLI reminder {Payload} for LeaseId={LeaseId} PartyId={PartyId} not sent: {ErrorDetail}",
                     payload,
@@ -215,10 +200,6 @@ public class RliDeadlineReminderJob(
         }
     }
 
-    /// <summary>
-    /// Reminder thresholds of the RLI deadline (spec RLI-AC6: 15, 7 and 1 days before, then overdue). Product choice,
-    /// not a regulatory value.
-    /// </summary>
     public static class Thresholds
     {
         public const string Days15 = "t-15";
@@ -226,10 +207,6 @@ public class RliDeadlineReminderJob(
         public const string Days1 = "t-1";
         public const string Overdue = "overdue";
 
-        /// <summary>
-        /// The most urgent threshold reached with <paramref name="daysRemaining"/> days to the deadline: ≤ 15, ≤ 7,
-        /// ≤ 1 (the deadline day included), overdue from the day after; null more than 15 days before.
-        /// </summary>
         public static string? Reached(int daysRemaining) => daysRemaining switch
         {
             < 0 => Overdue,
@@ -239,7 +216,6 @@ public class RliDeadlineReminderJob(
             _ => null,
         };
 
-        /// <summary>Event payload of a threshold sent for <paramref name="deadline"/>, e.g. <c>t-7:2026-08-31</c>.</summary>
         public static string Payload(string threshold, DateTime deadline) =>
             $"{threshold}:{RomeCalendar.DateInRome(deadline).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}";
     }
@@ -252,26 +228,16 @@ public class RliDeadlineReminderJob(
     /// </summary>
     public static class QuesturaThresholds
     {
-        /// <summary>1 to 3 days before the delivery day.</summary>
         public const string BeforeDelivery = "questura-before-delivery";
 
-        /// <summary>The delivery day and the day after.</summary>
         public const string Delivery = "questura-delivery";
 
-        /// <summary>The day the 48 hours end.</summary>
         public const string Deadline = "questura-deadline";
 
-        /// <summary>From the day after the deadline, while the communication is not declared.</summary>
         public const string Overdue = "questura-overdue";
 
-        /// <summary>Days before the delivery day of the first reminder.</summary>
         public const int DaysBeforeDelivery = 3;
 
-        /// <summary>
-        /// The most urgent threshold reached with <paramref name="daysToDeadline"/> days to the deadline (delivery + 2):
-        /// overdue below 0, the deadline day at 0, the delivery day and the day after at 2 and 1, up to
-        /// <see cref="DaysBeforeDelivery"/> days before the delivery; null earlier.
-        /// </summary>
         public static string? Reached(int daysToDeadline) => daysToDeadline switch
         {
             < 0 => Overdue,
@@ -281,7 +247,6 @@ public class RliDeadlineReminderJob(
             _ => null,
         };
 
-        /// <summary>Event payload of a threshold sent for <paramref name="deadline"/>, e.g. <c>questura-delivery:2026-10-03</c>.</summary>
         public static string Payload(string threshold, DateTime deadline) => Thresholds.Payload(threshold, deadline);
     }
 }

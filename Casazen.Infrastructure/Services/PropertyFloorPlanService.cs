@@ -42,7 +42,6 @@ public class PropertyFloorPlanService(
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        // The rules first: nothing is read or stored for a level that cannot be saved.
         var (name, level, area) = Normalize(input);
         await ValidateImageAsync(image, cancellationToken);
         var file = image!;
@@ -54,7 +53,6 @@ public class PropertyFloorPlanService(
         if (property is null)
             return null;
 
-        // A cheap answer before uploading anything; the limit is checked again under the lock.
         if (await db.PropertyFloorPlans.CountAsync(f => f.PropertyId == propertyId, cancellationToken) >= PropertyFloorPlan.MaxPerProperty)
             throw LimitReached();
 
@@ -158,8 +156,6 @@ public class PropertyFloorPlanService(
         return true;
     }
 
-    // ─── Rules ──────────────────────────────────────────────────────────────────────────────────────
-
     private static (LocalizedText Name, int Level, int? Area) Normalize(FloorPlanInput input)
     {
         var name = SitePropertyProfileRules.NormalizeText(input.Name, PropertyFloorPlan.NameMaxLength, "name")
@@ -182,7 +178,6 @@ public class PropertyFloorPlanService(
         return (name, level, input.AreaSqm);
     }
 
-    /// <summary>422 for a file that is missing, empty, too large, not a PNG or JPEG by extension or declared type, or whose content is not the image it claims to be.</summary>
     private static async Task ValidateImageAsync(IFormFile? file, CancellationToken cancellationToken)
     {
         if (file is null)
@@ -200,14 +195,11 @@ public class PropertyFloorPlanService(
         if (!extensionOk)
             throw InvalidType();
 
-        // The declared type and the extension are the client's word: the content decides.
         await using var content = file.OpenReadStream();
         var detected = await ImageSignature.DetectAsync(content, cancellationToken);
         if (!string.Equals(detected, declared, StringComparison.Ordinal))
             throw InvalidType();
     }
-
-    // ─── Storage ────────────────────────────────────────────────────────────────────────────────────
 
     private async Task RemoveObjectAsync(string key)
     {
@@ -221,7 +213,6 @@ public class PropertyFloorPlanService(
         }
     }
 
-    /// <summary>Removes the object of a level of this property's own folder; an address that is not one of the property's own objects is left alone.</summary>
     private async Task RemoveObjectAsync(Guid propertyId, string imageUrl, bool throwOnFailure, CancellationToken cancellationToken)
     {
         var key = storage.TryGetPublicKey(imageUrl);
@@ -240,8 +231,6 @@ public class PropertyFloorPlanService(
             logger.LogError(ex, "Could not remove the object of a floor plan of property {PropertyId}", propertyId);
         }
     }
-
-    // ─── Small helpers ──────────────────────────────────────────────────────────────────────────────
 
     private static PublicFloorPlanDto ToDto(PropertyFloorPlan row) =>
         new(row.Id, row.Level, new LocalizedText(row.NameIt, row.NameEn), row.ImageUrl, row.ImageWidth, row.ImageHeight, row.AreaSqm);

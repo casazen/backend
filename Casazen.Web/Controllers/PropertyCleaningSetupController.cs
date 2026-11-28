@@ -33,13 +33,6 @@ public sealed class PropertyCleaningSetupController(
     IOrgContextResolver orgContextResolver,
     ILogger<PropertyCleaningSetupController> logger) : ControllerBase
 {
-    /// <summary>
-    /// The default cleaner of a property: who cleans, the agreed price in the currency of the property, the time and the length, whether the automation uses it; a property that
-    /// has none answers <c>configured: false</c> with the defaults (the time and the length that apply when the host sets none).
-    /// </summary>
-    /// <response code="200">The setup, or the defaults.</response>
-    /// <response code="403">The caller may not manage this property.</response>
-    /// <response code="404"><c>property_not_found</c>: no such property in the caller's org.</response>
     [HttpGet("{propertyId:guid}/cleaning-setup")]
     [ProducesResponseType(typeof(PropertyCleaningSetupDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -112,7 +105,6 @@ public sealed class PropertyCleaningSetupController(
         if (orgId is null)
             return Unauthorized();
 
-        // What the caller reaches, from its org membership: never widened (a caller with no scope reaches no property).
         if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
 
@@ -147,7 +139,6 @@ public sealed class PropertyCleaningSetupController(
         HostOperationRequirement operation,
         CancellationToken cancellationToken)
     {
-        // Tenant filter: another org's property is not found.
         var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
         if (resource is null)
             return (null, this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound"));

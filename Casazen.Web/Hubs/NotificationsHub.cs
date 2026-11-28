@@ -22,16 +22,10 @@ public sealed class NotificationsHub : Hub
 {
     public const string Path = "/hubs/notifications";
 
-    /// <summary>Name of the client method the server calls.</summary>
     public const string ChangedMethod = "notificationsChanged";
 
-    /// <summary>
-    /// Name of the second client method the server calls: a popup alert for the connected user (ADR-025), with a
-    /// <see cref="PopupAlertMessage"/>. The alert travels on the connection of the bell, to the same user group, as one more method.
-    /// </summary>
     public const string AlertMethod = "alertReceived";
 
-    /// <summary>The group of the connections of one user.</summary>
     public static string GroupFor(string userId) => $"user:{userId}";
 
     public override async Task OnConnectedAsync()
@@ -43,10 +37,6 @@ public sealed class NotificationsHub : Hub
     }
 }
 
-/// <summary>The only argument of <see cref="NotificationsHub.ChangedMethod"/> (camelCase JSON: <c>unreadCount</c>, <c>type</c>, <c>entityId</c>).</summary>
-/// <param name="UnreadCount">Unread notifications of the user, now.</param>
-/// <param name="Type">Type of the notification written or cleared (a value of <c>PushTypes</c>); <c>null</c> when only the count changed.</param>
-/// <param name="EntityId">The booking or service request it is about; <c>null</c> when there is none.</param>
 public sealed record NotificationsChangedMessage(int UnreadCount, string? Type, Guid? EntityId);
 
 /// <summary>

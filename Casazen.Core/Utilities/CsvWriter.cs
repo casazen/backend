@@ -19,22 +19,14 @@ namespace Casazen.Core.Utilities;
 /// </remarks>
 public static class CsvWriter
 {
-    /// <summary>Between the cells of a row.</summary>
     public const char Separator = ';';
 
-    /// <summary>The most rows a file may have, the header included.</summary>
     public const int MaxRows = 10_000;
 
-    /// <summary>For a file that has always been written whole (the fiscal reports).</summary>
     public const int NoLimit = int.MaxValue;
 
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
-    /// <summary>
-    /// The file for <paramref name="rows"/>, header and title rows included as they come: the BOM, then each row of cells joined by
-    /// <see cref="Separator"/> and ended by <c>CRLF</c>.
-    /// </summary>
-    /// <exception cref="DomainRuleException">There are more than <paramref name="maxRows"/> rows (422 <c>csv_too_many_rows</c>).</exception>
     public static byte[] Write(IEnumerable<IReadOnlyList<object?>> rows, int maxRows = MaxRows)
     {
         ArgumentNullException.ThrowIfNull(rows);
@@ -52,8 +44,6 @@ public static class CsvWriter
         return [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes(text.ToString())];
     }
 
-    /// <summary>The file for one <see cref="ReportTable"/>: its title row, its header and its rows, written as <see cref="Write(IReadOnlyList{ReportTable}, int)"/> does.</summary>
-    /// <exception cref="DomainRuleException">There are more than <paramref name="maxRows"/> rows (422 <c>csv_too_many_rows</c>).</exception>
     public static byte[] Write(ReportTable table, int maxRows = MaxRows)
     {
         ArgumentNullException.ThrowIfNull(table);
@@ -74,7 +64,6 @@ public static class CsvWriter
         return Write(RowsOf(tables), maxRows);
     }
 
-    // The rows of the tables one under the other: the title row, the header and the rows of each, an empty row between two tables.
     private static IEnumerable<IReadOnlyList<object?>> RowsOf(IReadOnlyList<ReportTable> tables)
     {
         for (var t = 0; t < tables.Count; t++)
@@ -92,7 +81,6 @@ public static class CsvWriter
         }
     }
 
-    /// <summary>One cell as it is written: text guarded, a number in Italian, a day as <c>yyyy-MM-dd</c>, <c>null</c> empty.</summary>
     public static string Cell(object? value) => value switch
     {
         null => string.Empty,
@@ -103,10 +91,6 @@ public static class CsvWriter
         _ => Text(Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty),
     };
 
-    /// <summary>
-    /// A text cell: quoted when it holds the separator, a quote or a line break, and with a leading apostrophe when a spreadsheet
-    /// would read it as a formula (<see cref="StartsLikeAFormula"/>), a property name for example.
-    /// </summary>
     public static string Text(string value)
     {
         ArgumentNullException.ThrowIfNull(value);

@@ -21,7 +21,6 @@ public sealed class GuestSessionCodeRateLimiter(IConfiguration configuration) : 
 {
     public static RateLimitPolicyDefinition Policy { get; } = new("GuestSessionPerCode", 10, TimeSpan.FromMinutes(15));
 
-    /// <summary>The key is the code as it is stored (no dash, upper case); something that is not a code counts as typed.</summary>
     protected override string NormalizeEmail(string email) =>
         BookingCodes.TryNormalize(email, out var code) ? code : email.Trim().ToUpperInvariant();
 }
@@ -52,7 +51,6 @@ public sealed class GuestSessionCodeRateLimitFilter(
 
         var httpContext = context.HttpContext;
 
-        // No code, address or IP in the log: the policy, the route and the trace id identify the event.
         logger.LogWarning(
             "Rate limit exceeded: policy {Policy} on {Method} {Route}. TraceId={TraceId}",
             limiter.PolicyName,

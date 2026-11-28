@@ -42,10 +42,6 @@ public class OnboardingController(
         return Ok(dto);
     }
 
-    /// <summary>
-    /// The summary of the six flows, or nothing: the flag is off, the caller may not read the properties of a short-stay context, or it has no
-    /// org or reaches nothing in it. The flag is asked first, so with it off nothing else is read.
-    /// </summary>
     private async Task<List<FlowSummaryDto>> FlowSummariesAsync(CancellationToken cancellationToken)
     {
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding)

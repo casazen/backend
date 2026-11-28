@@ -15,6 +15,5 @@ public class OnboardingResponseDto
     /// </summary>
     public bool RolesSynced { get; set; }
 
-    /// <summary>Stable error code of the failed Auth0 sync (e.g. <c>auth0_management_error</c>), null when synced.</summary>
     public string? RolesSyncError { get; set; }
 }

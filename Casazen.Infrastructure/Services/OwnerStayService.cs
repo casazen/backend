@@ -36,13 +36,9 @@ public sealed partial class OwnerStayService(
     ILogger<OwnerStayService> logger,
     IBackgroundJobClient? jobs = null) : IOwnerStayService
 {
-    /// <summary>The entity type of the «To do» about an owner stay.</summary>
     public const string StayEntityType = "OwnerStay";
 
-    /// <summary>The most stays the list of the owner portal answers.</summary>
     private const int MaxOwnerList = 500;
-
-    // ---------------------------------------------------------------- owner portal
 
     public async Task<OwnerCalendar> GetCalendarAsync(
         OwnerPortalAccess access,
@@ -60,7 +56,6 @@ public sealed partial class OwnerStayService(
         if (last < first || last.DayNumber - first.DayNumber + 1 > OwnerStayRules.MaxCalendarDays)
             throw new DomainRuleException(OwnerStayErrors.CalendarRangeInvalid, OwnerStayErrors.CalendarRangeInvalidMessageKey, OwnerStayRules.MaxCalendarDays);
 
-        // Only the days of the ownerships in force of the caller (AC-NF111-1): never the occupancy of the time before the owner owned the property.
         var (ownedFrom, ownedUntil) = OwnedPeriod(grants);
         var shownFrom = first < ownedFrom ? ownedFrom : first;
         var shownTo = ownedUntil is { } lastOwned && last > lastOwned ? lastOwned : last;
@@ -70,7 +65,6 @@ public sealed partial class OwnerStayService(
         var start = shownFrom.ToDateTime(TimeOnly.MinValue);
         var end = shownTo.AddDays(1).ToDateTime(TimeOnly.MinValue);
 
-        // Dates only: no column of a guest, of a channel or of a note is read (ADR-011-R3).
         var bookings = await db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -104,7 +98,6 @@ public sealed partial class OwnerStayService(
             }
         }
 
-        // The precedence: the stays of the caller's owner profiles, then the guests, then whatever else closes the nights (a block, a co-owner's stay).
         var ownProfiles = grants.Select(g => g.PropertyOwnerId).ToHashSet();
         foreach (var stay in stays.Where(s => ownProfiles.Contains(s.PropertyOwnerId)))
         {
@@ -179,7 +172,6 @@ public sealed partial class OwnerStayService(
         var rule = OwnerStayRules.EffectiveFor(command.PropertyId, grant.PropertyOwnerId, await RulesOfAsync(grant.OrgId, command.PropertyId, cancellationToken));
         OwnerStayRules.EnsureObeys(today, command.StartDate, command.EndDate, rule);
 
-        // The nights must be the owner's: inside an ownership in force of the owner profile on the property.
         var (ownedFrom, ownedUntil) = OwnedPeriod(access.On(command.PropertyId, OwnerPortalPermission.StaysRequest)
             .Where(g => g.PropertyOwnerId == grant.PropertyOwnerId && g.OrgId == grant.OrgId)
             .ToList());
@@ -207,7 +199,6 @@ public sealed partial class OwnerStayService(
             UpdatedAt = now,
         };
 
-        // Through the DbSet: the Guid of the row is preset, so a row attached any other way would be tracked as modified.
         db.OwnerStayRequests.Add(stay);
         Audit(stay, access.Actor, OwnerPortalAuditStatuses.Requested);
         await db.SaveChangesAsync(cancellationToken);
@@ -218,7 +209,6 @@ public sealed partial class OwnerStayService(
             "Owner stay {StayId} requested on property {PropertyId}: {Nights} nights from {Start}, automatic approval {AutoApprove}",
             stay.Id, stay.PropertyId, stay.Nights, stay.StartDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), stay.AutoApprove);
 
-        // The rule asks for no person: the background work approves it (and blocks the dates) right away; the recurring run is the safety net.
         if (stay.AutoApprove)
             EnqueueProcess(stay.Id);
 
@@ -231,7 +221,6 @@ public sealed partial class OwnerStayService(
         access.Require(OwnerPortalPermission.StaysRequest);
         var head = await Stays().AsNoTracking().Where(s => s.Id == stayId).Select(s => new { s.OrgId, s.PropertyId, s.PropertyOwnerId }).FirstOrDefaultAsync(cancellationToken);
 
-        // Another owner's stay, one of a property the caller no longer holds, one it may not request on, a missing one: the same 404 (ADR-011-R2).
         if (head is null || !access.On(head.PropertyId, OwnerPortalPermission.StaysRequest).Any(g => g.OrgId == head.OrgId && g.PropertyOwnerId == head.PropertyOwnerId))
             throw StayNotFound(stayId);
 
@@ -255,26 +244,21 @@ public sealed partial class OwnerStayService(
 
         logger.LogInformation("Owner stay {StayId} withdrawn by its owner; block to give back {HoldsBlock}", stay.Id, holdsBlock);
 
-        // The block of an approved stay is given back by the background work (the calendar needs the org of the property): only that block.
         if (holdsBlock)
             EnqueueProcess(stay.Id);
 
         return (await ViewsAsync([stay], cancellationToken))[0];
     }
 
-    // ---------------------------------------------------------------- shared
-
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
 
     private DateOnly Today() => timeProvider.TodayInRomeAsDateOnly();
 
-    /// <summary>The stays of every org: the caller of the portal has none, the agency and the job name it in the predicate.</summary>
     private IQueryable<OwnerStayRequest> Stays() => db.OwnerStayRequests.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]);
 
     private Task<IDbContextTransaction?> LockAsync(Guid propertyId, CancellationToken cancellationToken) =>
         PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, (PostgresAdvisoryLocks.Scope.OwnerStays, propertyId.ToString("N")));
 
-    /// <summary>The first and the last night (Europe/Rome) the grants cover: from the earliest start to the latest end, open when one has no end.</summary>
     private static (DateOnly From, DateOnly? Until) OwnedPeriod(IReadOnlyCollection<OwnerPortalGrant> grants)
     {
         if (grants.Count == 0)
@@ -292,7 +276,6 @@ public sealed partial class OwnerStayService(
             .Where(r => r.OrgId == orgId && r.PropertyId == propertyId)
             .ToListAsync(cancellationToken);
 
-    /// <summary>The nights the owner profile holds on the property (requested and approved stays) in each calendar year, the stay <paramref name="exceptStayId"/> left out.</summary>
     private async Task<IReadOnlyDictionary<int, int>> HeldNightsByYearAsync(
         Guid orgId,
         Guid propertyId,
@@ -317,10 +300,6 @@ public sealed partial class OwnerStayService(
         return byYear;
     }
 
-    /// <summary>
-    /// Refuses dates a booking (the one rule of the nights taken, <see cref="PropertyOccupancy"/> and <see cref="CheckoutHolds.OccupiesDates"/>), a block or
-    /// another owner stay of the property (a co-owner's included, requested or approved) takes. The block of the stay itself is left out.
-    /// </summary>
     private async Task EnsureDatesFreeAsync(Guid orgId, Guid propertyId, DateOnly startDate, DateOnly endDate, Guid? exceptStayId, CancellationToken cancellationToken)
     {
         var start = startDate.ToDateTime(TimeOnly.MinValue);
@@ -345,7 +324,6 @@ public sealed partial class OwnerStayService(
             throw new DomainConflictException(OwnerStayErrors.DatesUnavailable, OwnerStayErrors.DatesUnavailableMessageKey);
     }
 
-    /// <summary>The state and the stable code of the calendar changes named, by id.</summary>
     private async Task<Dictionary<Guid, (CalendarChangeState State, string? ErrorCode)>> ProcessesAsync(IEnumerable<Guid?> ids, CancellationToken cancellationToken)
     {
         var wanted = ids.Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToList();
@@ -361,11 +339,9 @@ public sealed partial class OwnerStayService(
         return rows.ToDictionary(p => p.Id, p => (p.State, p.ErrorCode));
     }
 
-    /// <summary>The live state of the block of a stay: none without a block; acknowledged when no change was recorded for it.</summary>
     private static OwnerStaySyncState BlockSync(OwnerStayRequest stay, IReadOnlyDictionary<Guid, (CalendarChangeState State, string? ErrorCode)> processes) =>
         stay.CalendarBlockId is null ? OwnerStaySyncState.None : SyncOf(stay.BlockChangeProcessId, processes);
 
-    /// <summary>The live state of the release of the block of a stay: pending while a withdrawn stay still holds it.</summary>
     private static OwnerStaySyncState ReleaseSync(OwnerStayRequest stay, IReadOnlyDictionary<Guid, (CalendarChangeState State, string? ErrorCode)> processes)
     {
         if (stay.BlockReleasedAt is not null)
@@ -382,7 +358,6 @@ public sealed partial class OwnerStayService(
     private static string? ErrorOf(Guid? processId, IReadOnlyDictionary<Guid, (CalendarChangeState State, string? ErrorCode)> processes) =>
         processId is { } id && processes.TryGetValue(id, out var process) ? process.ErrorCode : null;
 
-    /// <summary>The stays as the portal and the console read them, with the live state of their calendar changes.</summary>
     private async Task<List<OwnerStayView>> ViewsAsync(IReadOnlyCollection<OwnerStayRequest> stays, CancellationToken cancellationToken)
     {
         var processes = await ProcessesAsync(stays.SelectMany(s => new[] { s.BlockChangeProcessId, s.ReleaseChangeProcessId }), cancellationToken);
@@ -422,7 +397,6 @@ public sealed partial class OwnerStayService(
         }).ToList();
     }
 
-    /// <summary>Stages the line of the activity log of a change of a stay, in the unit of work of the change. Codes only.</summary>
     private void Audit(OwnerStayRequest stay, string? actor, string status) =>
         activityLog.Record(OrgActivity.Of(
             stay.OrgId,
@@ -432,7 +406,6 @@ public sealed partial class OwnerStayService(
             (OrgActivityDetailKeys.Part, OwnerPortalParts.Stay),
             (OrgActivityDetailKeys.Status, status)));
 
-    /// <summary>Asks the background work to finish one stay now (an automatic approval, a block to give back); a queue that cannot take it is not a failure.</summary>
     private void EnqueueProcess(Guid stayId)
     {
         if (jobs is null)

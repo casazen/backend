@@ -16,7 +16,6 @@ namespace Casazen.Web.DTOs.Alerts;
 /// <param name="Urgency">The name of an <see cref="Casazen.Core.Entities.Enums.AlertUrgency"/> member: <c>High</c>, <c>Normal</c> or <c>Low</c>.</param>
 public sealed record PendingAlertDto(Guid AlertId, string AlertType, string EntityType, Guid EntityId, string Urgency)
 {
-    /// <summary>The alert of a stored row.</summary>
     public static PendingAlertDto From(PopupAlert alert)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -24,16 +23,10 @@ public sealed record PendingAlertDto(Guid AlertId, string AlertType, string Enti
     }
 }
 
-/// <summary>Body of <c>PATCH /api/me/alerts/{id}/remind</c>: when the alert comes back («Remind me later»).</summary>
 public sealed record RemindRequest
 {
-    /// <summary>
-    /// The instant the alert is pending again, ISO 8601 with its offset (<c>2026-11-06T09:00:00+01:00</c> or <c>…Z</c>). Not later than
-    /// the legal deadline of the alert, when it has one.
-    /// </summary>
     [Required(ErrorMessage = "PopupAlertRemindAtRequired")]
     public DateTimeOffset? RemindAt { get; init; }
 }
 
-/// <summary>Body of <c>POST /api/me/alerts/{id}/dismiss</c>: none. The type exists so the call is documented; a body, if sent, is ignored.</summary>
 public sealed record DismissRequest;

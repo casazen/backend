@@ -22,8 +22,6 @@ internal sealed class StayGuestConfiguration : IEntityTypeConfiguration<StayGues
         entity.HasIndex(s => s.OrgId);
         entity.HasIndex(s => s.GuestId);
 
-        // NF-40: the residence (same shape as the birth place), the statistical fields (closed lists of IstatGuestFieldLists). Every new column
-        // is nullable. TaxExemptionCode has no length: it is encrypted with the document (EncryptedColumns), so the column is text.
         entity.Property(s => s.ResidenceComuneCode).HasMaxLength(9);
         entity.Property(s => s.ResidenceComuneName).HasMaxLength(100);
         entity.Property(s => s.ResidenceProvince).HasMaxLength(2);

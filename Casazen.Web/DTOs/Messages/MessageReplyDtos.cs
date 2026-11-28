@@ -3,10 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Messages;
 
-/// <summary>
-/// The body of a message to a guest: <c>Text</c>, plain text of 1 to 2000 characters. It carries no validation attribute on purpose: an empty or too long
-/// text is a 422 <c>message_text_invalid</c> of the service (like the rules of the channel), not a 400 of the binder.
-/// </summary>
 public sealed class ReplyRequest
 {
     public string? Text { get; set; }

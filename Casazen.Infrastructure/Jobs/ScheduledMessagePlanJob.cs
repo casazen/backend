@@ -24,7 +24,6 @@ public class ScheduledMessagePlanJob(
 {
     public const string RecurringJobId = "scheduled-message-plan";
 
-    /// <summary>At minute 20 of every hour (UTC).</summary>
     public const string Cron = "20 * * * *";
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]

@@ -33,7 +33,6 @@ public class StayDiscountService(AppDbContext db, ILogger<StayDiscountService> l
     {
         ArgumentNullException.ThrowIfNull(tiers);
 
-        // The rules first: nothing is locked or read for a list that cannot be stored.
         var normalized = StayDiscountRules.Normalize(tiers);
 
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -43,7 +42,6 @@ public class StayDiscountService(AppDbContext db, ILogger<StayDiscountService> l
         if (property is null)
             return null;
 
-        // A discount rewards a stay, which only a short-stay property has.
         PropertyRentalModeRules.EnsureShortRent(property);
 
         var stored = await db.PropertyStayDiscounts.Where(d => d.PropertyId == propertyId).ToListAsync(cancellationToken);

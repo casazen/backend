@@ -19,20 +19,16 @@ namespace Casazen.Core.Entities;
 [Table("cf_simulated_practices")]
 public class CfSimulatedPractice
 {
-    /// <summary><c>P-</c> and 16 lowercase hexadecimal characters.</summary>
     public const int PracticeIdLength = 18;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The number of the practice (<c>P-</c> and 16 hexadecimal characters), as the real service writes it.</summary>
     [Required, MaxLength(PracticeIdLength)]
     public string PracticeId { get; set; } = string.Empty;
 
-    /// <summary>The lease of the signed link, only when the link was valid; null when it was missing, wrong or expired (v0.2 §6).</summary>
     public Guid? LeaseId { get; set; }
 
-    /// <summary>The municipality of the practice, as the link named it; null when the link did not.</summary>
     [MaxLength(200)]
     public string? Comune { get; set; }
 
@@ -41,27 +37,15 @@ public class CfSimulatedPractice
 
     public CfPracticeStatus Status { get; set; } = CfPracticeStatus.Received;
 
-    /// <summary><c>duplicate</c>, <c>withdrawn</c>, <c>not_compliant</c> or <c>other</c>, only with <see cref="CfPracticeStatus.ClosedWithoutAttestation"/>.</summary>
     [MaxLength(30)]
     public string? CloseReason { get; set; }
 
-    /// <summary>When the module was submitted (UTC).</summary>
     public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>When the state last changed (UTC); it never goes back.</summary>
     public DateTime StatusChangedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>
-    /// SHA-256 (hex) of the control token returned once when the practice is created: whoever holds the token can change the state and
-    /// download the documents of this practice, nobody else.
-    /// </summary>
     [Required, MaxLength(64)]
     public string ControlTokenHash { get; set; } = string.Empty;
 
-    /// <summary>
-    /// <c>comuneDiffersFromLink</c> of the status API (v0.2 §4): the module of the simulator does not let the person change the municipality
-    /// the link named, so it is <c>false</c> when the practice has a lease and a municipality, and <c>null</c> (unknown) when the link named no
-    /// municipality or the practice is not linked to a lease.
-    /// </summary>
     public bool? ComuneDiffersFromLink() => LeaseId is not null && !string.IsNullOrWhiteSpace(Comune) ? false : null;
 }

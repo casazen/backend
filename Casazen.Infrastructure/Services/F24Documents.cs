@@ -133,17 +133,14 @@ public static class F24Documents
         return [lines, breakdown];
     }
 
-    /// <summary>The CSV of the export: the two tables one under the other (<see cref="CsvWriter"/>: decimal comma, <c>;</c>, a day as <c>dd/MM/yyyy</c>).</summary>
     public static byte[] Csv(F24MonthData data, IDocumentTexts texts, string language) => CsvWriter.Write(ExportTables(data, texts, language));
 
-    /// <summary>The Excel file of the export: a sheet for the lines of the form and one for the breakdown (<see cref="XlsxWriter"/>).</summary>
     public static byte[] Xlsx(F24MonthData data, IDocumentTexts texts, string language)
     {
         var tables = ExportTables(data, texts, language);
         return XlsxWriter.Write([new ReportSheet(LinesSheetName, tables[0]), new ReportSheet(texts.Get("F24ExportSheetBreakdown", language), tables[1])]);
     }
 
-    /// <summary>The name of the file of the export of a month: <c>f24-2026-11.csv</c>.</summary>
     public static string ExportFileName(int year, int month, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"f24-{year:0000}-{month:00}.{extension}");
 }

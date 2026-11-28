@@ -59,7 +59,6 @@ public sealed class OctorateAiAssistantGuard(
     /// <summary>The code in the log of a thread whose call was not made because the calls of its organization are down to the reserve (the event is delivered again).</summary>
     public const string RateLimitedCode = "octorate_rate_limited";
 
-    /// <summary>The code in the log of an event whose payload is not an <see cref="OtaThreadSyncedPayload"/>.</summary>
     public const string PayloadUnreadableCode = "payload_unreadable";
 
     private const string Tenant = AppDbContext.TenantQueryFilter;
@@ -87,7 +86,6 @@ public sealed class OctorateAiAssistantGuard(
             return;
         }
 
-        // The pass read the assistant as off: nothing to do and no call, the most frequent event of all.
         if (payload.AiAssistantOn == false)
             return;
 
@@ -97,16 +95,13 @@ public sealed class OctorateAiAssistantGuard(
             .FirstOrDefaultAsync(t => t.OrgId == orgId && t.Id == domainEvent.EntityId, ct);
         if (thread is null)
         {
-            // Gone with its retention or its organization after the pass: there is no conversation left to keep an assistant away from.
             logger.LogDebug("Event {EventId} of org {OrgId}: the thread {ThreadId} is not there any more", domainEvent.Id, orgId, domainEvent.EntityId);
             return;
         }
 
-        // The copy is the newest word: a delivery of this event that came before, or a pass that came after, found the assistant off already.
         if (thread.AiAssistantOn == false)
             return;
 
-        // OCT-04: nothing is written to a channel manager for a listing nobody confirmed. The thread gets its property at the first pass after the confirmation.
         if (thread.PropertyId is not { } propertyId || await mappings.IsWriteBlockedAsync(propertyId, ct))
         {
             logger.LogDebug("Thread {ThreadId} of org {OrgId}: its listing is not one CasaZen manages, the assistant of Octorate is left as it is", thread.Id, orgId);
@@ -150,7 +145,6 @@ public sealed class OctorateAiAssistantGuard(
             return;
         }
 
-        // Octorate accepted the call. The next pass reads the flag back from Octorate (and finds a person who switched it on again).
         thread.AiAssistantOn = false;
         thread.UpdatedAt = timeProvider.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync(ct);
@@ -166,7 +160,6 @@ public sealed class OctorateAiAssistantGuard(
     private static bool CanBeRetried(OctorateException ex) =>
         ex is OctorateServerException or OctorateRateLimitException { QuotaExhausted: false };
 
-    /// <summary>What the pass read, or <c>null</c> when the payload is not that.</summary>
     private static OtaThreadSyncedPayload? PayloadOf(DomainEvent domainEvent)
     {
         try

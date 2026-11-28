@@ -3,14 +3,8 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>One ownership period of an owner on a property, in Rome days (<see cref="OwnerReadinessRules.Mandate"/>).</summary>
 public sealed record OwnerOwnershipFact(Guid OwnershipId, Guid PropertyId, DateOnly Start, DateOnly? End, decimal SharePercent);
 
-/// <summary>
-/// A mandate of the agency, in Rome days: of one ownership (<paramref name="OwnershipId"/> set, the shape of before E13), or of the owner itself
-/// (<paramref name="OwnershipId"/> <c>null</c>: it covers every ownership of the owner it is given for, E13/F01/US01/T01). <paramref name="HasDocument"/> is
-/// true when the signed mandate is on file.
-/// </summary>
 public sealed record OwnerMandateFact(Guid? OwnershipId, DateOnly From, DateOnly? Until, bool HasDocument);
 
 /// <summary>
@@ -21,7 +15,6 @@ public sealed record OwnerMandateFact(Guid? OwnershipId, DateOnly From, DateOnly
 /// </summary>
 public static class OwnerReadinessRules
 {
-    /// <summary>The legal name and the kind of the owner.</summary>
     public static IReadOnlyList<OwnerReadinessReason> Registry(PropertyOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -70,7 +63,6 @@ public static class OwnerReadinessRules
         return reasons;
     }
 
-    /// <summary>The IBAN (with its checksum), the BIC when the IBAN is outside the SEPA area, and the currency the owner is paid in.</summary>
     public static IReadOnlyList<OwnerReadinessReason> Payment(PropertyOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -146,15 +138,9 @@ public static class OwnerReadinessRules
         return reasons;
     }
 
-    /// <summary>The mandates in force on <paramref name="day"/>, those with the signed document first.</summary>
     private static List<OwnerMandateFact> Covering(IEnumerable<OwnerMandateFact> mandates, DateOnly day) =>
         mandates.Where(m => m.From <= day && (m.Until is not { } until || until >= day)).OrderByDescending(m => m.HasDocument).ToList();
 
-    /// <summary>
-    /// What stops the owner from being invited to the portal: a name to greet it by (<paramref name="registryReady"/>), an ownership that is ready, and an
-    /// e-mail address that is missing or not an address. Nothing else: the portal does not wait for the kind of the owner, the fiscal profile, the payment
-    /// data or the mandate.
-    /// </summary>
     public static IReadOnlyList<OwnerReadinessReason> Portal(PropertyOwner owner, bool registryReady, bool ownershipReady)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -177,7 +163,6 @@ public static class OwnerReadinessRules
         return reasons;
     }
 
-    /// <summary>The ownership reasons of an owner: one for each property whose shares are wrong, or <see cref="OwnerReadinessReasons.OwnershipMissing"/> when it holds none.</summary>
     public static IReadOnlyList<OwnerReadinessReason> Ownership(
         IReadOnlyList<OwnerOwnershipFact> ownerships,
         IReadOnlyDictionary<Guid, IReadOnlyList<OwnershipIssue>> issuesByProperty)
@@ -201,7 +186,6 @@ public static class OwnerReadinessRules
         return reasons;
     }
 
-    /// <summary>The readiness code of a timeline issue.</summary>
     public static string IssueCode(OwnershipIssue issue) => issue.Kind switch
     {
         OwnershipIssueKind.Gap => OwnerReadinessReasons.SharesGap,
@@ -211,7 +195,6 @@ public static class OwnerReadinessRules
         _ => throw new ArgumentOutOfRangeException(nameof(issue), issue.Kind, "Unknown ownership issue."),
     };
 
-    /// <summary>True when the period [<paramref name="from"/>, <paramref name="until"/>] is not inside [<paramref name="start"/>, <paramref name="end"/>].</summary>
     public static bool IsOutside(DateOnly from, DateOnly? until, DateOnly start, DateOnly? end)
     {
         if (from < start)

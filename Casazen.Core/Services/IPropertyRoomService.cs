@@ -4,43 +4,21 @@ using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Stable <c>code</c> values of the rooms of a property (NF-34): part of the API contract, never rename one.</summary>
 public static class PropertyRoomErrorCodes
 {
-    /// <summary>422: the rooms break a rule (too many, a bed count out of range, no bed at all...); the message says which.</summary>
     public const string RoomsInvalid = "property_rooms_invalid";
 
-    /// <summary>404: a room that is not one of this property (a room id in the rooms to save, or in the room of a photo).</summary>
     public const string RoomNotFound = "property_room_not_found";
 }
 
-/// <summary>A room as the host sends it: <paramref name="Id"/> is the room already stored that this one updates, <c>null</c> for a new room.</summary>
-/// <param name="Id">The id of a room of the same property; one the property does not have is a 404 (<see cref="PropertyRoomErrorCodes.RoomNotFound"/>).</param>
-/// <param name="Type">What the room is.</param>
-/// <param name="Beds">Its beds, one entry for each kind (a kind sent twice is added up); <c>null</c> or empty = no bed.</param>
 public sealed record RoomInput(Guid? Id, PropertyRoomType Type, IReadOnlyList<RoomBed>? Beds);
 
-/// <summary>A room as it is stored, in the order the host gave.</summary>
 public sealed record PropertyRoomView(Guid Id, int Position, PropertyRoomType Type, IReadOnlyList<RoomBed> Beds);
 
-/// <summary>The rooms after the rules: what is stored, and what the property counters become.</summary>
-/// <param name="Rooms">The rooms in order, each with its beds one entry for each kind, in the order of <see cref="BedType"/>.</param>
-/// <param name="Bedrooms">How many of them are <see cref="PropertyRoomType.Bedroom"/>: the new value of <c>Property.Bedrooms</c>.</param>
-/// <param name="Beds">How many beds in all: the new value of <c>Property.Beds</c>.</param>
 public sealed record NormalizedRooms(IReadOnlyList<RoomInput> Rooms, int Bedrooms, int Beds);
 
-/// <summary>
-/// The rules of the rooms of a unit (NF-34, AC-NF34-1): at most <see cref="PropertyRoom.MaxPerProperty"/> rooms, 1 to
-/// <see cref="PropertyRoom.MaxBedsOfAKind"/> beds of a kind in a room, and at least one bed in all, within the bounds of the beds of a property
-/// (<see cref="PropertyHouseRules.MinBeds"/> to <see cref="PropertyHouseRules.MaxBeds"/>). One place for the service and the tests.
-/// </summary>
 public static class PropertyRoomRules
 {
-    /// <summary>
-    /// The rooms as they will be stored, and the counters of the property they give. Refuses the whole list at the first rule broken: nothing is
-    /// half-valid.
-    /// </summary>
-    /// <exception cref="DomainRuleException">422 <see cref="PropertyRoomErrorCodes.RoomsInvalid"/>, with the message of the rule that broke.</exception>
     public static NormalizedRooms Normalize(IReadOnlyList<RoomInput>? rooms)
     {
         rooms ??= [];
@@ -57,7 +35,6 @@ public static class PropertyRoomRules
             if (room.Id is { } id && !seen.Add(id))
                 throw Invalid("PropertyRoomsDuplicateId");
 
-            // One entry for each kind of bed: a kind sent twice is one kind with the beds added up.
             var counts = new SortedDictionary<BedType, int>();
             foreach (var bed in room.Beds ?? [])
             {
@@ -95,7 +72,6 @@ public static class PropertyRoomRules
 /// </summary>
 public interface IPropertyRoomService
 {
-    /// <summary>The rooms in order; <c>null</c> when the property does not exist for the caller. A property with no room gives an empty list.</summary>
     Task<IReadOnlyList<PropertyRoomView>?> GetAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>

@@ -12,10 +12,6 @@ public enum TenantPaymentDeclarationStatus
     Superseded,
 }
 
-/// <summary>
-/// A tenant's statement that a rent transfer was made. It never marks the installment paid: only the landlord,
-/// a bank reconciliation or the existing online-payment flow may do that.
-/// </summary>
 [Table("TenantPaymentDeclarations")]
 public sealed class TenantPaymentDeclaration : ITenantOwned
 {

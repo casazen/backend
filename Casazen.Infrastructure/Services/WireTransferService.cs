@@ -42,12 +42,10 @@ public sealed class WireTransferService(
     Func<string, XmlSchemaSet>? schemaSource = null,
     TimeProvider? time = null) : IWireTransferService
 {
-    // The schemas a file is validated against, by currency: the official ones of the build (422 when they are not installed). Only a test supplies its own.
     private readonly Func<string, XmlSchemaSet> schemaFor = schemaSource ?? Pain001SchemaProvider.GetSchemas;
 
     private readonly TimeProvider clock = time ?? TimeProvider.System;
 
-    /// <inheritdoc />
     public async Task<(WireBatch Batch, string XmlContent)> CreateBatchAsync(
         Guid orgId,
         IReadOnlyList<Guid> payoutIds,
@@ -56,7 +54,6 @@ public sealed class WireTransferService(
     {
         ArgumentNullException.ThrowIfNull(payoutIds);
 
-        // An empty list is never «all the payouts», and a request has a size.
         var ids = payoutIds.Distinct().ToList();
         if (ids.Count == 0)
         {
@@ -68,7 +65,6 @@ public sealed class WireTransferService(
             throw new DomainRuleException(WireTransferErrors.BatchTooLarge, "WireBatchTooLarge", WireTransferErrors.MaxTransfers);
         }
 
-        // The bank is asked for today (Europe/Rome) or a later day, within a year.
         var today = clock.TodayInRomeAsDateOnly();
         if (executionDate < today || executionDate > today.AddYears(1))
         {
@@ -80,7 +76,6 @@ public sealed class WireTransferService(
             cancellationToken,
             (PostgresAdvisoryLocks.Scope.OwnerAccounting, orgId.ToString("N")));
 
-        // The payouts: all in the org, all confirmed, all of a version published to the owner, all in one currency of a wire file, none in a batch.
         var payouts = await db.OwnerPayouts.AsNoTracking()
             .Where(p => p.OrgId == orgId && ids.Contains(p.Id))
             .ToListAsync(cancellationToken);
@@ -104,7 +99,6 @@ public sealed class WireTransferService(
             throw new DomainRuleException(WireTransferErrors.PayoutsNotPublished, "WirePayoutsNotPublished");
         }
 
-        // One currency per batch (a letter case or a space does not make another one), and only the currencies of a wire file.
         var currencies = payouts.Select(p => NormalizeCurrency(p.Currency)).Distinct(StringComparer.Ordinal).ToList();
         if (currencies.Count > 1)
         {
@@ -117,7 +111,6 @@ public sealed class WireTransferService(
             throw new DomainRuleException(WireTransferErrors.CurrencyNotSupported, "WireCurrencyNotSupported");
         }
 
-        // A transfer is a positive amount with at most two decimals: the net of the payout, never zero, never negative, never rounded in silence.
         if (payouts.Any(p => p.NetAmount <= 0m || decimal.Round(p.NetAmount, 2) != p.NetAmount))
         {
             throw new DomainRuleException(WireTransferErrors.AmountInvalid, "WireAmountInvalid");
@@ -128,7 +121,6 @@ public sealed class WireTransferService(
             throw new DomainRuleException(WireTransferErrors.PayoutsAlreadyInBatch, "PayoutsAlreadyInBatch");
         }
 
-        // The debtor and the debit account: the issuer profile of the org.
         var profile = await db.OrgFiscalIssuerProfiles.AsNoTracking().OfOrganization(orgId).FirstOrDefaultAsync(cancellationToken);
         var flavor = Pain001V09Writer.FlavorOf(currency);
         var debtor = new Pain001Party(profile?.LegalName, profile?.AddressStreet, profile?.AddressCivic, profile?.PostalCode, profile?.City, profile?.CountryCode);
@@ -145,22 +137,16 @@ public sealed class WireTransferService(
         var debitAccount = WireIban.Normalize(profile.Iban);
         if (!WireIban.IsValid(debitAccount))
         {
-            // NEVER log the IBAN itself (ADR-012-R2)
             logger.LogWarning("The issuer profile of org {OrgId} has an invalid IBAN (validation failed)", orgId);
             throw new DomainRuleException(WireTransferErrors.DebitAccountInvalid, "InvalidDebitAccountIban");
         }
 
-        // The Swiss file is a domestic payment: a Swiss bank executes the debit of an account it holds, a Swiss or Liechtenstein IBAN, and the file names that bank by its
-        // institution identifier. A foreign debit IBAN would leave the bank unnamed and a payment no Swiss bank executes, so the batch is refused. EUR is unchanged: its
-        // debtor agent is «not provided» and the bank reads the account from the IBAN, whatever bank it is.
         if (flavor == Pain001Flavor.Swiss && !WireIban.IsSwiss(debitAccount))
         {
-            // NEVER log the IBAN itself (ADR-012-R2)
             logger.LogWarning("The issuer profile of org {OrgId} has a debit IBAN that is not Swiss or Liechtenstein, which a CHF batch needs", orgId);
             throw new DomainRuleException(WireTransferErrors.DebitIbanNotSwiss, "WireDebitIbanNotSwiss");
         }
 
-        // The creditors: every owner of the batch with a complete structured address and an IBAN that is a creditor account of a normal transfer in the area of the file.
         var creditors = await CreditorsAsync(orgId, payouts, flavor, cancellationToken);
 
         var now = clock.GetUtcNow().UtcDateTime;
@@ -175,7 +161,6 @@ public sealed class WireTransferService(
                 executionDate))
             .ToList();
 
-        // The batch is built in memory: nothing is added to the context until its file has been validated.
         var batch = new WireBatch
         {
             OrgId = orgId,
@@ -189,15 +174,11 @@ public sealed class WireTransferService(
             MessageFormat = WireMessageFormats.Of(currency),
         };
 
-        // CHF is the Swiss pain.001.001.09.ch.03 file, EUR the pain.001.001.09 file of the SEPA credit transfer: the writer takes the flavor from the currency.
         var message = new Pain001Message(MessageIdOf(batch.Id), RomeCalendar.ToRome(now).DateTime, currency, debtor, debitAccount, transfers);
         var xmlContent = Pain001V09Writer.Write(message);
 
-        // Validate before anything is saved: a file that does not validate leaves no batch behind, and with no schema there is no file.
         ValidateFile(xmlContent, batch);
 
-        // One save for the batch, its payouts and the file it was validated for: all or nothing. A child with its own Guid goes through its set (added to a
-        // collection alone it would be tracked as Modified).
         batch.XmlContent = xmlContent;
         db.WireBatches.Add(batch);
         for (var i = 0; i < ordered.Count; i++)
@@ -220,7 +201,6 @@ public sealed class WireTransferService(
         }
         catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex, WireBatchPayout.PayoutIndexName))
         {
-            // Two requests for the same payouts that the lock could not tell apart: the index refused the second.
             throw new DomainRuleException(WireTransferErrors.PayoutsAlreadyInBatch, "PayoutsAlreadyInBatch");
         }
 
@@ -240,7 +220,6 @@ public sealed class WireTransferService(
         return (batch, xmlContent);
     }
 
-    /// <inheritdoc />
     public async Task ConfirmDownloadAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default)
     {
         var batch = await FindBatchAsync(orgId, batchId, cancellationToken);
@@ -258,7 +237,6 @@ public sealed class WireTransferService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <inheritdoc />
     public async Task ConfirmPaidAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default)
     {
         var batch = await FindBatchAsync(orgId, batchId, cancellationToken);
@@ -273,7 +251,6 @@ public sealed class WireTransferService(
             throw new DomainRuleException("batch_already_paid", "BatchAlreadyPaid");
         }
 
-        // A batch is never marked paid while its file would still pay a payout that was reversed after the batch was made.
         await EnsureNoReversedPayoutsAsync(orgId, batch.Id, cancellationToken);
 
         batch.Status = WireBatchStatus.Paid;
@@ -282,7 +259,6 @@ public sealed class WireTransferService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <inheritdoc />
     public async Task<(WireBatch Batch, string XmlContent)> GetBatchFileAsync(
         Guid orgId,
         Guid batchId,
@@ -295,14 +271,11 @@ public sealed class WireTransferService(
             throw new DomainRuleException("batch_xml_not_found", "BatchXmlNotFound");
         }
 
-        // The file of a batch that is not paid yet is not handed out while it pays a payout that was reversed after the batch was made: it would go to the bank
-        // and pay it. A paid batch is evidence of what was sent and stays readable.
         if (batch.Status != WireBatchStatus.Paid)
         {
             await EnsureNoReversedPayoutsAsync(orgId, batch.Id, cancellationToken);
         }
 
-        // Mark as downloaded on first retrieval
         if (batch.Status == WireBatchStatus.Generated)
         {
             batch.Status = WireBatchStatus.Downloaded;
@@ -313,10 +286,8 @@ public sealed class WireTransferService(
         return (batch, batch.XmlContent);
     }
 
-    /// <inheritdoc />
     public async Task<IReadOnlyList<WireBatchSummary>> ListBatchesAsync(Guid orgId, CancellationToken cancellationToken = default)
     {
-        // The columns are chosen one by one: the file and the debit account are never read, so never decrypted and never in a list.
         return await db.WireBatches.AsNoTracking()
             .Where(b => b.OrgId == orgId)
             .OrderByDescending(b => b.CreatedAt)
@@ -336,10 +307,8 @@ public sealed class WireTransferService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <inheritdoc />
     public async Task<IReadOnlyList<WirePayoutSummary>> ListPayablePayoutsAsync(Guid orgId, string? currency, CancellationToken cancellationToken = default)
     {
-        // One list per currency: there is no list of every currency, and a currency with no wire file has none (the refusal of a batch of such payouts).
         var wanted = NormalizeCurrency(currency);
         if (wanted is not (WireTransferErrors.SepaCurrency or WireTransferErrors.SwissCurrency))
         {
@@ -383,11 +352,8 @@ public sealed class WireTransferService(
         return rows.Select(SummaryOf).ToList();
     }
 
-    /// <inheritdoc />
     public async Task<WireBatchPayoutsSummary> GetBatchPayoutsAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken = default)
     {
-        // The batch of the org, by the columns of the list: the file and the debit account are never read, so never decrypted. The org is checked here, in the query: a batch
-        // of another org does not exist for the caller (404, as if the id were a guess).
         var batch = await db.WireBatches.AsNoTracking()
             .Where(b => b.Id == batchId && b.OrgId == orgId)
             .Select(b => new WireBatchSummary(
@@ -407,8 +373,6 @@ public sealed class WireTransferService(
             throw BatchNotFound(batchId);
         }
 
-        // The rows of the batch and what each one pays: the amount is the one of the transfer in the file, the payout says whether it was reversed after the batch was made.
-        // The rows of a batch of before the payouts are statements, not payouts: there are none here. The order is the one of the transfers of the file.
         var rows = await (
                 from link in db.WireBatchPayouts.AsNoTracking()
                 join payout in db.OwnerPayouts.AsNoTracking() on link.OwnerPayoutId equals payout.Id
@@ -476,7 +440,6 @@ public sealed class WireTransferService(
                 owner?.BillingCity,
                 owner?.BillingCountry);
 
-            // Both files write the structured address of the creditor, so both ask for it (and for a name the message can write).
             if (!Pain001V09Writer.IsComplete(party, flavor))
             {
                 withoutAddress.Add(ownerId);
@@ -542,10 +505,6 @@ public sealed class WireTransferService(
         return creditors;
     }
 
-    /// <summary>
-    /// The refusal of a batch for some owners: 422 with the code and, in <c>ownerIds</c>, the ids of the owners (a number of them is the message argument). The log
-    /// carries the code, how many and their ids, never a name or an IBAN.
-    /// </summary>
     private DomainRuleException OwnersRefused(string code, string messageKey, IReadOnlyList<Guid> ownerIds)
     {
         logger.LogWarning(
@@ -562,8 +521,6 @@ public sealed class WireTransferService(
 
     private async Task<WireBatch> FindBatchAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken)
     {
-        // The org is checked here, in the query: a Find by key does not apply the global filter of the context, and a batch of another org must not be reachable
-        // through a guessed id (404, as if it did not exist).
         var batch = await db.WireBatches.FirstOrDefaultAsync(b => b.Id == batchId && b.OrgId == orgId, cancellationToken);
         return batch ?? throw BatchNotFound(batchId);
     }
@@ -574,11 +531,6 @@ public sealed class WireTransferService(
         return new NotFoundException($"Wire batch {batchId} not found");
     }
 
-    /// <summary>
-    /// Refuses (422 <c>wire_batch_payouts_reversed</c>, with the ids of the payouts in <c>payoutIds</c>) a step of a batch whose file would still pay a payout that was
-    /// reversed after the batch was made. A reversal posts the opposite ledger lines and does not know about the batches, and a batch cannot be cancelled yet: the file
-    /// stays as it was written, so the batch is neither handed out nor marked as paid until the payouts are checked.
-    /// </summary>
     private async Task EnsureNoReversedPayoutsAsync(Guid orgId, Guid batchId, CancellationToken cancellationToken)
     {
         var reversed = await (
@@ -605,7 +557,6 @@ public sealed class WireTransferService(
         };
     }
 
-    /// <summary>The name an owner is paid under: the legal name when the registry has one, else the first and last name.</summary>
     private static string OwnerNameOf(PropertyOwner? owner)
     {
         if (owner is null)
@@ -616,7 +567,6 @@ public sealed class WireTransferService(
         return OwnerNameOf(owner.LegalName, owner.FirstName, owner.LastName);
     }
 
-    /// <summary>The name an owner is paid under, from the columns of the registry: the legal name when there is one, else the first and last name.</summary>
     private static string OwnerNameOf(string? legalName, string firstName, string lastName)
     {
         return string.IsNullOrWhiteSpace(legalName) ? $"{firstName} {lastName}" : legalName;
@@ -641,13 +591,11 @@ public sealed class WireTransferService(
             WireIban.Normalize(row.OwnerIban).Length > 0);
     }
 
-    /// <summary>The remittance of a transfer: «Rendiconto» and the period of the statement it pays, <c>Rendiconto 10/2026</c>.</summary>
     private static string RemittanceOf(int year, int month)
     {
         return string.Create(CultureInfo.InvariantCulture, $"Rendiconto {month:D2}/{year:D4}");
     }
 
-    /// <summary>The message id of the file of a batch: <c>CZ</c> and its id without hyphens (34 characters, unique).</summary>
     private static string MessageIdOf(Guid batchId)
     {
         return WireBatchPayout.EndToEndIdPrefix + batchId.ToString("N");
@@ -689,13 +637,11 @@ public sealed class WireTransferService(
         }
     }
 
-    /// <summary>The currency code of a payout: trimmed and in upper case (the stored one is a free text of three letters).</summary>
     private static string NormalizeCurrency(string? currency)
     {
         return (currency ?? string.Empty).Trim().ToUpperInvariant();
     }
 
-    /// <summary>What the reads of the wire page select for a payout (see <see cref="SummaryOf"/>).</summary>
     private sealed class PayoutRow
     {
         public Guid PayoutId { get; set; }
@@ -733,31 +679,26 @@ public sealed class WireTransferService(
 /// </summary>
 internal static class WireIban
 {
-    /// <summary>An IBAN with no space and no hyphen, in upper case; empty for a missing one.</summary>
     public static string Normalize(string? iban)
     {
         return OwnerFieldRules.NormalizeIban(iban);
     }
 
-    /// <summary>True for an IBAN in its normal form that has the length of its country and passes the check digits (ISO 13616, mod 97 equal to 1).</summary>
     public static bool IsValid(string iban)
     {
         return !string.IsNullOrEmpty(iban) && OwnerFieldRules.IsValidIban(iban);
     }
 
-    /// <summary>True for a Swiss or Liechtenstein IBAN (21 characters).</summary>
     public static bool IsSwiss(string iban)
     {
         return iban.Length == 21 && (iban.StartsWith("CH", StringComparison.Ordinal) || iban.StartsWith("LI", StringComparison.Ordinal));
     }
 
-    /// <summary>True for an IBAN of the SEPA area (the registry's definition): the creditor account of a SEPA credit transfer, which a bank reaches with the IBAN alone.</summary>
     public static bool IsSepa(string iban)
     {
         return OwnerFieldRules.IsSepaIban(iban);
     }
 
-    /// <summary>True for a QR-IBAN: a Swiss or Liechtenstein IBAN whose institution identifier (characters 5 to 9) is between 30000 and 31999.</summary>
     public static bool IsQrIban(string iban)
     {
         return IssuerBankAccounts.IsQrIban(iban);

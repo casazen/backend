@@ -53,7 +53,6 @@ public sealed class DoorCheckInService(
             if (!string.IsNullOrEmpty(property.DoorToken))
                 return property.DoorToken;
 
-            // False: another request set the token first (or the property is gone): look again and answer what is stored.
             var token = PropertyDoorTokens.New();
             if (await SetFirstTokenAsync(orgId, propertyId, token, cancellationToken))
                 return token;
@@ -79,7 +78,6 @@ public sealed class DoorCheckInService(
             }
             catch (DbUpdateException) when (attempt < MaxAttempts)
             {
-                // One in 2^192: the same token as another property. Look again with a new one.
                 db.Entry(property).State = EntityState.Detached;
             }
         }
@@ -89,7 +87,6 @@ public sealed class DoorCheckInService(
     {
         ArgumentNullException.ThrowIfNull(input);
 
-        // A made-up token never reaches the database; a date that was not typed is not a stay.
         if (!PropertyDoorTokens.IsWellFormed(doorToken) || input.ArrivalDate is not { } arrival)
             return DoorCheckInResult.NotFound;
 
@@ -115,7 +112,6 @@ public sealed class DoorCheckInService(
         if (property is null)
             return DoorCheckInResult.NotFound;
 
-        // A door that had its failed attempts, from every client together, is closed to everybody and answers like any wrong datum: the right data would not open it either.
         if (failures?.IsLocked(doorToken) == true)
         {
             logger.LogInformation("Door check-in of property {PropertyId}: the door is closed, too many failed attempts", property.Id);
@@ -126,7 +122,6 @@ public sealed class DoorCheckInService(
         var windowStart = RomeCalendar.StartOfDayUtc(today.AddDays(-1));
         var windowEnd = RomeCalendar.StartOfDayUtc(today.AddDays(2));
 
-        // Only the stays of the property the door token names, within a margin of the days the door serves (the exact days are decided below).
         var stays = await db.Bookings.AsNoTracking()
             .Where(b => b.PropertyId == property.Id
                 && DoorStatuses.Contains(b.Status)
@@ -156,7 +151,6 @@ public sealed class DoorCheckInService(
             .Take(2)
             .ToList();
 
-        // Not one stay, or more than one: the same answer, so the door never says which part of the data was wrong.
         if (matches.Count != 1)
         {
             logger.LogInformation("Door check-in of property {PropertyId}: no stay matched", property.Id);
@@ -166,7 +160,6 @@ public sealed class DoorCheckInService(
 
         var stay = matches[0];
 
-        // A check-in that is complete has no identity step left to reach: the link of a completed session would answer 404 anyway.
         var current = await checkIn.GetSessionForBookingAsync(stay.Id);
         if (current?.IsCompleted == true)
         {
@@ -175,17 +168,11 @@ public sealed class DoorCheckInService(
             return DoorCheckInResult.NotFound;
         }
 
-        // The open link of the stay is renewed in place (a new token, the old one dead), so the consent, the document read and the attempts of the face check spent on it stay:
-        // a new session would start with none, and a guest could have the attempts again at every opening of the door.
         var link = await checkIn.ReissueLinkAsync(stay.Id, stay.OrgId);
         logger.LogInformation("Door check-in of property {PropertyId}: a link was issued for booking {BookingId}", property.Id, stay.Id);
         return new DoorCheckInResult(link.Token);
     }
 
-    /// <summary>
-    /// Sets the first token of a property: true when this call did, false when the property already has one (another request was faster) or is gone. A relational
-    /// database does it with one conditional update; the in-memory database of the unit tests, which has none, with the tracked entity.
-    /// </summary>
     private async Task<bool> SetFirstTokenAsync(Guid orgId, Guid propertyId, string token, CancellationToken cancellationToken)
     {
         var now = UtcNow();
@@ -211,10 +198,6 @@ public sealed class DoorCheckInService(
         return true;
     }
 
-    /// <summary>
-    /// Counts a failed attempt of the door (a well formed request that opened no stay, whatever the reason: a stay whose check-in is complete counts too, so the count never says that the data
-    /// were right). A request that is not even shaped like an attempt (no date, not a code, not a surname) is no guess and counts for nothing.
-    /// </summary>
     private void RecordFailure(string doorToken, Guid propertyId)
     {
         if (failures?.RecordFailure(doorToken) == true)

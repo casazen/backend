@@ -24,7 +24,6 @@ public sealed class RoutineConditionFacts
         _values = new Dictionary<string, object?>(values, StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>No fact at all: the event is about no booking the org knows.</summary>
     public static RoutineConditionFacts None => new(new Dictionary<string, object?>());
 
     /// <summary>
@@ -58,7 +57,6 @@ public sealed class RoutineConditionFacts
         return new RoutineConditionFacts(facts);
     }
 
-    /// <summary>The fact of a field; false when there is none.</summary>
     public bool TryGet(string fieldId, out object? value)
     {
         value = null;
@@ -71,20 +69,13 @@ public sealed class RoutineConditionFacts
 /// <param name="Condition">The condition; <c>null</c> for "always" (no condition written).</param>
 public readonly record struct RoutineConditionParse(bool Valid, Condition? Condition)
 {
-    /// <summary>No condition: the routine always runs.</summary>
     public static RoutineConditionParse Always => new(true, null);
 
-    /// <summary>Not a condition.</summary>
     public static RoutineConditionParse Invalid => new(false, null);
 }
 
-/// <summary>
-/// The conditions of the routines (NF-21, ADR-014): which fields a routine can read, how its <c>ConditionJson</c> is read, and whether a rule is met
-/// by the facts of a booking. Pure: the engine loads the facts, <c>IConditionEvaluator</c> walks the groups and asks this for each rule.
-/// </summary>
 public static class RoutineConditions
 {
-    // The ids of FieldCatalog the routines read.
     public const string PropertyId = "propertyId";
     public const string Channel = "channel";
     public const string StayDuration = "stayDuration";
@@ -95,8 +86,6 @@ public static class RoutineConditions
     {
         PropertyNameCaseInsensitive = true,
 
-        // A member nobody reads (a misspelled "groups", "conditions" for "rules") is an error: ignoring it would turn the rules that were meant into
-        // "no condition", a routine that runs for every booking.
         UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
     };
 
@@ -128,12 +117,10 @@ public static class RoutineConditions
         }
     }
 
-    /// <summary>One message for each rule on a field the routines do not read (<see cref="SupportedFields"/>).</summary>
     public static IReadOnlyList<string> UnsupportedFieldErrors(Condition condition)
     {
         ArgumentNullException.ThrowIfNull(condition);
 
-        // Shapes the generic validator reports ("groups cannot be null"…) are not this method's business: it only names the fields.
         var errors = new List<string>();
         foreach (var group in condition.Groups ?? [])
         {
@@ -203,7 +190,6 @@ public static class RoutineConditions
                 return value is string text && IsChannelName(text) ? null : $"Field {field}: {op} needs the name of a channel";
 
             default:
-                // The counts: stayDuration, guestCount and bookingLeadTime.
                 return op switch
                 {
                     "equals" => value is double whole && double.IsFinite(whole) && whole == Math.Floor(whole) ? null : $"Field {field}: equals needs a whole number",
@@ -217,7 +203,6 @@ public static class RoutineConditions
     private static bool IsListOf(object? value, Func<string, bool> element) =>
         value is List<object?> { Count: > 0 } items && items.All(item => item is string text && element(text));
 
-    /// <summary>The id of a property as the fact spells it (<c>propertyId.ToString("D")</c>): another spelling would never be equal to it.</summary>
     private static bool IsPropertyId(string text) => Guid.TryParseExact(text.Trim(), "D", out _);
 
     private static bool IsChannelName(string text) => EnumNames.TryParseDefined<BookingSource>(text, out _);
@@ -230,11 +215,6 @@ public static class RoutineConditions
         && double.IsFinite(high)
         && low <= high;
 
-    /// <summary>
-    /// Whether <paramref name="rule"/> is met by <paramref name="facts"/>. A field with no fact is not met, whatever the operator (<c>notEquals</c> and
-    /// <c>notIn</c> included), and so is a list that is empty, a range that is not two numbers in order and a value of another kind: nothing a routine
-    /// cannot prove ever counts as "everything". Texts are compared without regard to case; numbers are the JSON numbers.
-    /// </summary>
     public static bool Satisfies(ConditionRule rule, RoutineConditionFacts facts)
     {
         ArgumentNullException.ThrowIfNull(rule);
@@ -284,7 +264,6 @@ public static class RoutineConditions
         _ => false,
     };
 
-    /// <summary>A value as the rules compare it: text, a number (as <see cref="double"/>), a switch, or a list of them; <c>null</c> for anything else.</summary>
     private static object? Plain(object? raw) => raw switch
     {
         null => null,

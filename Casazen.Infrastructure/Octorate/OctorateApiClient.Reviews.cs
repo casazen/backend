@@ -22,11 +22,9 @@ public sealed partial class OctorateApiClient
             ct,
             mapError: ReviewErrorOf);
 
-        // «No content» is a booking with no review. Any other answer is read by the one mapper; one it cannot read is not a booking with no review.
         if (answer.StatusCode == 204)
             return new OctorateReview(null, null);
 
-        // The words of the guest are in the answer: it is read and returned, never logged (not even when it cannot be parsed).
         using var document = ParseJson(answer);
         return OtaReviewMapper.ReadReview(document.RootElement) ?? throw new OctorateServerException(answer.StatusCode);
     }
@@ -77,7 +75,6 @@ public sealed partial class OctorateApiClient
             ? OctorateAuthException.ReviewNotAvailable(status)
             : null;
 
-    /// <summary>The refusals of a write: a 409 is «not allowed, or already done» (<c>review_action_not_allowed</c>); the others are those of <see cref="ReviewErrorOf"/>, then the common ones.</summary>
     internal static OctorateException? ReviewWriteErrorOf(int status, string? errorType, string body) =>
         status == 409 ? new OctorateReviewActionNotAllowedException(status) : ReviewErrorOf(status, errorType, body);
 }
@@ -85,18 +82,12 @@ public sealed partial class OctorateApiClient
 /// <summary>The paths and bodies of the review requests CasaZen makes (E05/F06/US01/T02), built apart from the client so that they can be read and tested.</summary>
 internal static class OctorateReviewRequests
 {
-    /// <summary>The address of the reviews of one booking: <c>/rest/v2/review/{accommodation}/{refer}</c>.</summary>
     internal static string Path(string accommodationId, string refer) =>
         $"/rest/v2/review/{Uri.EscapeDataString(accommodationId)}/{Uri.EscapeDataString(refer)}";
 
-    /// <summary>The body of the host's reply: its text. <b>Documented, not proven</b> (the member name is the plan's, to be confirmed on the first real Airbnb property).</summary>
     internal static string HostReplyBody(string text) =>
         JsonSerializer.Serialize(new Dictionary<string, object?> { ["text"] = text });
 
-    /// <summary>
-    /// The body of the host's own review: the rating categories, the public text and <c>privateReview</c>. A member the host leaves empty is not sent. <b>Documented, not
-    /// proven</b>; at least one rating is required here, so «no rating» is never sent as if it were one.
-    /// </summary>
     internal static string HostReviewBody(OctorateHostReviewCommand review)
     {
         ArgumentNullException.ThrowIfNull(review);

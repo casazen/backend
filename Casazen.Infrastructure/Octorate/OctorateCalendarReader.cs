@@ -18,7 +18,6 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 internal static partial class OctorateCalendarReader
 {
-    /// <summary>The deepest nesting looked at (data / products / product / days / day).</summary>
     private const int MaxDepth = 8;
 
     private static readonly string[] ProductNames = ["product", "productId", "roomId"];
@@ -26,7 +25,6 @@ internal static partial class OctorateCalendarReader
     private static readonly string[] ContainerNames =
         ["data", "days", "dates", "calendar", "calendars", "items", "products", "result", "results", "content", "page", "links"];
 
-    /// <summary>The days of the answer. <paramref name="requestedProducts"/> names the product of a day that does not say it when the call asked for one only.</summary>
     internal static List<OctorateCalendarDay> Read(JsonElement root, IReadOnlyCollection<string> requestedProducts)
     {
         ArgumentNullException.ThrowIfNull(requestedProducts);
@@ -52,7 +50,6 @@ internal static partial class OctorateCalendarReader
         if (element.ValueKind != JsonValueKind.Object)
             return;
 
-        // A day: it holds its date.
         if (OctorateJson.DateOf(OctorateJson.Text(element, "date", "day")) is { } date)
         {
             AddDay(element, OctorateJson.Text(element, ProductNames) ?? product, date, days);
@@ -66,14 +63,12 @@ internal static partial class OctorateCalendarReader
             if (member.Value.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
                 continue;
 
-            // Days keyed by date: { "2026-11-10": { "availability": 1, ... } }.
             if (member.Value.ValueKind == JsonValueKind.Object && OctorateJson.DateOf(member.Name) is { } keyDate && member.Name.Length == 10)
             {
                 AddDay(member.Value, OctorateJson.Text(member.Value, ProductNames) ?? own, keyDate, days);
                 continue;
             }
 
-            // Products keyed by id: { "956528": [ ... ] }.
             var next = own is null && IsProductKey(member.Name) ? member.Name : own;
             Walk(member.Value, next, days, depth + 1);
         }
@@ -96,7 +91,6 @@ internal static partial class OctorateCalendarReader
             OctorateJson.Bool(record, "closeToDeparture", "closedToDeparture", "ctd"));
     }
 
-    /// <summary>A key that can be a product id: letters, digits, dash and underscore, and not one of the words a wrapper uses.</summary>
     private static bool IsProductKey(string name) =>
         ProductKey().IsMatch(name)
         && !ContainerNames.Contains(name, StringComparer.OrdinalIgnoreCase)

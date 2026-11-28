@@ -7,10 +7,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Public-site branding of an org (BK-12, A3-17). Images go to the public bucket of <see cref="IFileStorage"/> (FD-07)
-/// under <c>orgs/{orgId}/branding/{kind}/</c> and are referenced by their absolute public URL.
-/// </summary>
 public class OrgBrandingService(
     AppDbContext dbContext,
     IFileStorage storage,
@@ -18,17 +14,14 @@ public class OrgBrandingService(
 {
     public async Task<Org?> UpdateAsync(Guid orgId, OrgBrandingUpdate update, CancellationToken cancellationToken = default)
     {
-        // Validate everything before loading anything: an invalid value changes nothing.
         var primaryColor = OrgBrandingRules.NormalizePrimaryColor(update.PrimaryColor);
         var themeId = OrgBrandingRules.NormalizeThemeId(update.PublicThemeId);
         var tagline = OrgBrandingRules.NormalizeTagline(update.Tagline);
 
-        // DB-03: the public profile fields are validated only when the caller sends them; the others keep their value.
         var subtitle = update.Subtitle.IsSent ? OrgBrandingRules.NormalizeSubtitle(update.Subtitle.Value) : null;
         var hostName = update.HostName.IsSent ? OrgBrandingRules.NormalizeHostName(update.HostName.Value) : null;
         var publicPhone = update.PublicPhone.IsSent ? OrgBrandingRules.NormalizePublicPhone(update.PublicPhone.Value) : null;
 
-        // DB-01: the font pair is optional in the same way, so the appearance form of before never erases the choice.
         var fontId = update.PublicFontId.IsSent ? OrgBrandingRules.NormalizeFontId(update.PublicFontId.Value) : null;
 
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
@@ -78,7 +71,6 @@ public class OrgBrandingService(
         }
         catch
         {
-            // The org still points at the previous image: the new object would be orphaned.
             await TryDeleteAsync(orgId, key, CancellationToken.None);
             throw;
         }
@@ -150,10 +142,6 @@ public class OrgBrandingService(
         }
     }
 
-    /// <summary>
-    /// Reads at most <paramref name="limit"/> bytes: enough to tell a file over the size limit (one byte more) without
-    /// buffering an arbitrarily large upload.
-    /// </summary>
     private static async Task<byte[]> ReadAtMostAsync(Stream content, long limit, CancellationToken cancellationToken)
     {
         using var buffer = new MemoryStream();

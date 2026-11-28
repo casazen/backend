@@ -13,10 +13,6 @@ public sealed class CorsOriginOptions
 {
     public const string SectionName = "Cors";
 
-    /// <summary>
-    /// <c>Cors:AllowedOrigins</c>: exact origins (<c>https://host[:port]</c>), comma separated or as an array
-    /// (<c>Cors__AllowedOrigins__0</c>).
-    /// </summary>
     public List<string> AllowedOrigins { get; } = [];
 
     /// <summary>
@@ -26,7 +22,6 @@ public sealed class CorsOriginOptions
     /// </summary>
     public string? VercelPreviewPattern { get; set; }
 
-    /// <summary>Reads the section: the origin list accepts both an array and a comma-separated string.</summary>
     public static void Configure(CorsOriginOptions options, IConfiguration section)
     {
         var origins = section.GetSection(nameof(AllowedOrigins));
@@ -59,10 +54,6 @@ public sealed class CorsOriginOptions
     }
 }
 
-/// <summary>
-/// The configured origins, parsed once. <see cref="IsOriginAllowed"/> is the single decision point for the CORS policy
-/// (<see cref="Infrastructure.CasazenCorsPolicyProvider"/>).
-/// </summary>
 public sealed class CorsOriginAllowList
 {
     private const string VercelSuffix = ".vercel.app";
@@ -78,13 +69,11 @@ public sealed class CorsOriginAllowList
 
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromMilliseconds(50);
 
-    /// <summary>One deployment: <c>casazen-&lt;9 chars&gt;-lucalamalfa91s-projects</c>.</summary>
     private static readonly Regex FrontendDeploymentLabel = new(
         $"^{FrontendProject}-[a-z0-9]{{9}}-{FrontendTeam}$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
         PatternTimeout);
 
-    /// <summary>A branch deployment: <c>casazen-git-&lt;branch&gt;-lucalamalfa91s-projects</c>.</summary>
     private static readonly Regex FrontendBranchLabel = new(
         $"^{FrontendProject}-git-[a-z0-9-]+-{FrontendTeam}$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled,
@@ -118,14 +107,12 @@ public sealed class CorsOriginAllowList
         AllowsFrontendPreviews = allowFrontendPreviews;
     }
 
-    /// <summary>The configured origins, normalized (<c>scheme://host[:port]</c>, lower case).</summary>
     public IReadOnlyCollection<string> Origins => _origins;
 
     public bool AllowsVercelPreviews => _vercelPreviewLabel is not null;
 
     public bool AllowsLoopback { get; }
 
-    /// <summary>Branch and per-deployment hosts of the frontend project. Off in Production.</summary>
     public bool AllowsFrontendPreviews { get; }
 
     public bool IsOriginAllowed(string? origin)
@@ -145,7 +132,6 @@ public sealed class CorsOriginAllowList
         return IsOwnVercelPreview(uri) || IsFrontendProject(uri);
     }
 
-    /// <summary>Configuration errors (malformed origin, invalid pattern); empty when the section is valid.</summary>
     public static IReadOnlyList<string> GetErrors(CorsOriginOptions options) => Parse(options).Errors;
 
     private bool IsOwnVercelPreview(Uri uri)
@@ -221,7 +207,6 @@ public sealed class CorsOriginAllowList
 
         foreach (var value in options.AllowedOrigins)
         {
-            // Placeholders of the example files (https://your-frontend.vercel.app) are not origins.
             if (RequiredConfiguration.IsMissing(value))
                 continue;
 

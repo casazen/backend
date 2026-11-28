@@ -1,11 +1,5 @@
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Who is the holder (<i>titolare</i>) of an org (AM-03, S5): the person who may do in the org's name what the law ties to the
-/// landlord, like the RLI delega and the IMU communication. With a team that is no longer «whoever created the property»
-/// (<c>Property.OwnerId</c> is just the creator, and a property manager creates properties too): it is the org's owner and its
-/// administrators.
-/// </summary>
 public interface IOrgHolderService
 {
     /// <summary>

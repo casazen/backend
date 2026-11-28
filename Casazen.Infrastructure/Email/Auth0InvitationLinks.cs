@@ -9,7 +9,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Email;
 
-/// <summary>Per deployment, a role-free Auth0 organization on the same database connection as the SPA.</summary>
 public sealed class Auth0InvitationOptions
 {
     public string? OrganizationId { get; init; }
@@ -23,10 +22,8 @@ public sealed class Auth0InvitationOptions
         && ConnectionId?.StartsWith("con_", StringComparison.Ordinal) == true);
 }
 
-/// <summary>A CasaZen invitation to an account, with its original link and lifetime.</summary>
 public sealed record AccountInvitationEmail(string Flow, string Url, DateTime ExpiresAtUtc);
 
-/// <summary>Creates the Auth0 side of the invitation without requesting a second email or assigning an Auth0 role.</summary>
 public sealed class Auth0InvitationLinks(
     IOptions<Auth0InvitationOptions> options,
     IAuth0ManagementTokenProvider tokens,

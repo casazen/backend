@@ -29,25 +29,18 @@ namespace Casazen.Core.Entities;
 [Table("PopupAlerts")]
 public class PopupAlert : ITenantOwned
 {
-    /// <summary>Column length of <see cref="UserId"/>: the one of <c>User.Id</c>.</summary>
     public const int UserIdMaxLength = 255;
 
-    /// <summary>Column length of <see cref="AlertType"/>, which is stored by name.</summary>
     public const int AlertTypeMaxLength = 50;
 
-    /// <summary>Column length of <see cref="EntityType"/>.</summary>
     public const int EntityTypeMaxLength = 64;
 
-    /// <summary>The <see cref="EntityType"/> of an alert about a booking (<see cref="EntityId"/> = the booking id).</summary>
     public const string BookingEntityType = "Booking";
 
-    /// <summary>The <see cref="EntityType"/> of an alert about a property (<see cref="EntityId"/> = the property id).</summary>
     public const string PropertyEntityType = "Property";
 
-    /// <summary>Name of the index the pending alerts of a user are read through: <c>(UserId, DismissedAt, RemindAt)</c>.</summary>
     public const string PendingIndexName = "IX_PopupAlerts_UserId_DismissedAt_RemindAt";
 
-    /// <summary>Name of the partial index the job that pushes the alerts that fell due reads through.</summary>
     public const string DueIndexName = "IX_PopupAlerts_RemindAt_Due";
 
     /// <summary>
@@ -60,34 +53,22 @@ public class PopupAlert : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the host org of the alerted user. Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The user who is alerted (<c>User.Id</c>, the Auth0 subject). Foreign key with <c>ON DELETE CASCADE</c>.</summary>
     [Required, MaxLength(UserIdMaxLength)]
     public string UserId { get; set; } = string.Empty;
 
-    /// <summary>What the alert is about. Stored by name.</summary>
     public AlertType AlertType { get; set; }
 
-    /// <summary>
-    /// The kind of entity the alert is about (<see cref="BookingEntityType"/>, <see cref="PropertyEntityType"/>, ...): the client reads
-    /// the detail from the API of that entity. A caller limited to some properties reaches only the alerts about a booking or a property
-    /// it was given.
-    /// </summary>
     [Required, MaxLength(EntityTypeMaxLength)]
     public string EntityType { get; set; } = string.Empty;
 
-    /// <summary>The id of that entity. Not a foreign key: the alert outlives the removal of what it points to.</summary>
     public Guid EntityId { get; set; }
 
-    /// <summary>How urgent it is. Stored as its number (<see cref="AlertUrgency.High"/> is the largest).</summary>
     public AlertUrgency Urgency { get; set; } = AlertUrgency.Normal;
 
-    /// <summary>UTC instant the alert was raised.</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>UTC instant the user dismissed it; <c>null</c> while it is open. A dismissed alert is never pending again.</summary>
     public DateTime? DismissedAt { get; set; }
 
     /// <summary>

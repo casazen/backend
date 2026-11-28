@@ -42,7 +42,6 @@ public class PropertyPoiService(
     {
         ArgumentNullException.ThrowIfNull(pois);
 
-        // The rules first: nothing is locked or read for a list that cannot be stored.
         if (pois.Count > PropertyPoi.MaxPerProperty)
             throw new DomainRuleException(PoiCodes.LimitReachedCode, "PropertyPoiLimitReached", PropertyPoi.MaxPerProperty);
 

@@ -27,7 +27,6 @@ public sealed class SupplierServiceDisputesController(
     IServiceDisputeService disputes,
     ISupplierOrgContextResolver supplierOrgContextResolver) : ControllerBase
 {
-    /// <summary>The complaint against the supplier about this job. 404 <c>service_dispute_not_found</c> when there is none.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceDisputeSupplierDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -42,10 +41,6 @@ public sealed class SupplierServiceDisputesController(
         return Ok(ServiceDisputeSupplierDto.From(dispute));
     }
 
-    /// <summary>
-    /// The supplier's one reply, in its own words (at most 1000 characters). The dispute goes to the CasaZen team to decide; the payer is told that the
-    /// supplier replied, not what it wrote. The same words again answer the same dispute.
-    /// </summary>
     [HttpPost("reply")]
     [ProducesResponseType(typeof(ServiceDisputeSupplierDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
@@ -57,7 +52,6 @@ public sealed class SupplierServiceDisputesController(
         [FromBody] ReplyToServiceDisputeRequest request,
         CancellationToken cancellationToken)
     {
-        // A write: the org comes only from the caller's own supplier link, like take and reject.
         var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (orgId is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
@@ -67,6 +61,5 @@ public sealed class SupplierServiceDisputesController(
         return Ok(ServiceDisputeSupplierDto.From(dispute));
     }
 
-    /// <summary>The answers carry the words of the payer: nothing is cached by the browser or a proxy.</summary>
     private void SetNoStore() => Response.Headers.CacheControl = "private, no-store";
 }

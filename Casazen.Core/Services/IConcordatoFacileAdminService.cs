@@ -1,6 +1,5 @@
 namespace Casazen.Core.Services;
 
-/// <summary>Admin operations for ConcordatoFacile gift management.</summary>
 public interface IConcordatoFacileAdminService
 {
     /// <summary>Manually grant a ConcordatoFacile gift to an organization with a biennial subscription.</summary>

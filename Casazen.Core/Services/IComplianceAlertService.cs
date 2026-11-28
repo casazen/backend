@@ -29,47 +29,30 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IComplianceAlertService
 {
-    /// <summary>Sends every period, connection and Ticino alert due now. Never throws for one org or property that cannot be processed: it is logged and the run goes on.</summary>
     Task<ComplianceAlertRunResult> RunAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>Outcome of one run of <see cref="IComplianceAlertService.RunAsync"/>.</summary>
-/// <param name="Skipped">Both modules are off (<c>Features:ComplianceTrafficLight</c> and <c>Features:TicinoNotificationAlerts</c>): the run did nothing.</param>
-/// <param name="Sent">Alerts delivered (each one email plus one push).</param>
 public sealed record ComplianceAlertRunResult(bool Skipped, int Sent);
 
-/// <summary>What a period or connection alert tells the host.</summary>
 public enum ComplianceAlertKind
 {
     /// <summary>The deadline of an ISTAT or tourist tax period is approaching and nothing proves it was met.</summary>
     PeriodDeadlineApproaching,
 
-    /// <summary>The deadline of a period passed (first alert, then the limited reminders).</summary>
     PeriodOverdue,
 
-    /// <summary>The police send of the channel manager is not active while a stay is coming (first alert, then one reminder).</summary>
     ConnectionInactive,
 
-    // E30/F02/US01/T01 (NF-127, D9): the kinds below are appended, never renumbered.
-
-    /// <summary>Guests arrived on a day of a Ticino property and the file for the cantonal police is not uploaded yet: time to prepare it.</summary>
     TicinoFileToPrepare,
 
-    /// <summary>The 24 hours of the notification to the cantonal police of a Ticino arrival day are about to run out.</summary>
     TicinoDeadlineApproaching,
 
-    /// <summary>The 24 hours of the notification of a Ticino arrival day are over and nothing says it was made (first alert, then the limited reminders).</summary>
     TicinoOverdue,
 
-    // E31/F02/US01/T01 (NF-131): the kinds below are appended, never renumbered.
-
-    /// <summary>Guests arrived on a day of a property in a canton other than Ticino and the host did not declare them notified to the cantonal authority yet: time to prepare it.</summary>
     SwissNotificationToPrepare,
 
-    /// <summary>The deadline of the notification to the cantonal authority of an arrival day of a canton other than Ticino is near.</summary>
     SwissNotificationApproaching,
 
-    /// <summary>The deadline of the notification of such an arrival day is over and the day is not declared (first alert, then the limited reminders).</summary>
     SwissNotificationOverdue,
 }
 
@@ -99,53 +82,31 @@ public sealed record ComplianceAlert(
     DateTime? DueAtUtc = null,
     IReadOnlyList<string>? MissingFields = null);
 
-/// <summary>Stage due now for a property, with the alert to send when the stage is claimed.</summary>
-/// <param name="Type">The kind of state row the stage belongs to.</param>
-/// <param name="ReferenceKey">
-/// The reference of the state row: the period (<c>yyyy-MM</c>), <see cref="ComplianceAlertState.ConnectionReferenceKey"/>, or the arrival day (<c>yyyy-MM-dd</c>) of a Ticino notification.
-/// </param>
-/// <param name="Stage">The stage (<see cref="ComplianceAlertStage"/>).</param>
-/// <param name="Alert">What to send.</param>
 public sealed record ComplianceAlertStep(ComplianceAlertType Type, string ReferenceKey, int Stage, ComplianceAlert Alert);
 
-/// <summary>Stages of <see cref="ComplianceAlertType"/>: each one is sent at most once per property and reference.</summary>
 public static class ComplianceAlertStage
 {
-    /// <summary>Period: the deadline day is approaching.</summary>
     public const int DeadlineApproaching = 1;
 
-    /// <summary>Period: the deadline day is over and nothing proves the period was settled.</summary>
     public const int Overdue = 2;
 
-    /// <summary>Connection: the connection was found inactive while a stay is coming.</summary>
     public const int ConnectionDetected = 1;
 
-    /// <summary>Connection: the second and last alert, a few days after the first.</summary>
     public const int ConnectionReminder = 2;
 
-    /// <summary>Stage of the <paramref name="number"/>-th reminder of a period after <see cref="Overdue"/> (1-based).</summary>
     public static int OverdueReminder(int number) => Overdue + number;
 
-    /// <summary>Ticino notification: the arrival day, time to prepare the file (two hours after the first expected check-in, else 18:00 local).</summary>
     public const int TicinoFileToPrepare = 1;
 
-    /// <summary>Ticino notification: six hours before the deadline.</summary>
     public const int TicinoDeadlineApproaching = 2;
 
-    /// <summary>Ticino notification: the deadline is over and the day is not closed.</summary>
     public const int TicinoOverdue = 3;
 
-    /// <summary>Stage of the <paramref name="number"/>-th reminder of a Ticino notification after <see cref="TicinoOverdue"/> (1-based).</summary>
     public static int TicinoOverdueReminder(int number) => TicinoOverdue + number;
 }
 
-/// <summary>
-/// What a Ticino notification alert can say is missing besides the guest data of <c>TicinoMissing</c> (the codes of the file plan are passed on as they are):
-/// the identifier of the structure, without which no file can be written. A stable code the clients and the texts translate.
-/// </summary>
 public static class TicinoAlertMissing
 {
-    /// <summary>The «Numero identificativo LEAR / NO-LEAR» of the structure is not entered (or is not valid).</summary>
     public const string StructureId = "structureId";
 }
 
@@ -157,16 +118,10 @@ public static class TicinoAlertMissing
 /// </summary>
 public static partial class ComplianceAlertSchedule
 {
-    /// <summary>How long the last stage of a sequence stays due after its time.</summary>
     public static readonly TimeSpan LastStageValidity = TimeSpan.FromHours(24);
 
-    /// <summary>
-    /// A legal deadline is «near» when it is at most this far from now, before or after it: the alert also reaches the popup router
-    /// (ADR-025). One definition, for the stay alerts and the period alerts.
-    /// </summary>
     public static readonly TimeSpan LegalDeadlinePopupWindow = TimeSpan.FromHours(24);
 
-    /// <summary>True when <paramref name="deadlineUtc"/> is within <see cref="LegalDeadlinePopupWindow"/> of <paramref name="nowUtc"/>.</summary>
     public static bool IsLegalDeadlineNear(DateTime? deadlineUtc, DateTime nowUtc) =>
         deadlineUtc is { } deadline && (deadline - nowUtc).Duration() <= LegalDeadlinePopupWindow;
 
@@ -228,12 +183,6 @@ public static partial class ComplianceAlertSchedule
         return nowUtc >= warningAt ? Step(ComplianceAlertStage.DeadlineApproaching, ComplianceAlertKind.PeriodDeadlineApproaching) : null;
     }
 
-    /// <summary>
-    /// The next stage of the alerts about an inactive connection of <paramref name="propertyId"/> (the caller checked that a stay arrives within
-    /// <see cref="ComplianceOptions.ConnectionAlertDays"/>): stage 1 at detection (<paramref name="currentStage"/> 0), stage 2
-    /// <see cref="ComplianceOptions.ConnectionReminderDays"/> after the first alert and not for longer than <see cref="LastStageValidity"/> after
-    /// that, then nothing: at most two messages for one incident. <c>null</c> when nothing is due.
-    /// </summary>
     public static ComplianceAlertStep? DueConnectionStep(
         Guid propertyId,
         int currentStage,
@@ -262,7 +211,6 @@ public static partial class ComplianceAlertSchedule
         return null;
     }
 
-    /// <summary>The wall-clock <paramref name="hourLocal"/> of <paramref name="day"/> in Europe/Rome, as a UTC instant.</summary>
     public static DateTime AlertAtUtc(DateOnly day, int hourLocal) =>
         RomeCalendar.ToUtc(day, new TimeOnly(Math.Clamp(hourLocal, 0, 23), 0));
 
@@ -281,10 +229,6 @@ public static partial class ComplianceAlertSchedule
 /// </summary>
 public interface ITouristTaxDeadlineSource
 {
-    /// <summary>
-    /// The last day on which the tourist tax of the month starting on <paramref name="periodStart"/> can be settled for the comune of the property,
-    /// or <c>null</c> when it is not known.
-    /// </summary>
     Task<DateOnly?> DeadlineOfAsync(Guid propertyId, DateOnly periodStart, CancellationToken ct);
 }
 
@@ -326,10 +270,6 @@ public static class ComplianceAlertAudience
 /// </summary>
 public interface IComplianceAlertRecipientResolver
 {
-    /// <summary>
-    /// Who is told about an alert of one property: the organization's address and the people who reach the property (the person in charge while
-    /// they still reach it, and the administrators). A collaborator limited to some properties is among them only for a property it was given.
-    /// </summary>
     Task<ComplianceAlertRecipients> ForPropertyAsync(Guid orgId, Guid propertyId, CancellationToken ct);
 
     /// <summary>
@@ -342,19 +282,11 @@ public interface IComplianceAlertRecipientResolver
     /// </summary>
     Task<ComplianceAlertRecipients> ForPropertyAsync(Guid orgId, Guid propertyId, NotificationPermission requiredPermission, CancellationToken ct);
 
-    /// <summary>
-    /// Who is told about something of the organization as a whole, with no property (the monthly summary): the organization's address and the
-    /// addresses of its administrators. Nobody limited to some properties is among them: the thing is outside every «Solo alcuni» reach.
-    /// </summary>
     Task<ComplianceAlertRecipients> ForOrganizationAsync(Guid orgId, CancellationToken ct);
 }
 
-/// <summary>The recipients of a compliance alert.</summary>
-/// <param name="Emails">The addresses to email, distinct.</param>
-/// <param name="UserIds">The people (<c>User.Id</c>) to alert in the app (the popup alerts), distinct.</param>
 public sealed record ComplianceAlertRecipients(IReadOnlyList<string> Emails, IReadOnlyList<string> UserIds)
 {
-    /// <summary>Nobody.</summary>
     public static ComplianceAlertRecipients None { get; } = new([], []);
 }
 
@@ -399,16 +331,7 @@ public interface IComplianceAlertFollowUp
     /// </summary>
     Task PopupAsync(ComplianceAlertPopup popup, DateTime nowUtc, CancellationToken ct);
 
-    /// <summary>
-    /// Closes, as the system, the open "To do" of these <paramref name="types"/> about these entities of <paramref name="entityType"/>: the condition
-    /// they stand for is cleared (the proof arrived, the data are complete, the connection is active again).
-    /// </summary>
     Task CloseTodosAsync(IReadOnlyCollection<ActivityType> types, string entityType, IReadOnlyCollection<Guid> entityIds, CancellationToken ct);
 
-    /// <summary>
-    /// Closes, as the system, the open "To do" of these <paramref name="types"/> about a stay that owes nothing any more (cancelled, a request, a
-    /// hold or a no-show: <c>AlloggiatiStatusRules.ActiveBookingStatuses</c> and no no-show mark, the one definition). At most 500 a call, the
-    /// oldest first, so a backlog is closed over several runs.
-    /// </summary>
     Task CloseTodosOfStaysThatOweNothingAsync(IReadOnlyCollection<ActivityType> types, CancellationToken ct);
 }

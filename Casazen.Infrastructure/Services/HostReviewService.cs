@@ -89,7 +89,6 @@ public sealed class HostReviewService(
         if (review.HostReply is not null)
             throw new DomainConflictException("review_reply_already_sent", "ReviewReplyAlreadySent");
 
-        // One conditional write: two answers sent at the same moment cannot both win, the second one finds the first.
         var now = _clock.GetUtcNow().UtcDateTime;
         var updated = await db.Reviews
             .Where(r => r.Id == reviewId && r.HostReply == null && r.Status != ReviewStatus.Removed)
@@ -120,7 +119,6 @@ public sealed class HostReviewService(
         if (await db.ReviewReports.AnyAsync(x => x.ReviewId == reviewId, cancellationToken))
             throw new DomainConflictException("review_already_reported", "ReviewAlreadyReported");
 
-        // The review stays public: reported is a mark for the staff, not a way to hide it.
         db.ReviewReports.Add(new ReviewReport
         {
             OrgId = review.OrgId,
@@ -139,7 +137,6 @@ public sealed class HostReviewService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // Reported twice at the same moment: the other report committed first.
             db.ChangeTracker.Clear();
             throw new DomainConflictException("review_already_reported", "ReviewAlreadyReported");
         }
@@ -173,7 +170,6 @@ public sealed class HostReviewService(
 
     public async Task SendInviteAsync(Guid bookingId, string? userId, CancellationToken cancellationToken = default)
     {
-        // The host's button: the reads go through the tenant of the caller, and the controller has authorized the booking.
         var result = await InviteAsync(bookingId, orgId: null, userId, cancellationToken);
         switch (result.Status)
         {
@@ -213,10 +209,6 @@ public sealed class HostReviewService(
         return result;
     }
 
-    /// <summary>
-    /// The one core of the invitation. <paramref name="orgId"/> is the org of a routine, named in every read and in the rules of the automatic request; it is
-    /// <c>null</c> for the host's button, whose reads go through the tenant of the caller.
-    /// </summary>
     private async Task<ReviewInviteRequestResult> InviteAsync(Guid bookingId, Guid? orgId, string? userId, CancellationToken cancellationToken)
     {
         var automatic = orgId is not null;
@@ -224,7 +216,6 @@ public sealed class HostReviewService(
         if (orgId is { } org)
             bookings = bookings.Where(b => b.OrgId == org);
 
-        // What the email needs and what the rules read, nothing else of the guest or of the booking.
         var booking = await bookings
             .Select(b => new InviteBooking(
                 b.Id,
@@ -251,7 +242,6 @@ public sealed class HostReviewService(
         if (eligibility != ReviewEligibility.Eligible)
             return ReviewInviteRequestResult.Skipped(SkipReasonOf(eligibility));
 
-        // Where nobody decides (a routine), a stay that did not happen gets no thanks for it, and nobody who asked to be erased gets an email.
         if (automatic && booking.NoShowAt is not null)
             return ReviewInviteRequestResult.Skipped(ReviewInviteSkipReasons.NoShow);
 
@@ -266,7 +256,6 @@ public sealed class HostReviewService(
         if (await db.ReviewInvites.AnyAsync(i => i.OrgId == booking.OrgId && i.BookingId == booking.Id, cancellationToken))
             return ReviewInviteRequestResult.Skipped(ReviewInviteSkipReasons.AlreadyInvited);
 
-        // The link and the email are made first: a missing public URL is a configuration error, and nothing was marked as sent yet. The email is in the language of the guest.
         var expiresAt = ReviewRules.WindowEndsAtUtc(booking.CheckOutDate);
         string reviewUrl;
         if (PortalEnabled)
@@ -281,11 +270,7 @@ public sealed class HostReviewService(
             reviewUrl = links.GuestReview(booking.OrgSlug, booking.Id, tokens.Create(booking.Id, new DateTimeOffset(expiresAt)));
         }
         var language = await LanguageOfGuestAsync(booking, cancellationToken);
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail).
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, cancellationToken);
-        // E50/F01/US03/T02: with the guest portal on the invitation is written in any of the five languages of the guest (the check-in page, the country when its language is beyond doubt, the account
-        // of the host, else Italian: the provider reads the session itself, and the language above, which turns every other country into English, is not handed to it); without it, in Italian or
-        // English as ever (the culture the provider answers while the portal is off).
         var culture = await emailLanguage.CultureOrAsync(
             booking.OrgId,
             booking.Id,
@@ -315,8 +300,6 @@ public sealed class HostReviewService(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // Asked twice at the same moment: the other call marked it first, and sends the one email. Only this row is dropped from the unit of work: a
-            // routine shares it with its own execution, which the engine still has to save.
             db.Entry(invite).State = EntityState.Detached;
             return ReviewInviteRequestResult.Skipped(ReviewInviteSkipReasons.AlreadyInvited);
         }
@@ -331,11 +314,6 @@ public sealed class HostReviewService(
         return ReviewInviteRequestResult.Sent;
     }
 
-    /// <summary>
-    /// The language to write to the guest of the booking, chosen the way the message with the check-in link is (<c>CheckInLinkDeliveryService</c>): the language the guest chose on the
-    /// check-in page (the latest session of the booking that holds one), else the one of the country of the guest, else <c>null</c>, and the email is then in Italian. Read in the org of
-    /// the booking, and only to pick the texts: nothing of it is logged or sent.
-    /// </summary>
     private async Task<string?> LanguageOfGuestAsync(InviteBooking booking, CancellationToken cancellationToken)
     {
         var chosen = await db.GuestCheckInSessions
@@ -349,7 +327,6 @@ public sealed class HostReviewService(
         return GuestLanguages.Normalize(chosen) ?? GuestLanguages.OfCountry(booking.GuestCountry);
     }
 
-    /// <summary>The stable code a booking that is not to be invited is skipped with: the reason the rules of <see cref="ReviewRules"/> give.</summary>
     private static string SkipReasonOf(ReviewEligibility eligibility) => eligibility switch
     {
         ReviewEligibility.NotDirectBooking => ReviewInviteSkipReasons.NotDirect,
@@ -361,7 +338,6 @@ public sealed class HostReviewService(
         _ => throw new ArgumentOutOfRangeException(nameof(eligibility), eligibility, "A booking that can be reviewed has no reason to be skipped."),
     };
 
-    /// <summary>What the host's button answers when the booking is skipped: the errors of the button, unchanged (the API of <c>review-invite</c>).</summary>
     private static DomainException RefusalOf(string? reason) => reason switch
     {
         ReviewInviteSkipReasons.AlreadyReviewed => new DomainConflictException("review_already_submitted", "ReviewAlreadySubmitted"),
@@ -395,7 +371,6 @@ public sealed class HostReviewService(
         r.Id, r.PropertyId, r.PropertyName, r.BookingId, r.Rating, r.Text, r.AuthorName,
         ReviewRules.StayMonthOf(r.StayEndedOn), r.PublishedAt, r.Status, r.HostReply, r.HostRepliedAt, r.ReportedAt);
 
-    // An erased guest keeps a placeholder address that is never deliverable (GuestDataEraser).
     private bool PortalEnabled => flags?.IsEnabled(FeatureFlags.GuestPortal) is true;
 
     private ReviewEligibility Eligibility(BookingSource source, BookingStatus status, DateTime checkOut, string? setup, DateTime? noShow)
@@ -420,10 +395,6 @@ public sealed class HostReviewService(
     private static bool HasAddress(string? email, DateTime? anonymizedAt) =>
         anonymizedAt is null && !string.IsNullOrWhiteSpace(email);
 
-    /// <summary>
-    /// The columns of a booking that the invitation reads (<see cref="InviteAsync"/>): the stay, the first name and the address of the guest, and the country of the guest only to pick the
-    /// language of the email (<see cref="LanguageOfGuestAsync"/>), never more.
-    /// </summary>
     private sealed record InviteBooking(
         Guid Id,
         Guid OrgId,

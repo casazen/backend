@@ -3,7 +3,6 @@ using static Casazen.Core.Pricing.PriceSuggestionLimits;
 
 namespace Casazen.Core.Pricing;
 
-/// <summary>What the AI said, as numbers and text, before anything is believed: every field may be missing or wrong.</summary>
 public sealed record RawPriceAnswer(
     decimal? NightlyRate,
     decimal? RangeMin,
@@ -13,7 +12,6 @@ public sealed record RawPriceAnswer(
     decimal? MinNights,
     string? Rationale);
 
-/// <summary>An answer of the AI that passed <see cref="PriceSuggestionRules.Accept"/>: rounded, inside the limits, coherent.</summary>
 public sealed record AcceptedPriceAnswer(
     decimal NightlyRate,
     decimal RangeMin,
@@ -23,21 +21,11 @@ public sealed record AcceptedPriceAnswer(
     int? MinNights,
     string? Rationale);
 
-/// <summary>
-/// The rules of the nightly price suggestion (WIZ-AI-PRICE), all pure: the figures of the similar homes, what is believed of an
-/// answer of the AI, how it is rounded, and the price that comes from the figures alone when the AI is not there. The AI proposes;
-/// nothing here writes to a property, the host reads the numbers and decides.
-/// </summary>
 public static partial class PriceSuggestionRules
 {
-    /// <summary>The nearest multiple of <see cref="PriceSuggestionLimits.RoundingStep"/>.</summary>
     public static decimal RoundToStep(decimal value) =>
         Math.Round(value / RoundingStep, 0, MidpointRounding.AwayFromZero) * RoundingStep;
 
-    /// <summary>
-    /// The figures of the nightly rates of <paramref name="rates"/> (the homes that count, a rate of 0 is no rate); <c>null</c> with
-    /// fewer than <see cref="PriceSuggestionLimits.MinSimilarListings"/> homes, so no home is ever readable in them.
-    /// </summary>
     public static MarketPriceStats? Summarize(IEnumerable<decimal> rates, bool similarSize)
     {
         ArgumentNullException.ThrowIfNull(rates);
@@ -56,7 +44,6 @@ public static partial class PriceSuggestionRules
             similarSize);
     }
 
-    /// <summary>The factor the positioning applies to the usual price of comparable homes.</summary>
     public static decimal PositioningFactor(PricePositioning positioning) => positioning switch
     {
         PricePositioning.Lower => 1m - PositioningShift,
@@ -64,10 +51,6 @@ public static partial class PriceSuggestionRules
         _ => 1m,
     };
 
-    /// <summary>
-    /// The price worked out from the figures of the similar homes alone (no AI): the median moved by the positioning, between the
-    /// quartiles moved the same way. Nothing else is suggested: without the AI there is no ground for a cleaning fee or a surcharge.
-    /// </summary>
     public static NightlyPriceSuggestion FromMarket(
         MarketPriceStats market,
         PricePositioning positioning,
@@ -124,10 +107,6 @@ public static partial class PriceSuggestionRules
         return new AcceptedPriceAnswer(rate, low, high, cleaning, weekend, minNights, CleanRationale(raw.Rationale));
     }
 
-    /// <summary>
-    /// The explanation as a plain line: no markdown, no line breaks, at most <see cref="PriceSuggestionLimits.RationaleMaxLength"/>
-    /// characters (cut at the end of a sentence when there is one); <c>null</c> when there is nothing left.
-    /// </summary>
     public static string? CleanRationale(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -149,7 +128,6 @@ public static partial class PriceSuggestionRules
 
     private static decimal Bounded(decimal rate) => Math.Clamp(rate, MinNightlyRate, MaxNightlyRate);
 
-    /// <summary>The value at <paramref name="fraction"/> of the sorted rates, interpolating between the two neighbours.</summary>
     private static decimal Percentile(decimal[] sorted, decimal fraction)
     {
         var position = (sorted.Length - 1) * fraction;

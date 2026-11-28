@@ -18,10 +18,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class GuestSessionTokens
 {
-    /// <summary>First characters of every token of a guest session.</summary>
     public const string Prefix = "gs1.";
 
-    /// <summary>Longest token that is even looked at (a real one is a few hundred characters).</summary>
     private const int MaxLength = 1024;
 
     private const string Purpose = "Casazen.GuestSession.v1";
@@ -38,10 +36,8 @@ public sealed class GuestSessionTokens
         _clock = timeProvider ?? TimeProvider.System;
     }
 
-    /// <summary>True when <paramref name="value"/> looks like a token of a guest session (it is not checked).</summary>
     public static bool IsGuestToken(string? value) => value is not null && value.StartsWith(Prefix, StringComparison.Ordinal);
 
-    /// <summary>The token of the guest with <paramref name="emailHash"/> on the site of <paramref name="orgId"/> until <paramref name="expiresAt"/> (UTC).</summary>
     public string Issue(Guid orgId, string emailHash, DateTime expiresAt)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(emailHash);
@@ -49,7 +45,6 @@ public sealed class GuestSessionTokens
         return Prefix + _protector.Protect(JsonSerializer.Serialize(payload, JsonOptions));
     }
 
-    /// <summary>What <paramref name="token"/> proves, or <c>null</c> when it is not ours, was altered, is malformed or has expired.</summary>
     public GuestSessionTicket? Read(string? token)
     {
         if (!IsGuestToken(token) || token!.Length > MaxLength)

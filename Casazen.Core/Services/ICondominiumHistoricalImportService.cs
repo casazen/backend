@@ -2,10 +2,6 @@ using Casazen.Core.Authorization;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Copies a <c>condo-export-v1</c> snapshot into staging. A house changes balances only after it has a verified property
-/// and the year matches to the cent. Confirming makes CasaZen the source for that house; the copy is not a sync.
-/// </summary>
 public interface ICondominiumHistoricalImportService
 {
     Task<CondominiumImportBatchView> StageAsync(HostScope scope, string snapshotJson, string userId, CancellationToken cancellationToken = default);

@@ -20,13 +20,10 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class OwnerFileContentScanner : IOwnerFileScanner
 {
-    /// <summary>The name of this engine, as the files record it.</summary>
     public const string EngineName = "casazen-content-rules-1";
 
-    /// <summary>The most bytes all the streams of one PDF may inflate to.</summary>
     private const long MaxInflatedBytes = 50L * 1024 * 1024;
 
-    /// <summary>The most streams of one PDF that are read.</summary>
     private const int MaxStreams = 5000;
 
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -64,14 +61,10 @@ public sealed partial class OwnerFileContentScanner : IOwnerFileScanner
 
     private static OwnerFileVerdict ScanPdf(byte[] content)
     {
-        // Latin-1 maps every byte to one character: the indexes of the text are the offsets of the file.
         var text = Encoding.Latin1.GetString(content);
         if (HasActiveName(text))
             return OwnerFileVerdict.Rejected(OwnerFileRules.ActiveContent);
 
-        // Every place a stream may start, in one pass over the text. The data of a stream is inflated from there: the zlib data ends where it ends (the rest of the
-        // file is not read), so no search for «endstream» is needed (it was one search per stream, a cost of streams times bytes) and a stream cannot be cut short
-        // by an «endstream» written inside its data.
         long inflated = 0;
         var streams = 0;
         foreach (Match start in StreamStart().Matches(text))
@@ -98,17 +91,13 @@ public sealed partial class OwnerFileContentScanner : IOwnerFileScanner
 
     private enum InflateOutcome
     {
-        /// <summary>Not zlib data: an image or a stream of another filter, which holds no PDF name to read.</summary>
         NotZlib,
 
-        /// <summary>Inflated within the budget.</summary>
         Done,
 
-        /// <summary>Inflates beyond what is left of the budget: the file cannot be read safely.</summary>
         TooLarge,
     }
 
-    /// <summary>Inflates the zlib data of a stream into <paramref name="data"/>, at most <paramref name="budget"/> bytes.</summary>
     private static InflateOutcome TryInflate(byte[] content, int offset, int length, long budget, out byte[] data)
     {
         data = [];
@@ -138,7 +127,6 @@ public sealed partial class OwnerFileContentScanner : IOwnerFileScanner
         }
     }
 
-    /// <summary>True when the text holds a PDF name of <see cref="RefusedNames"/> (active content, or what this scan cannot read), its <c>#xx</c> escapes decoded.</summary>
     private static bool HasActiveName(string text)
     {
         foreach (Match name in PdfName().Matches(text))

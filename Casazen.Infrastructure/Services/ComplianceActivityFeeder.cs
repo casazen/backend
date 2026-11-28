@@ -43,22 +43,16 @@ public sealed class ComplianceActivityFeeder(
     IMemoryCache cache,
     ILogger<ComplianceActivityFeeder> logger) : IComplianceActivityFeeder
 {
-    /// <summary>The kind of entity of a To do about a property.</summary>
     internal const string PropertyEntityType = "Property";
 
-    /// <summary>The start of the kind of entity of a To do about a property and a month: <c>PropertyPeriod:yyyy-MM</c>.</summary>
     internal const string PeriodEntityTypePrefix = "PropertyPeriod:";
 
-    /// <summary>How long an org and scope that started a run are left alone.</summary>
     internal static readonly TimeSpan Throttle = TimeSpan.FromSeconds(60);
 
-    /// <summary>How long they are left alone when a run stopped at its limit: the next read goes on with what is left.</summary>
     internal static readonly TimeSpan ContinueAfter = TimeSpan.FromSeconds(5);
 
-    /// <summary>The most To do a run raises and closes together; the rest is left for the next run.</summary>
     internal const int MaxChangesPerRun = 50;
 
-    /// <summary>Makes the check and the start of the throttle one step: two requests that arrive together do not both run.</summary>
     private static readonly object Gate = new();
 
     private enum Level
@@ -94,28 +88,19 @@ public sealed class ComplianceActivityFeeder(
         [ComplianceCockpitAction.DeclareTouristTax] = new(ActivityType.TouristTaxDeadline, ActivityAction.DeclareTouristTax, Level.PropertyPeriod),
     };
 
-    /// <summary>The cockpit actions that feed the To do list (every other action has its own producer).</summary>
     internal static IReadOnlyCollection<ComplianceCockpitAction> FedActions => Fed.Keys.ToList();
 
-    /// <summary>
-    /// The type and the action of the To do this feed raises for a cockpit action, <c>null</c> for an action that has its own producer: the one place of
-    /// the mapping. The alert stages of the <c>stay-alerts</c> job open the same item through it (E03/F02/US02/T01), so an item raised by either is the
-    /// one the other finds, with no duplicate.
-    /// </summary>
     internal static (ActivityType Type, ActivityAction Action)? TodoOf(ComplianceCockpitAction action) =>
         Fed.TryGetValue(action, out var mapping) ? (mapping.Type, mapping.Action) : null;
 
-    /// <summary>The cockpit actions that do not feed the To do list here: the operational items, whose To do their own producers keep.</summary>
     internal static IReadOnlyCollection<ComplianceCockpitAction> NotFedActions { get; } =
     [
         ComplianceCockpitAction.ActivateProperty,
         ComplianceCockpitAction.CompleteGuestCheckIn,
         ComplianceCockpitAction.CheckOut,
         ComplianceCockpitAction.ConfirmPropertyReady,
-        // casazen/backend#979: an arrival day of a Ticino property to notify, a section of the cockpit of its own (not of the status).
         ComplianceCockpitAction.NotifyTicinoPolice,
 
-        // E31/F02/US01/T01: an arrival day of a property of another canton to notify to the cantonal authority: a section of the cockpit of its own, like the Ticino one (not of the status).
         ComplianceCockpitAction.NotifyGuestsAuthority,
     ];
 
@@ -124,7 +109,6 @@ public sealed class ComplianceActivityFeeder(
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(status);
 
-        // The scope is a record: two reads of the same caller are the same key, and another caller of the same org is another one.
         var throttleKey = ("compliance-activity-feed", scope);
         if (!TryBegin(throttleKey))
             return;
@@ -136,14 +120,12 @@ public sealed class ComplianceActivityFeeder(
             var open = await ReadOpenAsync(scope.OrgId, status.Evaluated, ct);
             var ofStaysThatOweNothing = await ReadOfStaysThatOweNothingAsync(scope, status.Evaluated, ct);
 
-            // To close: the open ones whose item is green or gone, the ones that no longer say what the item says, and the ones of stays that owe nothing.
             var closing = new Dictionary<Guid, InternalActivity>();
             var replaced = new HashSet<TodoKey>();
             foreach (var (key, activity) in open)
             {
                 if (!desired.TryGetValue(key, out var wanted))
                 {
-                    // Green, or the item no longer applies: the condition that raised it is gone.
                     closing[activity.Id] = activity;
                 }
                 else if (IsStale(activity, wanted))
@@ -205,13 +187,11 @@ public sealed class ComplianceActivityFeeder(
         }
         finally
         {
-            // A run that failed is tried again by the next read, not left alone for a minute.
             if (!finished)
                 cache.Remove(throttleKey);
         }
     }
 
-    /// <summary>Starts the throttle of a caller, or says it is already running or was run a moment ago.</summary>
     private bool TryBegin(object key)
     {
         lock (Gate)
@@ -224,7 +204,6 @@ public sealed class ComplianceActivityFeeder(
         }
     }
 
-    /// <summary>The To do the evaluation asks for: one per (action, entity), the most urgent item if two meet.</summary>
     private static Dictionary<TodoKey, Desired> DesiredTodos(ComplianceStatusResult status)
     {
         var desired = new Dictionary<TodoKey, Desired>();
@@ -276,7 +255,6 @@ public sealed class ComplianceActivityFeeder(
     private static ActivityUrgency UrgencyOf(ComplianceStatusItem item) =>
         item.Verdict.Light == ComplianceLight.Red ? ActivityUrgency.High : ActivityUrgency.Medium;
 
-    /// <summary>The open To do of the stays, properties and months the evaluation looked at, whoever raised them.</summary>
     private async Task<Dictionary<TodoKey, InternalActivity>> ReadOpenAsync(
         Guid orgId,
         ComplianceEvaluatedUniverse universe,
@@ -296,7 +274,6 @@ public sealed class ComplianceActivityFeeder(
                         mapping.Action == ActivityAction.VerifyIdentity ? universe.IdentityBookingIds : universe.BookingIds);
                     break;
                 case Level.Property:
-                    // The police send of a property that was not read in this evaluation was not looked at: its To do stays as it is.
                     await AddOpenAsync(
                         mapping.Action,
                         PropertyEntityType,
@@ -339,8 +316,6 @@ public sealed class ComplianceActivityFeeder(
             candidates.AddRange(await activities.FindOpenInScopeAsync(scope, action.ToString(), InternalActivity.BookingEntityType, looked, ct));
         }
 
-        // A stay whose property was deleted is already absent from the list the host reads (that list joins the
-        // property). It is closed here too, so it does not come back if the row is read without that join.
         var propertyGone = await db.InternalActivities
             .Where(a => a.OrgId == scope.OrgId
                         && a.CompletedAt == null

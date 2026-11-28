@@ -23,7 +23,6 @@ internal static class OctorateContentMapper
 
     private const string LivingRoomType = "LIVING_ROOM";
 
-    /// <summary>The accommodation: name, address, position and the hours of arrival and departure. A position of 0, 0 is not a position and is not sent.</summary>
     internal static OctoratePropertyUpdate PropertyUpdate(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -42,7 +41,6 @@ internal static class OctorateContentMapper
         };
     }
 
-    /// <summary>The unit created once on a new accommodation: the headline and the description in every language, and the counters of the property.</summary>
     internal static OctorateRoomCreate RoomCreate(Property property, SitePropertyProfileDocument document, IReadOnlyList<PropertyRoom> rooms)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -64,14 +62,9 @@ internal static class OctorateContentMapper
         };
     }
 
-    /// <summary>The name of the unit: the Italian headline of the listing (the name of the property when the host wrote none).</summary>
     internal static string UnitName(Property property, SitePropertyProfileDocument document) =>
         ListingTextResolver.Get(property, document, ListingLanguages.Italian, ListingTextField.Title) ?? property.Name.Trim();
 
-    /// <summary>
-    /// The descriptions in every language the host wrote them in: the description, the house rules and the directions (the transport text, in Italian
-    /// or else in English). A language the host did not write is not sent.
-    /// </summary>
     internal static OctorateDescriptions Descriptions(Property property, SitePropertyProfileDocument document)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -86,7 +79,6 @@ internal static class OctorateContentMapper
         };
     }
 
-    /// <summary>The rooms of the unit in the order the host gave them, numbered from 1, each with its beds and the guests they sleep.</summary>
     internal static IReadOnlyList<OctorateContentRoom> Rooms(IEnumerable<PropertyRoom> rooms)
     {
         ArgumentNullException.ThrowIfNull(rooms);
@@ -127,7 +119,6 @@ internal static class OctorateContentMapper
         };
     }
 
-    /// <summary>The cancellation policy of the property, or <c>null</c> when it declares none.</summary>
     internal static OctorateCancellationPolicy? CancellationPolicy(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -142,10 +133,8 @@ internal static class OctorateContentMapper
                 property.CancellationPartialRefundPercent);
     }
 
-    /// <summary>The kind of room the channel manager spells: only a bedroom and a living room are known; a studio or any other room with beds is a bedroom (the one proven value).</summary>
     internal static string RoomName(PropertyRoomType type) => type == PropertyRoomType.LivingRoom ? LivingRoomType : BedroomType;
 
-    /// <summary>The kind of bed the channel manager spells (<c>DOUBLE</c> is the one proven on the sandbox; the others follow the same upper-case spelling).</summary>
     internal static string BedName(BedType type) => type switch
     {
         BedType.Single => "SINGLE",
@@ -158,7 +147,6 @@ internal static class OctorateContentMapper
         _ => "DOUBLE",
     };
 
-    /// <summary>How many guests a bed sleeps: one for a single, two for a double, queen, king, sofa bed or bunk (two berths), none for a crib.</summary>
     internal static int GuestsOf(BedType type) => type switch
     {
         BedType.Single => 1,

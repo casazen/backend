@@ -36,28 +36,18 @@ public class ReportsController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>Code of a <c>from</c> and <c>to</c> that are missing, out of order or out of the supported years.</summary>
     public const string InvalidPeriodCode = ReportRequestChecks.InvalidPeriodCode;
 
-    /// <summary>Code of a period longer than <see cref="HostReportRules.MaxMonths"/> months.</summary>
     public const string PeriodTooLongCode = ReportRequestChecks.PeriodTooLongCode;
 
-    /// <summary>Code of a <c>format</c> that is not <c>json</c>, <c>csv</c> or <c>xlsx</c>.</summary>
     public const string InvalidFormatCode = ReportRequestChecks.InvalidFormatCode;
 
-    /// <summary>Code of a <c>groupBy</c> that is not <c>none</c>, <c>property</c> or <c>channel</c>.</summary>
     public const string InvalidGroupByCode = ReportRequestChecks.InvalidGroupByCode;
 
-    /// <summary>Code of a <c>compare</c> that is not <c>none</c> or <c>previousYear</c>.</summary>
     public const string InvalidCompareCode = ReportRequestChecks.InvalidCompareCode;
 
-    /// <summary>Code of a <c>bucket</c> that is not <c>auto</c>, <c>week</c> or <c>month</c>.</summary>
     public const string InvalidBucketCode = ReportRequestChecks.InvalidBucketCode;
 
-    /// <summary>
-    /// Revenue by property, by accrual (<c>competenza</c>): per property of the scope with stays, the confirmed stays pro rata per night
-    /// in the period (<see cref="StayKpiRules"/>, the Home's rule) with their count and nights, and the total.
-    /// </summary>
     [HttpGet("revenue-by-property")]
     [ProducesResponseType(typeof(RevenueByPropertyReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -85,10 +75,6 @@ public class ReportsController(
                 HostReportDocuments.FileName("ricavo-per-immobile-competenza", report.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
     }
 
-    /// <summary>
-    /// Occupancy by property: per active short-rent property of the scope, the nights occupied over the nights available as the Home
-    /// counts them (<see cref="PropertyOccupancy"/>), and the total.
-    /// </summary>
     [HttpGet("occupancy-by-property")]
     [ProducesResponseType(typeof(OccupancyByPropertyReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -116,10 +102,6 @@ public class ReportsController(
                 HostReportDocuments.FileName("occupazione-per-immobile", report.Period, ReportRequestChecks.FileExtensionOf(fileFormat)));
     }
 
-    /// <summary>
-    /// Bookings by channel, by accrual (<c>competenza</c>): per booking source with confirmed stays in the period, their count, nights and
-    /// revenue (the Home's rule) and the share of all the stays, and the total.
-    /// </summary>
     [HttpGet("bookings-by-channel")]
     [ProducesResponseType(typeof(BookingsByChannelReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -190,11 +172,6 @@ public class ReportsController(
                     ReportRequestChecks.FileExtensionOf(request.Format)));
     }
 
-    /// <summary>
-    /// The same figures week by week or month by month (NF-96): one line for the whole scope, or one for each property or channel (at
-    /// most 25, the rest summed in an <c>other</c> one), each bucket next to its days one year earlier with <c>compare=previousYear</c>.
-    /// <c>bucket=auto</c> cuts by week up to 92 days and by month beyond.
-    /// </summary>
     [HttpGet("trend")]
     [ProducesResponseType(typeof(TrendReportDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -233,7 +210,6 @@ public class ReportsController(
                     ReportRequestChecks.FileExtensionOf(request.Format)));
     }
 
-    // The words of the request, before anything is read: the format, then the days. The problem to answer, or null with the query.
     private ObjectResult? Check(
         DateOnly? fromDay, DateOnly? toDay, Guid? propertyId, string? format, out HostReportQuery query, out ReportFormat fileFormat)
     {

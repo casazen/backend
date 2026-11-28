@@ -4,10 +4,6 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// What the customer gets back from a request on measure (<c>POST api/public/suppliers/{slug}/inquiries</c>): the id that the e-mail
-/// link carries, and when the link lapses. Nothing about the customer, the code or the words.
-/// </summary>
 public sealed record ShowcaseInquiryResult(Guid Id, DateTime ExpiresAt);
 
 /// <summary>
@@ -26,13 +22,6 @@ public sealed record ShowcaseInquiryConfirmation(
     DateTime? RespondBy,
     bool AlreadyConfirmed);
 
-/// <summary>
-/// The request on measure a customer with no account makes from a supplier's public showcase (SP-10b): the customer describes what it needs
-/// — for a service that is not in the price list, or is but with variations — checks its e-mail and, only then, a
-/// <see cref="ServiceRequest"/> of the <see cref="ServiceRequestKind.Custom"/> kind exists for the supplier to answer. It is the twin of
-/// <see cref="IShowcaseBookingService"/> without a slot to hold: same checks of the address, same data of the customer, same promise that
-/// nothing a stranger types reaches the supplier before the e-mail is checked.
-/// </summary>
 public interface IShowcaseInquiryService
 {
     /// <summary>

@@ -10,7 +10,6 @@ using Casazen.Infrastructure.External;
 
 namespace Casazen.Web.Infrastructure;
 
-/// <summary>Private signed mandates. Reading proposes terms only; storing happens with the confirmed version.</summary>
 public sealed class OwnerMandateDocuments(
     IOwnerMandateService mandates,
     IFileStorage storage,
@@ -30,7 +29,6 @@ public sealed class OwnerMandateDocuments(
             var text = await reader.ReadAsync(bytes, ct);
             if (text.Truncated || string.IsNullOrWhiteSpace(text.Text) || text.Text.Length > 60_000)
                 return new();
-            // Existing platform scrubber and provider budget guard apply. Never send images or log contract text.
             var prompt = FinancialExcerpt(text.Text);
             if (string.IsNullOrWhiteSpace(prompt) || prompt.Length > 60_000)
                 return new();
@@ -65,8 +63,6 @@ public sealed class OwnerMandateDocuments(
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception)
         {
-            // AI, malformed output or OCR unavailable: manual entry and the original attachment remain available.
-            // Do not log exceptions: document processors can include private text in their messages.
             return new();
         }
     }
@@ -84,15 +80,12 @@ public sealed class OwnerMandateDocuments(
         }
         catch
         {
-            // This fresh object cannot belong to an earlier version. Cleanup must preserve the original write failure.
             try
             {
                 await storage.DeleteAsync(StorageBucket.Private, key, CancellationToken.None);
             }
             catch (Exception cleanupError)
             {
-                // Storage outage: the private object may remain orphaned until operations reconcile this owner's folder.
-                // Log identifiers and the error type only, never the key, document, or exception message.
                 logger.LogWarning("Mandate document cleanup failed for org {OrgId}, owner {OwnerId}: {ErrorType}",
                     scope.OrgId, ownerId, cleanupError.GetType().Name);
             }
@@ -124,10 +117,8 @@ public sealed class OwnerMandateDocuments(
          "january february march april may june july august september october november december").Split(' '),
         StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Only financial clauses, stripped of names, addresses and non-financial wording, may leave the host (FD-21).</summary>
     private static string FinancialExcerpt(string text)
     {
-        // The existing scrubber covers contacts and identifiers, not arbitrary names/addresses. Do not forward raw contract text.
         var lines = PiiScrubber.Scrub(text).Split(['\r', '\n', '\f'], StringSplitOptions.RemoveEmptyEntries);
         var financial = lines.Where(line => Regex.IsMatch(line,
             @"\b(provvigion[ei]|commission[ei]?|iva|vat|tva|pulizi[ae]|cleaning|biancheria|linen|laundry|forfait|payment|pagament[oi]|decorrenza|decorre|efficacia|effective|starts)\b",
@@ -172,7 +163,6 @@ public sealed class OwnerMandateDocuments(
     { Extensions = new Dictionary<string, object?> { ["field"] = "documentReference" } };
 }
 
-/// <summary>Suggestions only. A null field was not read and must never replace what the person typed.</summary>
 public sealed record OwnerMandateReading(
     DateOnly? ValidFrom = null,
     decimal? CommissionPercent = null,

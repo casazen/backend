@@ -7,10 +7,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.CheckIn;
 
-/// <summary>
-/// Public check-in portal context. Once the guest has submitted (<see cref="Completed"/>) only
-/// <see cref="Completed"/>, <see cref="Status"/> and <see cref="OrgSlug"/> (public data) are returned: no booking data and no guest PII (A5-28).
-/// </summary>
 public class PublicCheckInContextResponse
 {
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
@@ -42,11 +38,9 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTime? CheckOutDate { get; set; }
 
-    /// <summary>Guests declared on the booking: the form starts with as many.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? DeclaredGuests { get; set; }
 
-    /// <summary>Guests on file (at least the booker) in record order, document numbers masked.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<PublicCheckInGuestPrefill>? Guests { get; set; }
 
@@ -58,14 +52,9 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeVersion { get; set; }
 
-    /// <summary>The slug the consent step links the privacy notice of the org through; absent while the org has no published (not withdrawn) privacy notice. It is not the way to tell the org of the stay: see <see cref="OrgSlug"/>.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeOrgSlug { get; set; }
 
-    /// <summary>
-    /// Version of the optional marketing consent text; absent when the consent is not offered (CO-15). Absent: do not show the
-    /// consent step, the server rejects every marketing consent field set to true (<see cref="PublicCheckInSubmitRequest"/>).
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MarketingConsentVersion { get; set; }
 
@@ -93,10 +82,6 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? RequiredGuestFields { get; set; }
 
-    /// <summary>
-    /// The page asks the plate of the car, once for the stay and optional (<see cref="PublicCheckInSubmitRequest.VehiclePlate"/>): the property is in
-    /// canton Ticino (NF-132). Sent with an open session only.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? AskVehiclePlate { get; set; }
 
@@ -107,18 +92,12 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Language { get; set; }
 
-    /// <summary>The languages the guest can choose: <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>. Sent with an open session only.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? SupportedLanguages { get; set; }
 
-    /// <summary>
-    /// The property keeps no identity document (canton Ticino, ADR-013-R6): the page shows «Il documento non sarà archiviato» (ADR-013-R15) and
-    /// the selfie step sends the photo of the document again. Sent with an open session while <c>Features:CheckInIdentityVerification</c> is on.
-    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? DocumentNotArchived { get; set; }
 
-    /// <summary>Where the identity verification stands (E03/F04/US02/T04); sent with an open session while the flag is on.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicIdentityVerificationStateDto? IdentityVerification { get; set; }
 }
@@ -142,38 +121,24 @@ public sealed class PublicIdentityVerificationStateDto
     public bool DocumentNotArchived { get; set; }
     public int VerifyingGuestPosition { get; set; }
 
-    /// <summary>
-    /// The pictures of the document on file (E22/F01/US01/T02): <c>["single"]</c>, or <c>front</c> and <c>back</c> for those that were sent; empty before the
-    /// first one. <c>documentChecked</c> and the step move to the selfie only when the face and the MRZ were found across them.
-    /// </summary>
     public IReadOnlyList<string> DocumentSides { get; set; } = [];
 
-    /// <summary>The side of a document of two sides still to photograph, <c>front</c> or <c>back</c>, so a reloaded page asks for it; null when none is missing.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? DocumentSideNeeded { get; set; }
 
-    /// <summary>
-    /// The session follows the self-hosted flow (E70-E74, <c>Features:CheckInIdentitySelfHosted</c>, frontend key <c>checkInIdentitySelfHosted</c>). False on the
-    /// legacy path, where every member below keeps its default.
-    /// </summary>
     public bool SelfHosted { get; set; }
 
-    /// <summary>The identity step was opened and bound to one guest of the session (NF-188).</summary>
     public bool Opened { get; set; }
 
-    /// <summary>The version of the notice recorded at the opening; null before it.</summary>
     public string? NoticeVersion { get; set; }
 
-    /// <summary><c>automatic</c> or <c>assisted</c> (<c>IdentityChoices</c>); null before the guest chose.</summary>
     public string? Choice { get; set; }
 
-    /// <summary>The format of the registry the document was read as (the Italian electronic identity card first); null before it was recognised.</summary>
     public string? FormatId { get; set; }
 
     /// <summary>The one guided retry of a correctable defect is still available.</summary>
     public bool GuidedRetryAvailable { get; set; }
 
-    /// <summary>The verification is closed: no document or presence step is accepted any more, the request for a person stays open.</summary>
     public bool Closed { get; set; }
 
     /// <summary>
@@ -208,10 +173,6 @@ public sealed class PublicIdentityVerificationStateDto
     };
 }
 
-/// <summary>
-/// The guest's answer to the biometric consent (<c>POST api/public/checkin/{token}/biometric-consent</c>, ADR-013-R9): explicit, separate from the
-/// privacy notice, refusable. <c>consentGiven</c> is required; with true, <c>consentVersion</c> (the version of the text shown) is too.
-/// </summary>
 public sealed class BiometricConsentRequest
 {
     public bool? ConsentGiven { get; set; }
@@ -223,10 +184,6 @@ public sealed class BiometricConsentRequest
     public string? ConsentVersion { get; set; }
 }
 
-/// <summary>
-/// The legal texts of the identity step for a stay (<c>GET api/public/checkin/{token}/legal-texts</c>, E22/F01/US02/T02): the <c>language</c> asked for, and the
-/// <c>texts</c> the registry serves, each in the closest language it has.
-/// </summary>
 public sealed class CheckInLegalTextsResponse
 {
     public string Language { get; set; } = string.Empty;
@@ -240,10 +197,6 @@ public sealed class CheckInLegalTextsResponse
     };
 }
 
-/// <summary>
-/// One legal text: its <c>kind</c> (<c>biometric-consent</c>, <c>ticino-notice</c>), the <c>version</c> the consent posts back, the <c>language</c> of the file served, whether it is a
-/// draft (served outside production only: the page shows a «Bozza» badge) and its text as sanitized HTML.
-/// </summary>
 public sealed class CheckInLegalTextDto
 {
     public string Kind { get; set; } = string.Empty;
@@ -266,13 +219,8 @@ public sealed class CheckInLegalTextDto
     };
 }
 
-/// <summary>
-/// What the answer to the consent did: <c>result</c> is <c>consent_recorded</c> (go on with the document) or <c>operator</c> (refused, not
-/// offered to this guest or organization, or already with a person); <c>operatorPathOpen</c> is always true.
-/// </summary>
 public sealed class BiometricConsentResponse
 {
-    /// <summary>The result of a recorded consent.</summary>
     public const string RecordedResult = "consent_recorded";
 
     public bool ConsentRecorded { get; set; }
@@ -282,22 +230,16 @@ public sealed class BiometricConsentResponse
     public PublicIdentityVerificationStateDto State { get; set; } = new();
 }
 
-/// <summary>
-/// The opening of the self-hosted identity step (<c>POST api/public/checkin/{token}/identity/open</c>, E70/F02/US01/T01): <c>noticeVersion</c> is the version of the
-/// biometric consent text the page shows, as <c>GET .../legal-texts</c> served it (422 <c>notice_version_unknown</c> for any other).
-/// </summary>
 public sealed class IdentityOpenRequest
 {
     public string? NoticeVersion { get; set; }
 }
 
-/// <summary>The state of the verification after the opening (<c>selfHosted</c>, <c>opened</c>, <c>noticeVersion</c>, <c>choice</c>, <c>closed</c>, <c>outcome</c> among the rest).</summary>
 public sealed class IdentityOpenResponse
 {
     public PublicIdentityVerificationStateDto State { get; set; } = new();
 }
 
-/// <summary>The guest asked for a person (<c>POST api/public/checkin/{token}/request-operator</c>): the operators are alerted.</summary>
 public sealed class OperatorRequestResponse
 {
     public string Result { get; set; } = string.Empty;
@@ -305,20 +247,16 @@ public sealed class OperatorRequestResponse
     public PublicIdentityVerificationStateDto State { get; set; } = new();
 }
 
-/// <summary>The language the guest chooses on the check-in page (<c>PUT api/public/checkin/{token}/language</c>).</summary>
 public class PublicCheckInLanguageRequest
 {
-    /// <summary>One of <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>; anything else (none included) is 400 <c>language_unsupported</c>.</summary>
     public string? Language { get; set; }
 }
 
-/// <summary>The language saved on the session.</summary>
 public class PublicCheckInLanguageResponse
 {
     public string Language { get; set; } = string.Empty;
 }
 
-/// <summary>A guest on file. The document number is never returned in full.</summary>
 public class PublicCheckInGuestPrefill
 {
     public StayGuestType Type { get; set; }
@@ -337,7 +275,6 @@ public class PublicCheckInGuestPrefill
     public GuestDocumentType? DocumentType { get; set; }
     public string? DocumentTypeCode { get; set; }
 
-    /// <summary>Document number on file with only its last characters visible (e.g. <c>*****567</c>); never the full number.</summary>
     public string? DocumentNumberMasked { get; set; }
 
     public string? DocumentIssuePlaceCode { get; set; }
@@ -351,7 +288,6 @@ public class PublicCheckInGuestPrefill
     public string? ResidenceCountryCode { get; set; }
     public string? ResidenceCountryName { get; set; }
 
-    /// <summary>The home of the guest (NF-132): street and house number, postal code, town; null when not on file.</summary>
     public string? ResidenceStreet { get; set; }
     public string? ResidencePostalCode { get; set; }
     public string? ResidenceCityName { get; set; }
@@ -448,7 +384,6 @@ public class PublicCheckInGuestPrefill
 /// </remarks>
 public class PublicCheckInSubmitRequest
 {
-    /// <summary>Guests in record order: a head of family or group before its members; minors included.</summary>
     [Required(ErrorMessage = CheckInValidationKeys.FieldRequired)]
     public List<StayGuestSubmitDto> Guests { get; set; } = [];
 
@@ -466,15 +401,8 @@ public class PublicCheckInSubmitRequest
     [MaxLength(64)]
     public string? HouseRulesVersion { get; set; }
 
-    /// <summary>
-    /// The guest ticked the e-mail box of the consent step (NF-05). Default <c>false</c>; requires <see cref="MarketingEmail"/>.
-    /// </summary>
     public bool MarketingConsentEmail { get; set; }
 
-    /// <summary>
-    /// The guest ticked the WhatsApp box of the consent step (NF-05). Default <c>false</c>; requires <see cref="MarketingEmail"/>
-    /// (the confirmation is by e-mail for every channel). The request carries no WhatsApp number.
-    /// </summary>
     public bool MarketingConsentWhatsApp { get; set; }
 
     /// <summary>
@@ -511,10 +439,8 @@ public class PublicCheckInSubmitRequest
 /// </summary>
 public class PublicCheckInInvoiceDto
 {
-    /// <summary>The guest ticked «I need an invoice». False: the rest of the block is ignored.</summary>
     public bool NeedInvoice { get; set; }
 
-    /// <summary><c>Guest</c> or <c>Company</c>.</summary>
     public string? RecipientKind { get; set; }
 
     public string? Name { get; set; }
@@ -588,7 +514,6 @@ public class PublicCheckInInvoiceDto
 /// </summary>
 public class StayGuestSubmitDto
 {
-    /// <summary><c>SingleGuest</c>, <c>HeadOfFamily</c>, <c>HeadOfGroup</c>, <c>FamilyMember</c> or <c>GroupMember</c>.</summary>
     [Required(ErrorMessage = CheckInValidationKeys.FieldRequired)]
     [MaxLength(20, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string Type { get; set; } = string.Empty;
@@ -601,7 +526,6 @@ public class StayGuestSubmitDto
     [MaxLength(AlloggiatiRecordRules.MaxLastNameLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string LastName { get; set; } = string.Empty;
 
-    /// <summary>Only <see cref="Gender.Male"/> or <see cref="Gender.Female"/>: the values Alloggiati Web accepts.</summary>
     [Required(ErrorMessage = CheckInValidationKeys.FieldRequired)]
     public Gender? Gender { get; set; }
 
@@ -633,7 +557,6 @@ public class StayGuestSubmitDto
     [MaxLength(StayGuestFieldLimits.Label, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string CitizenshipName { get; set; } = string.Empty;
 
-    /// <summary><c>Passport</c>, <c>IdentityCard</c> or <c>DriversLicense</c> when no document table is imported.</summary>
     [MaxLength(50, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? DocumentType { get; set; }
 
@@ -649,13 +572,10 @@ public class StayGuestSubmitDto
     [MaxLength(StayGuestFieldLimits.Label, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? DocumentIssuePlaceName { get; set; }
 
-    /// <summary>Optional (NF-40): not after today and not before 1900. Single guests and heads only, like the document.</summary>
     public DateOnly? DocumentIssuedOn { get; set; }
 
-    /// <summary>Optional (NF-40): not before the issue day. An expired document is accepted (the check-in only warns).</summary>
     public DateOnly? DocumentExpiresOn { get; set; }
 
-    /// <summary>Optional residence (NF-40): in Italy comune and province, abroad the state; codes when the tables are imported.</summary>
     public bool? ResidenceInItaly { get; set; }
 
     [MaxLength(9, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
@@ -673,37 +593,24 @@ public class StayGuestSubmitDto
     [MaxLength(StayGuestFieldLimits.Label, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? ResidenceCountryName { get; set; }
 
-    /// <summary>
-    /// Optional home of the guest (NF-132, «Indirizzo» of the Ticino police file): street and house number, at most 200 characters. Asked where
-    /// <c>requiredGuestFields</c> names it; stored encrypted.
-    /// </summary>
     [MaxLength(StayGuest.ResidenceStreetMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? ResidenceStreet { get; set; }
 
-    /// <summary>Optional postal code of the home («CAP»), as written (letters allowed: a foreign code), at most 20 characters; stored upper case.</summary>
     [MaxLength(StayGuest.ResidencePostalCodeMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? ResidencePostalCode { get; set; }
 
-    /// <summary>Optional town of the home («Domicilio»), at most 100 characters.</summary>
     [MaxLength(StayGuest.ResidenceCityNameMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? ResidenceCityName { get; set; }
 
-    /// <summary>Optional statistical fields (NF-40), codes of the closed lists: <c>holiday</c>, <c>business</c>, <c>other</c>.</summary>
     [MaxLength(IstatGuestFieldLists.MaxCodeLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? TourismType { get; set; }
 
-    /// <summary><c>car</c>, <c>train</c>, <c>plane</c>, <c>bus</c>, <c>ship</c>, <c>other</c>.</summary>
     [MaxLength(IstatGuestFieldLists.MaxCodeLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? TravelWay { get; set; }
 
-    /// <summary><c>none</c>, <c>primary</c>, <c>lower_secondary</c>, <c>upper_secondary</c>, <c>degree</c>, <c>postgraduate</c>.</summary>
     [MaxLength(IstatGuestFieldLists.MaxCodeLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? EducationLevel { get; set; }
 
-    /// <summary>
-    /// The tourist tax exemption the host chose (an active, non-automatic reason code, NF-46). Read only on the host's entries; the guest
-    /// portal never changes it, whatever it sends.
-    /// </summary>
     [MaxLength(TouristTaxExemptionReason.CodeMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? TaxExemptionCode { get; set; }
 
@@ -745,56 +652,38 @@ public class StayGuestSubmitDto
     };
 }
 
-/// <summary>Length limits of the guest labels shared by the DTOs.</summary>
 public static class StayGuestFieldLimits
 {
     public const int Label = 100;
 }
 
-/// <summary>
-/// A check-in link the host just generated (<c>POST /api/bookings/{id}/checkin/link</c>) or sent
-/// (<c>POST .../checkin/resend-link</c>): the link to copy, always, and the real state of its email (CO-09).
-/// </summary>
 public class CheckInLinkResponse
 {
     public string CheckInLink { get; set; } = string.Empty;
     public DateTime ExpiresAt { get; set; }
 
-    /// <summary><c>NotRequested</c> (link to copy), <c>Queued</c> or <c>Failed</c> (with <see cref="EmailError"/>).</summary>
     public GuestCheckInLinkEmailStatus EmailStatus { get; set; }
 
-    /// <summary>Stable reason of a failed email (<see cref="GuestCheckInLinkEmailErrors"/>).</summary>
     public string? EmailError { get; set; }
 }
 
-/// <summary>
-/// The check-in link of a booking as the host sees it (<c>GET /api/bookings/{id}/checkin-session</c>). Every field but
-/// <see cref="CanIssueLink"/> is null when no link was ever issued.
-/// </summary>
 public class CheckInSessionStatusResponse
 {
     public Guid? SessionId { get; set; }
 
-    /// <summary>Status at the time of the request: an open link past its expiry is <c>Scaduto</c> (A5-27).</summary>
     public string? Status { get; set; }
 
     public DateTime? IssuedAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
 
-    /// <summary>When the email was handed to the provider; null when it was not.</summary>
     public DateTime? SentAt { get; set; }
 
     public DateTime? CompletedAt { get; set; }
 
-    /// <summary>State of the link email; null for links issued before CO-09 (unknown).</summary>
     public GuestCheckInLinkEmailStatus? EmailStatus { get; set; }
 
     public string? EmailError { get; set; }
 
-    /// <summary>
-    /// A new link can be generated or sent: the booking is confirmed or checked in and the guest has not completed the
-    /// check-in. The caller also needs <c>booking.write</c>.
-    /// </summary>
     public bool CanIssueLink { get; set; }
 
     public static CheckInSessionStatusResponse From(GuestCheckInSession? session, bool bookingEligible, DateTime nowUtc) =>
@@ -814,54 +703,33 @@ public class CheckInSessionStatusResponse
             };
 }
 
-/// <summary>
-/// Response from document upload endpoint with extracted fields for guest confirmation (NF-10, ADR-009-R22).
-/// </summary>
 public class DocumentUploadResponse
 {
-    /// <summary>True if extraction succeeded (MRZ or OCR).</summary>
     public bool Success { get; set; }
 
-    /// <summary>Extraction method used (MRZ, OCR, or None).</summary>
     public string ExtractionMethod { get; set; } = string.Empty;
 
-    /// <summary>Extracted fields for guest confirmation.</summary>
     public ExtractedDocumentFields? Fields { get; set; }
 
-    /// <summary>Confidence score (0.0 to 1.0) of the extraction.</summary>
     public double Confidence { get; set; }
 
-    /// <summary>True if check digits are valid (MRZ only, ADR-009-R23).</summary>
     public bool? CheckDigitsValid { get; set; }
 
-    /// <summary>True if manual review is suggested (low confidence or invalid check digits).</summary>
     public bool RequiresManualReview { get; set; }
 
-    /// <summary>
-    /// The capture can be compared (E03/F04/US02/T04): the MRZ was read and the agent found nothing to change. False with
-    /// <see cref="GuidanceCodes"/> saying what to change.
-    /// </summary>
     public bool Acceptable { get; set; }
 
-    /// <summary>What to change in the photo (<c>show_whole_document</c>, <c>avoid_glare</c>, <c>hold_still</c>, <c>more_light</c>, ...): codes the page translates.</summary>
     public IReadOnlyList<string> GuidanceCodes { get; set; } = [];
 
-    /// <summary>The photo was kept encrypted for the comparison with the selfie (never in Ticino, never before the biometric consent).</summary>
     public bool DocumentStored { get; set; }
 
-    /// <summary>The property keeps no document (Ticino): the selfie step sends the photo of the document again (both sides of a document of two sides).</summary>
     public bool DocumentNotArchived { get; set; }
 
-    /// <summary>The side that was just read: <c>single</c> (the default), <c>front</c> or <c>back</c> (E22/F01/US01/T02).</summary>
     public string Side { get; set; } = DocumentSides.Single;
 
-    /// <summary>The pictures of the attempt on file: <c>["single"]</c>, or <c>front</c> and <c>back</c> for those that were sent (E22/F01/US01/T02).</summary>
     public IReadOnlyList<string> Sides { get; set; } = [];
 }
 
-/// <summary>
-/// Extracted document fields from MRZ or OCR (NF-10).
-/// </summary>
 public class ExtractedDocumentFields
 {
     public string? DocumentType { get; set; }
@@ -890,7 +758,6 @@ public class SelfieUploadResponse
     /// <summary>What to change for a retry (<c>use_live_camera</c>, <c>retake_selfie</c>, <c>move_closer</c>, ...): codes the page translates.</summary>
     public IReadOnlyList<string> GuidanceCodes { get; set; } = [];
 
-    /// <summary>Attempts left before the operator takes over.</summary>
     public int AttemptsRemaining { get; set; }
 
     /// <summary>The guest can always ask for a person (GDPR art. 22).</summary>
@@ -916,7 +783,6 @@ public class SelfieUploadResponse
 /// </summary>
 public class CheckInDocumentReadResponse
 {
-    /// <summary>The value of <see cref="Source"/>: the photo was read in the process.</summary>
     public const string LocalSource = "local";
 
     public bool Read { get; set; }
@@ -930,15 +796,12 @@ public class CheckInDocumentReadResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<CheckInZonedFieldDto>? Fields { get; set; }
 
-    /// <summary>The fields of the check-in (<c>lastName</c>, <c>firstName</c>, <c>gender</c>, <c>dateOfBirth</c>, <c>birthPlace</c>, <c>citizenship</c>, <c>documentKind</c>, <c>documentNumber</c>, <c>issuePlace</c>) the photo did not give: what the guest types.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? Missing { get; set; }
 
-    /// <summary><c>local</c> when the photo was read in the process (<see cref="LocalSource"/>); absent with the self-hosted flow off.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Source { get; set; }
 
-    /// <summary>This answer with the zoned prefill: the <paramref name="fields"/> the zones gave (none when nothing was read, or the photo is not of a guest of the stay), what is still <paramref name="missing"/>, and the source.</summary>
     public CheckInDocumentReadResponse WithZoned(IReadOnlyList<ZonedField> fields, IReadOnlyList<string> missing)
     {
         Fields = [.. fields.Select(CheckInZonedFieldDto.From)];
@@ -984,6 +847,5 @@ public sealed class CheckInZonedFieldDto
         Source = field.Source,
     };
 
-    /// <summary>The name, the side, the zone and the source: never the value.</summary>
     public override string ToString() => $"CheckInZonedFieldDto {{ Name = {Name}, Side = {Side}, Zone = {Zone}, Source = {Source} }}";
 }

@@ -1,19 +1,10 @@
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Reads what a model sent back when the prompt asked for one JSON object: the text after a reasoning (<c>&lt;think&gt;…&lt;/think&gt;</c>), and the
-/// objects in it, the last one first (the ones before it are drafts of the answer). The answer may be wrapped in a code fence or in a sentence; what
-/// is inside the object is for the caller to read and check.
-/// </summary>
 public static class AiAnswerText
 {
     private const string ReasoningOpening = "<think>";
     private const string ReasoningClosing = "</think>";
 
-    /// <summary>
-    /// What follows the last closing tag of a reasoning, without a reasoning that was opened and never closed: the text of a reasoning is not an
-    /// answer, even when it holds an object.
-    /// </summary>
     public static string WithoutReasoning(string content)
     {
         ArgumentNullException.ThrowIfNull(content);
@@ -24,10 +15,6 @@ public static class AiAnswerText
         return opening >= 0 ? text[..opening] : text;
     }
 
-    /// <summary>
-    /// The JSON objects of the answer as text, the last one first, braces inside strings left out of the count; an object that never closes is
-    /// skipped. Nothing when the answer is empty or holds no object.
-    /// </summary>
     public static IEnumerable<string> JsonObjectsLastFirst(string? content)
     {
         if (string.IsNullOrWhiteSpace(content))
@@ -42,7 +29,6 @@ public static class AiAnswerText
         }
     }
 
-    /// <summary>The index of the brace that closes the object opened at <paramref name="start"/>, braces inside strings left out; -1 when it never closes.</summary>
     private static int EndOfObject(string text, int start)
     {
         var depth = 0;

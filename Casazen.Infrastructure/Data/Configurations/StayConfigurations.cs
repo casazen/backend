@@ -16,12 +16,9 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
 
     internal static void ConfigureLeMiePrenotazioni(EntityTypeBuilder<Booking> entity)
     {
-        // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         entity.HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
 
-        // A reservation of Octorate is one booking in an org (E02/F02/US01/T01, ADR-033-R1): the key of the import, whoever imports it and
-        // however many times. Only the rows that have an Octorate id are in it; the others (null) are as many as there are bookings.
         entity.HasIndex(b => new { b.OrgId, b.OctorateReservationId })
             .IsUnique()
             .HasFilter("\"OctorateReservationId\" IS NOT NULL")
@@ -49,7 +46,6 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
 
     internal static void ConfigureICalFeedIdIndex(EntityTypeBuilder<Booking> entity)
     {
-        // The stays of a feed, found again by the sync (feed + block UID) when a block comes back.
         entity.HasIndex(b => new { b.ICalFeedId, b.ExternalId });
     }
 }
@@ -76,9 +72,6 @@ internal sealed class GuestConfiguration : IEntityTypeConfiguration<Guest>
 
     internal static void ConfigureOrgIdForeignKey(EntityTypeBuilder<Guest> entity)
     {
-        // TN-1: a guest belongs to exactly one org. No unique (OrgId, lower(Email)) index: host and
-        // direct bookings store one guest snapshot per booking (#431), so one org legitimately holds
-        // several rows with the same e-mail.
         entity.HasOne(g => g.Org).WithMany().HasForeignKey(g => g.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
     }

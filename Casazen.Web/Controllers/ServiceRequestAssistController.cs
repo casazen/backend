@@ -10,13 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// «Descrivi di cosa hai bisogno» of the guided request of a short-rent host (WIZ-AI-REQUEST): the host tells in a few words what the job is
-/// and the AI proposes the kind of service, how urgent it is, a sentence for the supplier and who to ask (<see cref="IServiceRequestAssistService"/>).
-/// Same permission as creating the request (<c>servicerequest.write</c> of the short-rent context), then the property is authorized as a
-/// <see cref="HostResource"/> (the caller's org, a colleague's property only with a role that reaches it, TN-3). Every call counts towards the AI
-/// limits of the user and of the org. It reads and proposes: nothing is created, the host sends the request with the wizard.
-/// </summary>
 [ApiController]
 [Route("api/service-requests/assist")]
 [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
@@ -71,11 +64,6 @@ public class ServiceRequestAssistController(
         return Ok(ServiceRequestAssistResponse.From(suggestion));
     }
 
-    /// <summary>
-    /// Whether an AI could answer now. The wizard asks it before it offers the box, so a platform with no AI provider shows nothing new. A cheap
-    /// read: no call to a provider, no permit of the AI rate limit.
-    /// </summary>
-    /// <response code="200">Whether the AI is available.</response>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceRequestAssistAvailabilityResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<ServiceRequestAssistAvailabilityResponse>> GetAvailability(CancellationToken cancellationToken) =>

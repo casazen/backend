@@ -27,12 +27,6 @@ public interface IBookingSearchService
         BookingSearchCriteria criteria,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// How many bookings fall in each chip (<see cref="BookingListView"/>) among those that satisfy <paramref name="criteria"/>, whatever
-    /// their <see cref="BookingSearchCriteria.View"/> (SR-03b): the same filters as <see cref="SearchAsync"/> without the chip, the page
-    /// and the order, counted in one aggregate query. A booking is in at most one chip (<see cref="BookingListRules.InView"/>), so the
-    /// chips add up to at most <see cref="BookingCounts.All"/>.
-    /// </summary>
     Task<BookingCounts> CountAsync(
         HostScope scope,
         BookingSearchCriteria criteria,
@@ -86,27 +80,17 @@ public sealed record BookingSearchCriteria(
     bool IncludePaidAmount = false,
     IReadOnlyCollection<BookingOrigin>? Origins = null)
 {
-    /// <summary>Bookings per page when the caller does not say (as the guest list).</summary>
     public const int DefaultPageSize = 20;
 
-    /// <summary>The most bookings a page may hold.</summary>
     public const int MaxPageSize = 100;
 
-    /// <summary>The highest page number taken: the order is fixed, a number past the end is just an empty page.</summary>
     public const int MaxPage = 100_000;
 
-    /// <summary>The longest text looked for; the rest is ignored.</summary>
     public const int MaxQueryLength = 100;
 }
 
-/// <summary>A page of bookings, as found.</summary>
-/// <param name="Items">The bookings of the page, with their property and guest.</param>
-/// <param name="TotalCount">All the bookings that satisfy the criteria, on every page.</param>
-/// <param name="Page">The page taken (1-based) after bringing the request within the limits.</param>
-/// <param name="PageSize">The size taken after bringing the request within the limits.</param>
 public sealed record BookingSearchPage(IReadOnlyList<Booking> Items, int TotalCount, int Page, int PageSize)
 {
-    /// <summary>What each row adds to its booking (SR-03b), by booking id: every booking of <see cref="Items"/> has one.</summary>
     public IReadOnlyDictionary<Guid, BookingRowDetails> Details { get; init; } = new Dictionary<Guid, BookingRowDetails>();
 }
 
@@ -119,6 +103,4 @@ public sealed record BookingSearchPage(IReadOnlyList<Booking> Items, int TotalCo
 /// </param>
 public sealed record BookingRowDetails(BookingPaymentState PaymentState, decimal? PaidAmount, AlloggiatiWebStatus? AlloggiatiStatus);
 
-/// <summary>The bookings in each chip of the list (SR-03b).</summary>
-/// <param name="All">Every booking that satisfies the criteria.</param>
 public sealed record BookingCounts(int All, int ToConfirm, int Upcoming, int InProgress, int Completed, int Cancelled);

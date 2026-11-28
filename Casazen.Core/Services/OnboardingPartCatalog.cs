@@ -3,32 +3,21 @@ using Casazen.Core.Validation;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The codes of «What you need» of the activation plan (NF-104, ONB-01): what the host should have at hand before a part. Stable codes the
-/// client translates; never rename one.
-/// </summary>
 public static class OnboardingNeedCodes
 {
-    /// <summary>The credentials of the Alloggiati Web web service of the Questura.</summary>
     public const string AlloggiatiCredentials = "alloggiatiCredentials";
 
-    /// <summary>The credentials of the regional ISTAT service.</summary>
     public const string IstatCredentials = "istatCredentials";
 
-    /// <summary>The fiscal data of whoever issues the documents.</summary>
     public const string FiscalData = "fiscalData";
 
-    /// <summary>The access to the accounts of the OTAs, to give the channel manager the access to each channel.</summary>
     public const string OtaAccess = "otaAccess";
 
-    /// <summary>The code of the lock or of the key box of the property.</summary>
     public const string LockCode = "lockCode";
 
-    /// <summary>The five codes, in the order the plan shows them.</summary>
     public static IReadOnlyList<string> All { get; } = [AlloggiatiCredentials, IstatCredentials, FiscalData, OtaAccess, LockCode];
 }
 
-/// <summary>The codes the web maps to the wizard that does a part (NF-104): never rename one.</summary>
 public static class OnboardingLaunchTargets
 {
     public const string Connect = "connect";
@@ -43,7 +32,6 @@ public static class OnboardingLaunchTargets
     public const string Marketplace = "marketplace";
     public const string Summary = "summary";
 
-    /// <summary>The card of the regime of a Swiss property in the activation wizard, opened at the step <c>guest-registration</c> (E29/F02/US01/T02).</summary>
     public const string GuestRegistration = "guestRegistration";
 }
 
@@ -65,10 +53,6 @@ public sealed record OnboardingPartDefinition(
     IReadOnlyList<string> Needs,
     string LaunchTarget);
 
-/// <summary>One step of a connected path of UX-10 and the parts that make it.</summary>
-/// <param name="Code">The stable code of the step.</param>
-/// <param name="Order">The place of the step in the path, from 1.</param>
-/// <param name="Parts">The parts the step is made of, in their order.</param>
 public sealed record OnboardingPathStepDefinition(string Code, int Order, IReadOnlyList<OnboardingPartKey> Parts);
 
 /// <summary>
@@ -79,10 +63,8 @@ public sealed record OnboardingPathStepDefinition(string Code, int Order, IReadO
 /// </summary>
 public static class OnboardingPartCatalog
 {
-    /// <summary>The code of the connected path «start with CasaZen» of UX-10.</summary>
     public const string StartWithCasazenPath = "start-with-casazen";
 
-    /// <summary>The twelve parts, in the order of the plan.</summary>
     public static IReadOnlyList<OnboardingPartDefinition> Parts { get; } =
     [
         new(OnboardingPartKey.OctorateConnection, "octorateConnection", 1, [], [], OnboardingLaunchTargets.Connect),
@@ -101,8 +83,6 @@ public static class OnboardingPartCatalog
         new(OnboardingPartKey.MessagesAi, "messagesAi", 8, [], [], OnboardingLaunchTargets.Messages),
         new(OnboardingPartKey.FiscalDocuments, "fiscalDocuments", 9, [], [OnboardingNeedCodes.FiscalData], OnboardingLaunchTargets.Fiscal),
         new(OnboardingPartKey.Partners, "partners", 10, [], [], OnboardingLaunchTargets.Marketplace),
-        // E29/F02/US01/T02 (NF-129): the twelfth part, appended to the keys (number 12) and placed before the activation in the plan; nothing requires it
-        // and it needs nothing at hand, so the host may put it off. It applies only to an organization that has an active Swiss property.
         new(OnboardingPartKey.GuestRegistration, "guestRegistration", 11, [], [], OnboardingLaunchTargets.GuestRegistration),
         new(
             OnboardingPartKey.Activation,
@@ -113,10 +93,6 @@ public static class OnboardingPartCatalog
             OnboardingLaunchTargets.Summary),
     ];
 
-    /// <summary>
-    /// The six steps of the path «start with CasaZen» of UX-10, each mapped to the parts it is made of. «Later» at the end of a step's wizard is
-    /// a deferral or an exit of that step's part.
-    /// </summary>
     public static IReadOnlyList<OnboardingPathStepDefinition> StartWithCasazenSteps { get; } =
     [
         new("connectChannels", 1, [OnboardingPartKey.OctorateConnection, OnboardingPartKey.Properties, OnboardingPartKey.Channels]),
@@ -129,27 +105,16 @@ public static class OnboardingPartCatalog
 
     private static readonly IReadOnlyDictionary<OnboardingPartKey, OnboardingPartDefinition> ByKey = Parts.ToDictionary(part => part.Key);
 
-    /// <summary>The definition of <paramref name="key"/>.</summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="key"/> is not a part of the plan.</exception>
     public static OnboardingPartDefinition Of(OnboardingPartKey key) =>
         ByKey.TryGetValue(key, out var part)
             ? part
             : throw new ArgumentOutOfRangeException(nameof(key), key, "Not a part of the activation plan.");
 
-    /// <summary>
-    /// The part named by <paramref name="code"/>: its code or the name of its member, without regard to case, once trimmed (never a number).
-    /// False for anything else.
-    /// </summary>
     public static bool TryParse(string? code, out OnboardingPartKey key) =>
         EnumNames.TryParseDefined(code, out key) && ByKey.ContainsKey(key);
 
-    /// <summary>The parts that require <paramref name="key"/> to be done first.</summary>
     public static IReadOnlyList<OnboardingPartKey> RequiredBy(OnboardingPartKey key) =>
         [.. Parts.Where(part => part.Requires.Contains(key)).Select(part => part.Key)];
 
-    /// <summary>
-    /// True when the host may do the part later («Do it later», ONB-01): every part but the prerequisite of another part, which would leave
-    /// the parts after it blocked.
-    /// </summary>
     public static bool IsDeferrable(OnboardingPartKey key) => RequiredBy(key).Count == 0;
 }

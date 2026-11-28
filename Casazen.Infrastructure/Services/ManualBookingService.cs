@@ -42,7 +42,6 @@ public sealed class ManualBookingService(
         ArgumentNullException.ThrowIfNull(input.Property);
         ArgumentNullException.ThrowIfNull(input.Guest);
 
-        // PM-01: a property in long-term mode takes no stay. Before the guests check, which would answer "0 guests".
         var property = input.Property;
         PropertyRentalModeRules.EnsureShortRent(property);
 
@@ -55,8 +54,6 @@ public sealed class ManualBookingService(
         if (guests > property.MaxGuests)
             throw new DomainRuleException(BookingErrorCodes.TooManyGuests, "BookingTooManyGuests", property.MaxGuests);
 
-        // A payment link needs a Stripe account ready to take payments: checked before the booking is written. The portal of a block
-        // collects its own booking, so there is no link for it.
         if (input.PaymentArrangement == HostPaymentArrangement.PaymentLink)
         {
             if (input.BlockId is not null || paymentLinks is null)
@@ -84,7 +81,6 @@ public sealed class ManualBookingService(
     {
         var property = input.Property;
 
-        // The price and the tourist tax of the host's quote, like the form that changes a booking: the client never sends them.
         var quote = await bookings.PriceHostStayAsync(
             property, checkIn, checkOut, input.Adults, input.Children, input.ChildrenAges, cancellationToken);
         if (quote.TouristTax.Status == TouristTaxQuoteStatus.ChildAgesRequired)
@@ -92,13 +88,10 @@ public sealed class ManualBookingService(
 
         var price = ManualBookingRules.PriceOf(quote, input.TotalPrice, input.PriceNote);
 
-        // Nothing to pay, no link: refused before the booking is written.
         if (input.PaymentArrangement == HostPaymentArrangement.PaymentLink && price.TotalPrice <= 0m)
             throw PaymentLinkUnavailable();
 
         var now = _clock.GetUtcNow().UtcDateTime;
-        // One guest snapshot per booking, owned by the property's org (TN-1): never a lookup by email, so a booking can neither
-        // reuse nor reveal a guest of another org. Only the first name and the email are asked; the rest is filled by the guest.
         var guest = new Guest
         {
             OrgId = property.OrgId,
@@ -132,7 +125,6 @@ public sealed class ManualBookingService(
             UpdatedAt = now,
         };
 
-        // Status (Confirmed), source (Manual), the check-in not in the past (422) and the overlap check (409) are the service's job.
         var created = await bookings.CreateManualBookingAsync(booking, guest);
 
         var belowMinimum = property.MinNights is { } minimum && quote.Nights < minimum;
@@ -143,8 +135,6 @@ public sealed class ManualBookingService(
         if (input.PaymentArrangement != HostPaymentArrangement.PaymentLink || paymentLinks is null)
             return new ManualBookingResult(created, belowMinimum, property.MinNights);
 
-        // The booking is written: a link that cannot be made now (Stripe did not answer) does not undo it. The host sends it again from the
-        // booking (POST /api/bookings/{id}/payment-link) and the answer says why it is missing.
         try
         {
             var link = await paymentLinks.CreateAsync(created.Id, cancellationToken);
@@ -162,7 +152,6 @@ public sealed class ManualBookingService(
         }
     }
 
-    /// <summary>The code of a payment link Stripe did not make: the code the API gives a failure of the payment provider.</summary>
     internal const string PaymentProviderErrorCode = "payment_provider_error";
 
     private static DomainRuleException PaymentLinkUnavailable() =>
@@ -180,7 +169,6 @@ public sealed class ManualBookingService(
     {
         var property = input.Property;
 
-        // A block of another property (or org) is as good as missing, like a block that is not there.
         var block = await otaStays.FindBlockAsync(blockId, cancellationToken);
         if (block is null || block.PropertyId != property.Id)
         {
@@ -191,11 +179,9 @@ public sealed class ManualBookingService(
             };
         }
 
-        // The stay of a block has the dates of the block: dates other than the ones the host saw as linkable are a stale form.
         if (block.StartUtc.Date != checkIn || block.EndUtc.Date != checkOut)
             throw new DomainRuleException(BookingErrorCodes.BlockDatesMismatch, "BookingBlockDatesMismatch");
 
-        // The portal collects: no quote, no tax and no payment here; the amount is the one the host reads on the portal, if given.
         var stay = await otaStays.ConvertBlockAsync(
             new OtaStayConversion(
                 blockId,

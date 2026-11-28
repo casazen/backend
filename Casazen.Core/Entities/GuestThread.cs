@@ -29,10 +29,8 @@ public class GuestThread : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the booking (TN-2). Never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property of the booking: the host's reach on properties (<c>InScope</c>) applies to it.</summary>
     [ForeignKey(nameof(Property))]
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
@@ -43,36 +41,19 @@ public class GuestThread : ITenantOwned
 
     public DateTime CreatedAt { get; set; }
 
-    /// <summary>When the last message of either side was written (UTC).</summary>
     public DateTime LastMessageAt { get; set; }
 
-    /// <summary>When the guest wrote last; <c>null</c> if the guest never wrote.</summary>
     public DateTime? LastGuestMessageAt { get; set; }
 
-    /// <summary>When the host wrote last; <c>null</c> if the host never wrote.</summary>
     public DateTime? LastHostMessageAt { get; set; }
 
-    /// <summary>
-    /// The host has read the messages of the guest written up to this instant (the <see cref="GuestMessage.CreatedAt"/> of the last
-    /// one it read); the ones after it are the unread ones. <c>null</c> until the host reads or answers.
-    /// </summary>
     public DateTime? HostReadAt { get; set; }
 
-    /// <summary>
-    /// <b>Retired (NF-65): no longer written.</b> It was the slot of the one email every ten minutes that went to the org's contact address. The
-    /// alert to the hosts goes to each person's own address and has a slot for each person and conversation (<see cref="NotificationEmailSlot"/>);
-    /// the column stays, without data lost, until a cleanup migration drops it.
-    /// </summary>
     public DateTime? HostNotifiedAt { get; set; }
 
-    /// <summary>When the last email to the guest about an answer of the host was queued: at most one every ten minutes per thread.</summary>
     public DateTime? GuestNotifiedAt { get; set; }
 }
 
-/// <summary>
-/// A message of a <see cref="GuestThread"/> (DB-14a). Plain text, up to <c>GuestMessageRules.TextMaxLength</c> characters; the text of the
-/// guest is stored with card numbers and IBANs already replaced by «[rimosso]». Messages are never edited or deleted by a user.
-/// </summary>
 [Table("GuestMessages")]
 [Index(nameof(ThreadId), nameof(CreatedAt), Name = "IX_GuestMessages_ThreadId_CreatedAt")]
 [Index(nameof(ThreadId), nameof(IdempotencyKey), IsUnique = true, Name = "UIX_GuestMessages_ThreadId_IdempotencyKey")]
@@ -91,7 +72,6 @@ public class GuestMessage : ITenantOwned
 
     public GuestMessageSender Sender { get; set; }
 
-    /// <summary>What was written, as stored (normalized; redacted for the guest). Never logged.</summary>
     [Required, MaxLength(2000)]
     public string Text { get; set; } = string.Empty;
 
@@ -104,27 +84,17 @@ public class GuestMessage : ITenantOwned
     [MaxLength(64)]
     public string? IdempotencyKey { get; set; }
 
-    /// <summary>The user who wrote it, for a message of the host (<c>User.Id</c>), an opaque id with no foreign key; <c>null</c> for the guest.</summary>
     [MaxLength(255)]
     public string? AuthorUserId { get; set; }
 
-    /// <summary>The longest <see cref="RuleCode"/>, the same as the one of an OTA message (<see cref="OtaMessage.RuleCodeMaxLength"/>).</summary>
     public const int RuleCodeMaxLength = 64;
 
-    /// <summary>
-    /// Who wrote the message, as CasaZen tells it (E05/F05/US01/T01, NF-67): the guest, a person of the host side, or the assistant. It makes «written by a
-    /// person or by the assistant, and by which rule» true for the direct threads as it is for the OTA ones (<see cref="OtaMessage.Origin"/>). The migration
-    /// gave the messages that existed <see cref="MessageOrigin.Guest"/> (<see cref="GuestMessageSender.Guest"/>) and <see cref="MessageOrigin.Person"/>
-    /// (<see cref="GuestMessageSender.Host"/>); the code that writes a message sets it. A value left unset reads as the guest's (the default of the column).
-    /// </summary>
     public MessageOrigin Origin { get; set; }
 
-    /// <summary>The situation code of the rule that produced an assistant message (<c>parking</c>…); <c>null</c> for the others.</summary>
     [MaxLength(RuleCodeMaxLength)]
     public string? RuleCode { get; set; }
 }
 
-/// <summary>Who wrote a <see cref="GuestMessage"/>. Stored as an integer.</summary>
 public enum GuestMessageSender
 {
     Guest = 0,

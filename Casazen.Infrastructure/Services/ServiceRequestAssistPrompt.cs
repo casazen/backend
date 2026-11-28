@@ -23,10 +23,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static partial class ServiceRequestAssistPrompt
 {
-    /// <summary>Version of the prompt: stored in the cache key.</summary>
     public const string Version = "request-assist-2026-11-v1";
 
-    /// <summary>What each category covers, in Italian words: the model chooses by them, so the code alone is never enough.</summary>
     private static readonly IReadOnlyDictionary<string, string> CategoryHints = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [ServiceCategories.Cleaning] = "pulizie della casa: pulizia di fine soggiorno, pulizia profonda, vetri, sanificazione",
@@ -44,13 +42,8 @@ public static partial class ServiceRequestAssistPrompt
 
     private const double Temperature = 0.1;
 
-    /// <summary>The hint of a category (what the model reads to choose it); empty for a code the table does not know.</summary>
     public static string CategoryHint(string code) => CategoryHints.TryGetValue(code, out var hint) ? hint : string.Empty;
 
-    /// <summary>
-    /// What the host typed as the prompt carries it: contact data and street addresses taken out, white space made single, the markers of the
-    /// text block removed, cut at <see cref="ServiceRequestAssistLimits.MaxTextLength"/>. Empty when nothing is left.
-    /// </summary>
     public static string CleanText(string? text, int maxLength = ServiceRequestAssistLimits.MaxTextLength)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -63,7 +56,6 @@ public static partial class ServiceRequestAssistPrompt
         return cleaned;
     }
 
-    /// <summary>The call for the (already cleaned) <paramref name="text"/>; <paramref name="language"/> is the one of the sentence for the host.</summary>
     public static AiRequest Build(string text, string language)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -77,7 +69,6 @@ public static partial class ServiceRequestAssistPrompt
         return new AiRequest(user.ToString(), [], SystemPrompt(language), Temperature);
     }
 
-    /// <summary>The key of the answer: the prompt holds every input (the language included), so its hash is the key; the same words, the same answer.</summary>
     public static string CacheKey(AiRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -86,7 +77,6 @@ public static partial class ServiceRequestAssistPrompt
         return $"request-assist:{Version}:{Convert.ToHexString(hash)[..24]}";
     }
 
-    /// <summary>The rules of the answer: who the model is, what it chooses among, the format, and what it must not write.</summary>
     public static string SystemPrompt(string language)
     {
         var sb = new StringBuilder();
@@ -128,14 +118,9 @@ public static partial class ServiceRequestAssistPrompt
     public static string LanguageName(string language) =>
         string.Equals(language, "en", StringComparison.OrdinalIgnoreCase) ? "inglese" : "italiano";
 
-    /// <summary>The placeholders <see cref="PiiScrubber"/> leaves where it took something out: the prompt does not carry them.</summary>
     [GeneratedRegex(@"\[(?:tel|email|cf)\]", RegexOptions.CultureInvariant)]
     private static partial Regex Placeholder();
 
-    /// <summary>
-    /// A street address as an Italian writes it: a kind of street (via, viale, piazza, corso…), then a proper name (capital letters: «via Roma»,
-    /// «Viale dei Mille») and, when there is one, the number. A common word after the kind («la strada è allagata») does not match.
-    /// </summary>
     [GeneratedRegex(
         @"\b(?:via|viale|piazza|piazzale|corso|largo|vicolo|strada|lungomare|lungotevere|contrada|località)\s+" +
         @"(?:(?:di|del|dello|della|dei|degli|delle|dell'|d')\s*)?" +

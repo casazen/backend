@@ -31,10 +31,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed class BookingStateMapper
 {
-    /// <summary>The channel code of the booking engine of the agency's own site (sandbox, 2026-11-04).</summary>
     public const string BookingEngineChannelId = "270";
 
-    /// <summary>Largest amount the columns of the OTA figures hold (<c>numeric(10,2)</c>) and the stay figures are taken at.</summary>
     private const decimal AmountLimit = 100_000_000m;
 
     private static readonly IReadOnlyDictionary<string, BookingSource> SourceByChannelId =
@@ -81,7 +79,6 @@ public sealed class BookingStateMapper
         return casazenOwned && current == BookingStatus.Cancelled ? BookingStatus.Cancelled : mapped;
     }
 
-    /// <summary>The source of a booking that arrives from the channel with this code and name (see the remarks of the class).</summary>
     public BookingSource ToSource(string? channelId, string? channelName)
     {
         if (channelId is not null && SourceByChannelId.TryGetValue(channelId.Trim(), out var byId))
@@ -110,10 +107,6 @@ public sealed class BookingStateMapper
     public string? ToAttributionSource(BookingSource source) =>
         source == BookingSource.Direct ? BookingAttribution.OctorateBookingEngineSource : null;
 
-    /// <summary>
-    /// The name to show next to the source of a booking from a portal that has no source of its own; <c>null</c> for every other source and
-    /// when Octorate gave no name.
-    /// </summary>
     public string? ToChannelLabel(BookingSource source, string? channelName)
     {
         if (source != BookingSource.OtherChannel || string.IsNullOrWhiteSpace(channelName))
@@ -137,7 +130,6 @@ public sealed class BookingStateMapper
         if (DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var plain))
             return DateTime.SpecifyKind(plain.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 
-        // A text without an offset is UTC, as Octorate writes its instants.
         if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var instant))
             return null;
 
@@ -146,10 +138,6 @@ public sealed class BookingStateMapper
         return DateTime.SpecifyKind(local.Date, DateTimeKind.Utc);
     }
 
-    /// <summary>
-    /// The guests of a reservation: all of them (at least one), the adults (at least one) and the minors. Octorate's <c>totalGuest</c> decides
-    /// the total; without it the adults, children and infants it gives are added up.
-    /// </summary>
     public (int Guests, int Adults, int Children) ToGuests(OctorateReservation reservation)
     {
         ArgumentNullException.ThrowIfNull(reservation);
@@ -162,7 +150,6 @@ public sealed class BookingStateMapper
         return (guests, guests - children, children);
     }
 
-    /// <summary>The amount to the cent; <c>null</c> when there is none or it is beyond what a column holds (it is then "not available", not a guess).</summary>
     public decimal? ToMoney(decimal? amount)
     {
         if (amount is null || Math.Abs(amount.Value) >= AmountLimit)
@@ -227,10 +214,6 @@ public sealed class BookingStateMapper
         return new StayPrices(lodging, total, ToMoney(reservation.TouristTax));
     }
 
-    /// <summary>
-    /// True when the reservation states the currency of the property (EUR or CHF). A reservation that states none is not taken for being in it: its
-    /// amounts are in an unknown unit, and an amount of an unknown unit is not imported as if it were in the currency of the property.
-    /// </summary>
     public bool InCurrencyOf(OctorateReservation reservation, string propertyCurrency)
     {
         ArgumentNullException.ThrowIfNull(reservation);
@@ -239,11 +222,6 @@ public sealed class BookingStateMapper
                && string.Equals(reservation.Currency, StayCurrency.Normalize(propertyCurrency), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// The operation CasaZen sends to Octorate when a booking becomes <paramref name="newStatus"/> (outbound): the arrival and the departure
-    /// with the check-in status operation, a cancellation with <c>DELETE</c> (a status patch to <c>CANCELLED</c> answers 400);
-    /// <see cref="OctorateStateChange.None"/> for a state Octorate has no operation for.
-    /// </summary>
     public OctorateStateChange ToOutbound(BookingStatus newStatus) => newStatus switch
     {
         BookingStatus.CheckedIn => OctorateStateChange.CheckInEnd,
@@ -253,33 +231,24 @@ public sealed class BookingStateMapper
     };
 }
 
-/// <summary>The operation CasaZen sends to Octorate for a new state of a booking (<see cref="BookingStateMapper.ToOutbound"/>).</summary>
 public enum OctorateStateChange
 {
-    /// <summary>Octorate has no operation for the state: nothing is sent.</summary>
     None = 0,
 
-    /// <summary><c>PUT /rest/v1/checkin/{acc}/{id}?status=CHECKIN_END</c>.</summary>
     CheckInEnd = 1,
 
-    /// <summary><c>PUT /rest/v1/checkin/{acc}/{id}?status=CHECKOUT_END</c>.</summary>
     CheckOutEnd = 2,
 
-    /// <summary><c>DELETE /rest/v1/reservation/{acc}/{id}</c>.</summary>
     Cancel = 3,
 }
 
-/// <summary>The four OTA figures of an imported booking; each <c>null</c> when Octorate does not give it.</summary>
 public readonly record struct OtaAmounts(decimal? Commission, decimal? Net, decimal? Paid, decimal? Balance)
 {
-    /// <summary>No figure.</summary>
     public static OtaAmounts None => default;
 }
 
-/// <summary>Who collects the payment of an imported channel booking and whether the commission is already taken out of it (NF-77); each <c>null</c> when it is not known.</summary>
 public readonly record struct OtaCollection(bool? CompanyCollect, bool? CommissionIncludedInPayments)
 {
-    /// <summary>Nothing known: the value of a booking that does not come from a channel.</summary>
     public static OtaCollection None => default;
 }
 
@@ -289,6 +258,5 @@ public readonly record struct OtaCollection(bool? CompanyCollect, bool? Commissi
 /// <param name="TouristTax">The tourist tax, as Octorate gives it.</param>
 public readonly record struct StayPrices(decimal? Lodging, decimal? Total, decimal? TouristTax)
 {
-    /// <summary>No figure.</summary>
     public static StayPrices None => default;
 }

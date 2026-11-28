@@ -31,35 +31,23 @@ public interface IMarketplaceEntryDetailService
         CancellationToken ct = default);
 }
 
-/// <summary>How an entry is activated.</summary>
 public static class MarketplaceActivationTypes
 {
-    /// <summary>Through the channel manager's API: a channel or a tool.</summary>
     public const string Api = "api";
 
-    /// <summary>With a request to the channel manager, until the function appears in the license.</summary>
     public const string LicenseRequest = "licenseRequest";
 
-    /// <summary>On the partner's own site.</summary>
     public const string PartnerSite = "partnerSite";
 }
 
-/// <summary>One thing the host needs to activate an entry: a stable <see cref="Code"/> for the client and the words.</summary>
 public sealed record MarketplaceRequirement(string Code, string Text);
 
-/// <summary>How to activate: the <see cref="Type"/> (<see cref="MarketplaceActivationTypes"/>), what is needed, and whether the host gives access in the channel manager's panel.</summary>
 public sealed record MarketplaceActivationInfo(string Type, IReadOnlyList<MarketplaceRequirement> Requirements, bool NeedsOctoratePanel);
 
-/// <summary>How to deactivate: the words, and whether the host must do it on a site (<see cref="Guided"/>).</summary>
 public sealed record MarketplaceDeactivation(string Text, bool Guided);
 
-/// <summary>A question and its answer.</summary>
 public sealed record MarketplaceFaq(string Q, string A);
 
-/// <summary>
-/// The detail card. <see cref="DataShared"/> is a list of plain sentences. <see cref="Cost"/> never invents a figure: its text is <c>null</c> when it
-/// is not known. <see cref="WebsiteUrl"/> is the partner's site, <c>null</c> for any other entry.
-/// </summary>
 public sealed record MarketplaceEntryDetail(
     MarketplaceActivationKind Kind,
     string Code,

@@ -65,22 +65,13 @@ public sealed partial class FiscalDocumentService(
     /// <summary>The description of the lines of a credit note: fixed words of the document, never personal data.</summary>
     private const string CreditKey = "FiscalDocLineCredit";
 
-    /// <summary>
-    /// The lines of the draft of a booking (E12/F01/US01/T01). The container gives the registered builder; a service built by hand without one (a test) gets a builder
-    /// with no Swiss rule and no default portal, which makes nothing up.
-    /// </summary>
     private readonly IGuestDocumentLineBuilder _lines = lineBuilder
         ?? new GuestDocumentLineBuilder(db, texts, Options.Create(new FiscalDocumentRulesOptions()), Options.Create(new SwissTouristTaxOptions()));
 
-    /// <summary>The documents a booking needs and who issues each (E17/F01/US01/T02); a service built by hand without one (a test) reads the same plan.</summary>
     private readonly IDocumentPlanService _plans = documentPlans ?? new DocumentPlanService(db, taxRules);
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
 
-    /// <summary>
-    /// The drafts of every document of the plan of the booking (E17/F01/US01/T02): the answer is the document of the stay (or the only one the call made). Nothing
-    /// to make (every document of the plan is issued) is 409 <c>document_already_issued</c>, as before.
-    /// </summary>
     public async Task<FiscalDocument> CreateDraftAsync(Guid bookingId, string? userId, CancellationToken ct = default)
     {
         var drafts = await MakeDraftsOfThePlanAsync(bookingId, userId, onlyMissing: false, ct);
@@ -161,10 +152,6 @@ public sealed partial class FiscalDocumentService(
         return made;
     }
 
-    /// <summary>
-    /// The plan of the booking; an owner without an issuer profile that can issue gets its «Da fare» (once while it is open) and the call is 422
-    /// <c>owner_issuer_missing</c>: no document in the name of anybody else.
-    /// </summary>
     private async Task<DocumentPlan> RequirePlanAsync(BookingFacts booking, CancellationToken ct)
     {
         var plan = await _plans.PlanAsync(booking.Id, ct);
@@ -181,7 +168,6 @@ public sealed partial class FiscalDocumentService(
         };
     }
 
-    /// <summary>The «Da fare» of an owner whose issuer profile is missing (no personal data: a code, the owner and the property); one open item per owner.</summary>
     private async Task TellOwnerIssuerMissingAsync(BookingFacts booking, Guid ownerId, CancellationToken ct)
     {
         if (activities is null)
@@ -216,7 +202,6 @@ public sealed partial class FiscalDocumentService(
         RequireCasazenDraft(document);
         RequireGuestDocument(document);
 
-        // The draft of a credit note (a correction, E12/F01/US01/T03) is the credited document's amounts: there is nothing in the booking to make it again from.
         if (document.Kind == DocumentKind.CreditNote)
             return document;
 
@@ -239,7 +224,6 @@ public sealed partial class FiscalDocumentService(
             RequireGuestDocument(document);
         RequireNotAHeldNumber(document);
 
-        // The draft is discarded and the «To do» that waited for it («Controlla ed emetti la nota di credito» of a correction) is closed in one transaction: nothing is left to issue.
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct);
         document.Status = FiscalDocumentStatus.Discarded;
         document.UpdatedAt = UtcNow;
@@ -257,11 +241,6 @@ public sealed partial class FiscalDocumentService(
         return issued;
     }
 
-    /// <summary>
-    /// The issue of a draft, the one path of the API, of the bulk issue and of the automatic issue. <paramref name="notify"/> tells the hosts of the booking that a document was issued
-    /// (a push, the bell and the live message of the open pages, E12/F01/US01/T02): the issue of one document asked by a person and the corrections made by an event do, the bulk
-    /// issue and the daily run do not (a notification for each of hundreds of documents is no help to anybody; their answer and the list tell).
-    /// </summary>
     private async Task<FiscalDocument> IssueCoreAsync(Guid documentId, bool confirm, bool notify, CancellationToken ct)
     {
         if (!confirm)
@@ -285,7 +264,6 @@ public sealed partial class FiscalDocumentService(
         if (document.SupplementForExtraOrderId is { } extraId)
             await SupplementOrderAsync(booking.OrgId, booking.Id, extraId, planned!.IssuerProfileId, ct);
 
-        // The issuer of the draft (E17/F01/US01/T02): an owner's draft is issued on the owner's profile, in the owner's series, with the owner's rule.
         var profile = await IssuerProfileAsync(booking, organization, document.IssuerProfileId, requireComplete: true, ct);
         var rule = RuleOf(profile, booking);
         RequireDraftOfTheRule(document, rule);
@@ -331,10 +309,6 @@ public sealed partial class FiscalDocumentService(
     private string? RegimeCodeOfTheRule(OrgFiscalIssuerProfile profile, DateOnly day) =>
         taxRules.TryResolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, day)?.FatturaPaRegimeCode;
 
-    /// <summary>
-    /// What the snapshot of an owner's document adds to the owner (E17/F01/US01/T02): the agency that issues through CasaZen on its behalf and the co-owners of the
-    /// plan with their shares (⚖ I6). <c>null</c> for a document the organization issues in its own name.
-    /// </summary>
     private async Task<IssuerParties?> IssuerPartiesAsync(
         BookingFacts booking,
         OrgFiscalIssuerProfile profile,
@@ -352,10 +326,8 @@ public sealed partial class FiscalDocumentService(
             coOwners.Count > 1 ? coOwners.Select(c => new FiscalIssuerCoOwner(c.Name, c.SharePercent)).ToList() : null);
     }
 
-    /// <summary>The parties an owner's document names beside the owner: the agency and the co-owners.</summary>
     private sealed record IssuerParties(FiscalIssuerIntermediary? Intermediary, IReadOnlyList<FiscalIssuerCoOwner>? CoOwners)
     {
-        /// <summary>The parties of an issued document, for its credit note (the same issuer, as it was).</summary>
         public static IssuerParties? Of(FiscalDocument original)
         {
             var snapshot = FiscalIssuerSnapshot.FromJson(original.IssuerSnapshot);
@@ -376,7 +348,6 @@ public sealed partial class FiscalDocumentService(
         var rule = OwnerInvoiceRuleOf(profile, document);
         RequireDraftOfTheRule(document, rule, ownerInvoice: true);
 
-        // The series of the owner invoices (E14), its own counter: never the one of the documents of the guests.
         var today = timeProvider.TodayInRomeAsDateOnly();
         var series = FiscalNumberFormat.SeriesFor(profile.OwnerInvoiceSeries ?? OrgFiscalIssuerProfile.DefaultOwnerInvoiceSeries, today);
 
@@ -413,7 +384,6 @@ public sealed partial class FiscalDocumentService(
         var booking = await BookingOfAsync(note.BookingId, ct);
         var (organization, org) = await RequireIssuerAsync(booking.OrgId, ct);
 
-        // The issuer of the credited document (E17/F01/US01/T02): an owner's reversal is the owner's, in the owner's series.
         var profile = await IssuerProfileAsync(booking, organization, original.IssuerProfileId, requireComplete: false, ct);
         var rule = RuleOf(profile, booking);
         var today = timeProvider.TodayInRomeAsDateOnly();
@@ -442,10 +412,6 @@ public sealed partial class FiscalDocumentService(
         CancellationToken ct = default) =>
         CreditNoteAsync(documentId, amount, reason, confirm, userId, ownerInvoice: true, ct);
 
-    /// <summary>
-    /// The credit note of a guest document (<paramref name="ownerInvoice"/> false: 422 <c>document_owner_invoice</c> for an owner invoice) or of an owner invoice
-    /// (true: 404 for any other document): the one path of both, so the permission and the flag of the owner invoices cannot be skipped by the other endpoints.
-    /// </summary>
     private async Task<FiscalDocument> CreditNoteAsync(
         Guid documentId,
         decimal? amount,
@@ -478,8 +444,6 @@ public sealed partial class FiscalDocumentService(
         if (value <= 0m || value > remaining)
             throw new DomainRuleException(FiscalDocumentErrors.CreditAmountExceeds, "FiscalDocumentCreditAmountExceeds", remaining);
 
-        // A document of a stay takes the rule of its check-out; an owner invoice the rule of the last day of its period (E14/F01/US01/T01). A document of a stay is
-        // credited by its own issuer (E17/F01/US01/T02): an owner's credit note is the owner's.
         Guid? bookingId = null;
         FiscalTaxRule rule;
         var (organization, org) = await RequireIssuerAsync(original.OrgId, ct);
@@ -530,7 +494,6 @@ public sealed partial class FiscalDocumentService(
             PropertyId = original.PropertyId,
             Purpose = original.Purpose,
 
-            // A credit note is the issuer's own: the same profile, the same series and counter as the document it credits, and the same part of the booking.
             IssuerProfileId = original.IssuerProfileId,
             ForAgencyServices = original.ForAgencyServices,
             RecipientOwnerId = original.RecipientOwnerId,
@@ -576,10 +539,6 @@ public sealed partial class FiscalDocumentService(
         return note;
     }
 
-    /// <summary>
-    /// The statement version of the month an owner invoice posted a line in is generated again when it is a draft or flagged (an approved or published one is told by
-    /// the readiness). The document is issued already: a refusal of the generation is logged, the month stays dirty and the agency generates it.
-    /// </summary>
     internal async Task RegenerateOpenVersionAsync(Guid orgId, OwnerLedgerPosting posting, string? userId, CancellationToken ct)
     {
         if (ownerAccounting is null)
@@ -632,8 +591,6 @@ public sealed partial class FiscalDocumentService(
         ArgumentNullException.ThrowIfNull(criteria);
         limit = Math.Max(1, limit);
 
-        // The same scope and filters as the list, and only the documents that were issued. The columns the file has and no more: the XML of an invoice is
-        // Only aggregate extra amounts are read from the lines, so they do not inflate the open balance of the document.
         var documents = await InListOrder(Matching(scope, criteria with { Status = FiscalDocumentStatus.Issued }))
             .Take(limit)
             .Select(d => new ExportSource(
@@ -681,10 +638,8 @@ public sealed partial class FiscalDocumentService(
             .ToList();
     }
 
-    /// <summary>The earliest day the list starts from: no document was created before it, and the start of a day long before it cannot be told in UTC from Europe/Rome.</summary>
     private static readonly DateOnly FirstDayOfTheList = new(1900, 1, 1);
 
-    /// <summary>The documents of the scope that the criteria keep, narrowed in SQL: the one query behind the list and the export.</summary>
     private IQueryable<FiscalDocument> Matching(HostScope scope, FiscalDocumentCriteria criteria)
     {
         var query = db.FiscalDocuments.AsNoTracking().Where(d => d.OrgId == scope.OrgId);
@@ -703,8 +658,6 @@ public sealed partial class FiscalDocumentService(
             query = query.Where(d => d.Source == source);
         if (criteria.From is { } from)
         {
-            // The start of 0001-01-01 in Rome falls before the first instant a DateTime holds, so RomeCalendar throws for it (a 500 on from=0001-01-01): a day before
-            // FirstDayOfTheList starts the list where no document is older anyway. The issue day is still compared with the day that was asked for.
             var start = RomeCalendar.StartOfDayUtc(from < FirstDayOfTheList ? FirstDayOfTheList : from);
             query = query.Where(d => d.IssueDate != null ? d.IssueDate >= from : d.CreatedAt >= start);
         }
@@ -721,7 +674,6 @@ public sealed partial class FiscalDocumentService(
     private static IOrderedQueryable<FiscalDocument> InListOrder(IQueryable<FiscalDocument> query) =>
         query.OrderByDescending(d => d.IssueDate).ThenByDescending(d => d.CreatedAt).ThenBy(d => d.Id);
 
-    /// <summary>What the export reads of a document: its columns, without the XML, the lines and the rest of the recipient.</summary>
     private sealed record ExportSource(
         Guid Id,
         Guid? BookingId,
@@ -754,10 +706,6 @@ public sealed partial class FiscalDocumentService(
     public async Task<byte[]> GetPdfAsync(Guid documentId, string language, CancellationToken ct = default) =>
         pdfRenderer.Render(await PdfContentAsync(documentId, language, ct));
 
-    /// <summary>
-    /// What the PDF of a CasaZen document shows (<see cref="GetPdfAsync"/> renders it): the issuer of the snapshot for an issued document, the profile of
-    /// today only for a draft and for a document issued before the snapshot existed; the current payment state; the name of the property.
-    /// </summary>
     internal async Task<PdfDocumentContent> PdfContentAsync(Guid documentId, string language, CancellationToken ct = default)
     {
         var document = await db.FiscalDocuments.AsNoTracking().Include(d => d.Lines).FirstOrDefaultAsync(d => d.Id == documentId, ct)
@@ -773,8 +721,6 @@ public sealed partial class FiscalDocumentService(
         var issuer = document.Status == FiscalDocumentStatus.Issued ? FiscalIssuerSnapshot.FromJson(document.IssuerSnapshot) : null;
         if (issuer is null)
         {
-            // A draft shows the issuer it will be issued on today: its own profile (an owner who issues, E17), else the profile of the organization; an owner's
-            // draft names the agency and the co-owners as the issue will.
             var profiles = db.OrgFiscalIssuerProfiles.AsNoTracking();
             var organization = await profiles.OfOrganization(document.OrgId).FirstOrDefaultAsync(ct);
             var profile = document.IssuerProfileId is { } issuerProfileId
@@ -795,14 +741,11 @@ public sealed partial class FiscalDocumentService(
             ? await db.Properties.AsNoTracking().IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]).Where(p => p.Id == propertyId).Select(p => p.Name).FirstOrDefaultAsync(ct)
             : null;
 
-        // An issued owner invoice says how it is paid, read now from the owner ledger: offset in the statement, or to pay (with the QR-bill in Switzerland).
         var settlement = document.Purpose == FiscalDocumentPurpose.OwnerInvoice && document.Status == FiscalDocumentStatus.Issued && document.Kind != DocumentKind.CreditNote
             ? (await OwnerInvoiceSettlementReader.ReadAsync(db, [document], ct)).GetValueOrDefault(document.Id)
             : null;
         return FiscalDocumentPdfs.Pdf(document, issuer, texts, language, credited, propertyName, settlement);
     }
-
-    // ---------------------------------------------------------------- draft
 
     /// <summary>
     /// The draft made from the booking: the checks of the issuer and of its profile, the document of the plan it is (<paramref name="planned"/>, else the one of
@@ -842,8 +785,6 @@ public sealed partial class FiscalDocumentService(
 
         var kind = rule.DocumentKind == RuleDocumentKind.Receipt ? DocumentKind.Receipt : DocumentKind.Invoice;
 
-        // A document that needs only a name, for a booking with no invoice data of its own (a portal sends none): the guest of the booking is the recipient, by name only
-        // (FIX/DOC-RECIPIENT). No name to use (the guest was erased or has none): the refusal below is the one of a booking with no data, as before.
         var (recipient, guestName, missing) = await RecipientOfAsync(booking.Id, NeedsOnlyTheName(rule, kind), ct);
         if (missing.Count > 0)
         {
@@ -853,8 +794,6 @@ public sealed partial class FiscalDocumentService(
             };
         }
 
-        // The lines of the stay whatever its source (E12/F01/US01/T01): the amounts of the portal, the tourist tax only when the host collects it (the agency's choice of
-        // the portals that collect it), who collected the money; then only the lines this document bills (E17/F01/US01/T02).
         var built = await _lines.BuildAsync(booking.Id, rule, _lines.PlatformCollectedChannelsOf(organization), ct);
         var amountLines = GuestDocumentLineBuilder.LinesOf(built.Lines, planned);
         if (draft.SupplementForExtraOrderId is { } extraId)
@@ -883,7 +822,6 @@ public sealed partial class FiscalDocumentService(
         draft.Lines.Clear();
         ApplyAmounts(draft, amounts);
 
-        // The money of a booking of a portal is the portal's: the document is paid through it. Any other document is paid or to collect by what CasaZen collected.
         draft.PaymentChannel = draft.SupplementForExtraOrderId is null ? built.PaymentChannel : FiscalPaymentChannel.CasaZen;
         draft.PaymentState = draft.SupplementForExtraOrderId is not null || built.PaymentChannel == FiscalPaymentChannel.Portal
             ? FiscalDocumentPaymentState.Paid
@@ -897,7 +835,6 @@ public sealed partial class FiscalDocumentService(
 
         await db.SaveChangesAsync(ct);
 
-        // A draft made again from its booking as it is now follows it again: the «To do» that told the host the booking changed under it, or that the draft could not follow it, is done (FIX/RES-DOCS).
         if (!isNew)
             await CloseReviewTodoAsync(draft.OrgId, draft.Id, ct);
 
@@ -942,7 +879,6 @@ public sealed partial class FiscalDocumentService(
         return gross;
     }
 
-    /// <summary>The lines and the totals of <paramref name="amounts"/> written on the document (its lines added to its collection).</summary>
     internal static void ApplyAmounts(FiscalDocument document, FiscalDocumentAmounts amounts)
     {
         foreach (var line in amounts.Lines)
@@ -972,22 +908,14 @@ public sealed partial class FiscalDocumentService(
         document.VatNatureCode = taxedRates.Count == 0 ? amounts.Summary.Select(s => s.NatureCode).FirstOrDefault(n => n is not null) : null;
     }
 
-    /// <summary>
-    /// The tax rule of a document of the booking: the rule set in force at the check-out of the stay (a stay that ended before a new version keeps the old
-    /// rate) for the country, the regime and the treatments of the issuer; 422 <c>document_rule_not_configured</c> when none applies.
-    /// </summary>
     private FiscalTaxRule RuleOf(OrgFiscalIssuerProfile profile, BookingFacts booking) =>
         taxRules.Resolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, booking.StayDate);
 
-    /// <summary>The tax rule of an owner invoice: the rule set in force on the last day of its period (E14/F01/US01/T01).</summary>
     private FiscalTaxRule OwnerInvoiceRuleOf(OrgFiscalIssuerProfile profile, FiscalDocument document) =>
         taxRules.Resolve(profile.CountryCode, profile.DocumentRegime, profile.StayVatTreatment, profile.CleaningFeeTreatment, PeriodEndOf(document));
 
-    /// <summary>The last day of the period of an owner invoice.</summary>
     internal static DateOnly PeriodEndOf(FiscalDocument document) =>
         new DateOnly(document.PeriodYear!.Value, document.PeriodMonth!.Value, 1).AddMonths(1).AddDays(-1);
-
-    // ---------------------------------------------------------------- issue
 
     /// <summary>
     /// The issue in one READ COMMITTED transaction: the number, the checks again under the lock of the series, the snapshot of the issuer (with the agency and the
@@ -1008,14 +936,12 @@ public sealed partial class FiscalDocumentService(
         Func<CancellationToken, Task>? beforeSave = null,
         IssuerParties? parties = null)
     {
-        // READ COMMITTED: the advisory lock of the numbering joins it; a failure rolls the number back with the document (no gap).
         await using var transaction = PostgresAdvisoryLocks.IsSupported(db)
             ? await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct)
             : null;
 
         if (credited is null && bookingId is { } guestBookingId)
         {
-            // A portal edit and the final recipient check must agree on which operation happened first.
             await using var bookingLock = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
                 (PostgresAdvisoryLocks.Scope.FiscalDocumentBooking, guestBookingId.ToString("N")));
             await RequireDraftOfTheRecipientAsync(document, guestBookingId, rule, ct);
@@ -1023,8 +949,6 @@ public sealed partial class FiscalDocumentService(
                 await RequireDraftOfTheExtrasAsync(document, orgId, guestBookingId, ct);
         }
 
-        // The number of the issuer the document is issued on (E17/F01/US01/T01): its counter, its series. A document made before the issuers existed is the
-        // organization's.
         document.IssuerProfileId ??= profile.Id;
 
         // The replacement of a document the SDI rejected (E17/F01/US02/T03) holds the number the correction took from it, and keeps the day of the document it replaces: that number is
@@ -1056,7 +980,6 @@ public sealed partial class FiscalDocumentService(
             if (document.Total <= 0m || document.Total > remaining)
                 throw new DomainRuleException(FiscalDocumentErrors.CreditAmountExceeds, "FiscalDocumentCreditAmountExceeds", remaining);
 
-            // The credit note that completes the credit marks the original: an owner invoice credited in full frees its owner and period (E14).
             if (document.Total == remaining)
                 credited.CreditedInFull = true;
         }
@@ -1066,9 +989,6 @@ public sealed partial class FiscalDocumentService(
         document.Number = number.Display;
         document.IssueDate = issueDay;
 
-        // The issuer as it is now, kept with the document: its PDF and its XML read it from here from now on. The version of the rule is the one the draft
-        // was made with (a document made before the versions existed takes the one in force).
-        // A Swiss owner invoice keeps the account its QR-bill is paid on (E14/F01/US01/T02): the payment part prints it, as it was at the issue.
         var issuer = FiscalIssuerSnapshot.From(
             profile, org, rule.FatturaPaRegimeCode, withQrBillAccount: document.Purpose == FiscalDocumentPurpose.OwnerInvoice && credited is null && rule.IsSwiss);
         if (parties is not null)
@@ -1105,8 +1025,6 @@ public sealed partial class FiscalDocumentService(
 
         await db.SaveChangesAsync(ct);
 
-        // A credit note is issued (the draft a correction left for the host, or one made at once): the «To do» that waited for it, and the one that said a credit note may be needed for the document it
-        // credits, are done. They close in this transaction (FIX/RES-DOCS), so the document and its item never disagree.
         if (credited is not null)
         {
             await CloseReviewTodoAsync(document.OrgId, document.Id, ct);
@@ -1155,7 +1073,6 @@ public sealed partial class FiscalDocumentService(
     /// </summary>
     internal static FatturaPaInput FatturaPaInputOf(FiscalDocument document, FiscalIssuerSnapshot issuerSnapshot, FiscalTaxRule rule, FiscalDocument? credited)
     {
-        // The self-billed invoice (TD17, E17/F01/US03/T01) turns the parties round: the foreign supplier is the cedente and the issuer of the snapshot the cessionario.
         if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
             return SelfBillingFatturaPaInputOf(document, issuerSnapshot);
 
@@ -1264,8 +1181,6 @@ public sealed partial class FiscalDocumentService(
                 l.LineNumber, l.Description, l.Quantity, l.UnitPrice, l.TotalPrice, l.VatRatePercent, l.VatNatureCode, l.LineType, l.VatAmount))
             .ToList();
 
-    // ---------------------------------------------------------------- rules
-
     /// <summary>
     /// CasaZen issues for every active booking of every source (direct, manual, local, the portals through Octorate) while the issuance is on
     /// (E11/F01/US01/T01): the source is no longer a gate. A booking that is not active, the issuance switched off, and a booking a legacy row locked to
@@ -1273,8 +1188,6 @@ public sealed partial class FiscalDocumentService(
     /// </summary>
     private async Task RequireCasazenIssuesAsync(BookingFacts booking, CancellationToken ct)
     {
-        // A booking that is not active (a request, a hold, a cancelled booking, a no-show) owes no document: no draft, no number, no lock of the issuer. «Active»
-        // is the one definition of the code (AlloggiatiStatusRules), never a list of its own.
         if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) || booking.NoShowAt is not null)
             throw new DomainRuleException(FiscalDocumentErrors.BookingNotActive, "FiscalDocumentBookingNotActive");
 
@@ -1309,10 +1222,6 @@ public sealed partial class FiscalDocumentService(
         return (profile, org);
     }
 
-    /// <summary>
-    /// What a document of a stay bills (E17/F01/US01/T02), the ground of «never two documents for one stay»: the document of an owner bills the stay, the document of
-    /// the services of the agency bills its services, and the one document of the organization (or a document issued elsewhere, or without an issuer) bills both.
-    /// </summary>
     [Flags]
     private enum BilledPart
     {
@@ -1321,7 +1230,6 @@ public sealed partial class FiscalDocumentService(
         Everything = Stay | Services,
     }
 
-    /// <summary>The part a document of a stay bills: the services of the agency; else the stay when an owner issues it; else everything.</summary>
     private static BilledPart PartOf(bool forAgencyServices, bool ownerIssues) =>
         forAgencyServices ? BilledPart.Services : ownerIssues ? BilledPart.Stay : BilledPart.Everything;
 
@@ -1338,7 +1246,6 @@ public sealed partial class FiscalDocumentService(
             throw new DomainConflictException(FiscalDocumentErrors.AlreadyIssued, "FiscalDocumentAlreadyIssued");
     }
 
-    /// <summary>The booking has an issued document that bills some of <paramref name="part"/> and is not credited in full (see <see cref="RequireNoOtherDocumentAsync"/>).</summary>
     private async Task<bool> HasBlockingDocumentAsync(Guid bookingId, Guid exceptId, BilledPart part, bool countPlannedCredit, CancellationToken ct)
     {
         var issued = await db.FiscalDocuments
@@ -1351,7 +1258,6 @@ public sealed partial class FiscalDocumentService(
         if (issued.Count == 0)
             return false;
 
-        // The documents an owner issued (on a profile with an owner) bill the stay only.
         var profileIds = issued.Where(d => d.IssuerProfileId is not null).Select(d => d.IssuerProfileId!.Value).Distinct().ToList();
         var ownerProfiles = profileIds.Count == 0
             ? []
@@ -1369,8 +1275,6 @@ public sealed partial class FiscalDocumentService(
             if ((billed & part) == 0)
                 continue;
 
-            // A draft is allowed beside a document whose credit note is only a draft (the correction of a date change makes the new draft with the credit note), but never issued: the
-            // issue asks again with only the credit notes issued (E12/F01/US01/T03).
             var credited = await CreditedSoFarAsync(document.Id, ct) + (countPlannedCredit ? await PlannedCreditAsync(document.Id, ct) : 0m);
             if (credited < document.Total)
                 return true;
@@ -1385,7 +1289,6 @@ public sealed partial class FiscalDocumentService(
             .Where(d => d.CreditedDocumentId == documentId && d.Status == FiscalDocumentStatus.Issued && d.Kind == DocumentKind.CreditNote)
             .SumAsync(d => d.Total, ct);
 
-    /// <summary>What the credit notes still drafts of a document credit (E12/F01/US01/T03): the corrections waiting for the host to check and issue them.</summary>
     private Task<decimal> PlannedCreditAsync(Guid documentId, CancellationToken ct) =>
         db.FiscalDocuments
             .AsNoTracking()
@@ -1412,7 +1315,6 @@ public sealed partial class FiscalDocumentService(
             throw new DomainRuleException(FiscalDocumentSdiErrors.ReplacementHoldsNumber, FiscalDocumentSdiErrors.MessageKeyOf(FiscalDocumentSdiErrors.ReplacementHoldsNumber));
     }
 
-    /// <summary>The draft replaces a rejected invoice and holds its number: neither the host nor an automatic run discards it (the run tells the host instead).</summary>
     internal static bool HoldsAReplacedNumber(FiscalDocument draft) => draft.ReplacesDocumentId is not null && draft.SequenceNumber is not null;
 
     private static void RequireCasazenDraft(FiscalDocument document)
@@ -1433,12 +1335,10 @@ public sealed partial class FiscalDocumentService(
         if (document.Purpose == FiscalDocumentPurpose.OwnerInvoice)
             throw new DomainRuleException(OwnerInvoiceErrors.UseOwnerInvoices, "FiscalDocumentOwnerInvoice");
 
-        // A self-billed invoice (E17/F01/US03/T01) is made again, issued and discarded from the self-billed invoices, behind their own permission and flag.
         if (document.Purpose == FiscalDocumentPurpose.SelfBilling)
             throw new DomainRuleException(SelfBillingErrors.UseSelfBilling, "FiscalDocumentSelfBilling");
     }
 
-    /// <summary>The owner path takes only an owner invoice: any other document is not found there.</summary>
     private static void RequireOwnerInvoice(FiscalDocument document)
     {
         if (document.Purpose != FiscalDocumentPurpose.OwnerInvoice)
@@ -1472,7 +1372,6 @@ public sealed partial class FiscalDocumentService(
         return missing;
     }
 
-    /// <summary>A Swiss document (any kind) and an Italian receipt need only the name of the recipient; an Italian invoice the whole of its data.</summary>
     internal static bool NeedsOnlyTheName(FiscalTaxRule rule, DocumentKind kind) => rule.IsSwiss || kind == DocumentKind.Receipt;
 
     /// <summary>
@@ -1482,10 +1381,6 @@ public sealed partial class FiscalDocumentService(
     /// </summary>
     internal static bool NeedsTheNameOfTheGuest(InvoiceDataView? data) => data is null || (!data.InvoiceRequested && string.IsNullOrWhiteSpace(data.Name));
 
-    /// <summary>
-    /// The name of the guest of the booking, the recipient of a document that needs only a name (FIX/DOC-RECIPIENT). Only the name is read: no address, e-mail, phone, fiscal code or
-    /// nationality of the guest is read or copied. <c>null</c> when the guest has no name to use (see <see cref="RecipientNameOfGuest"/>).
-    /// </summary>
     private async Task<string?> GuestNameOfRecipientAsync(Guid bookingId, CancellationToken ct)
     {
         var guest = await db.Bookings
@@ -1513,13 +1408,8 @@ public sealed partial class FiscalDocumentService(
         return Truncate(string.Join(' ', parts), FiscalDocument.RecipientNameMaxLength);
     }
 
-    /// <summary>What <see cref="GuestNameOfRecipientAsync"/> reads of the guest of a booking: the two parts of the name, and whether the guest is gone.</summary>
     private sealed record GuestNameFacts(string? FirstName, string? LastName, bool Erased);
 
-    /// <summary>
-    /// Who a document of the booking is made out to now (FIX/DOC-RECIPIENT): the invoice data of the booking, else for a document that needs only a name the name of its guest, else what is
-    /// missing (<see cref="MissingInvoiceData"/>). The one reading of the draft (<see cref="RebuildAsync"/>) and of its issue (<see cref="RequireDraftOfTheRecipientAsync"/>).
-    /// </summary>
     private async Task<(InvoiceDataView? Data, string? GuestName, IReadOnlyList<string> Missing)> RecipientOfAsync(Guid bookingId, bool nameOnly, CancellationToken ct)
     {
         var data = await invoiceData.GetAsync(bookingId, ct);
@@ -1566,11 +1456,9 @@ public sealed partial class FiscalDocumentService(
         throw new DomainConflictException(FiscalDocumentErrors.DraftOutdated, "FiscalDocumentDraftOutdated");
     }
 
-    /// <summary>Two documents have the same recipient: the same kind and the same text in every field of the snapshot, a text of white space being none.</summary>
     private static bool SameRecipient(FiscalDocument first, FiscalDocument second) =>
         first.RecipientKind == second.RecipientKind && RecipientTextsOf(first).Zip(RecipientTextsOf(second)).All(pair => SameText(pair.First, pair.Second));
 
-    /// <summary>The texts of the recipient snapshot of a document, in a fixed order.</summary>
     private static string?[] RecipientTextsOf(FiscalDocument document) =>
     [
         document.RecipientName,
@@ -1657,7 +1545,6 @@ public sealed partial class FiscalDocumentService(
     internal static bool IsElectronicInvoice(FiscalTaxRule rule, DocumentKind kind, DocumentKind? creditedKind) =>
         !rule.IsSwiss && (kind == DocumentKind.Invoice || (kind == DocumentKind.CreditNote && creditedKind != DocumentKind.Receipt));
 
-    /// <summary>The series of a guest document: the pattern of the profile (<c>GuestDocumentSeries</c>), else the default pattern (the year).</summary>
     private static string SeriesOf(OrgFiscalIssuerProfile profile, DateOnly today) =>
         FiscalNumberFormat.SeriesFor(profile.GuestDocumentSeries, today);
 
@@ -1684,7 +1571,6 @@ public sealed partial class FiscalDocumentService(
         if (bookingIds.Count == 0)
             return [];
 
-        // A caller with no org of its own (the owner portal) has a tenant filter that matches nothing: it names the org of the bookings instead (ofOrg).
         var payments = ofOrg is { } payOrg
             ? db.Payments.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(p => p.OrgId == payOrg)
             : db.Payments.AsQueryable();
@@ -1709,14 +1595,9 @@ public sealed partial class FiscalDocumentService(
         return collected;
     }
 
-    /// <summary>A document is <c>Paid</c> when what was collected for its booking reaches its total, else <c>ToCollect</c>.</summary>
     internal static FiscalDocumentPaymentState PaymentStateOf(decimal collected, decimal total) =>
         collected >= total ? FiscalDocumentPaymentState.Paid : FiscalDocumentPaymentState.ToCollect;
 
-    /// <summary>
-    /// The payment state of the documents CasaZen issued is the current one, read from the payments, not the one of the day the draft was made (an
-    /// Octorate document keeps the state Octorate gave it). Applied on the rows read without tracking: nothing is saved.
-    /// </summary>
     internal static async Task ApplyCurrentPaymentStateAsync(AppDbContext db, IReadOnlyCollection<FiscalDocument> documents, CancellationToken ct)
     {
         var own = documents.Where(d => IsPaymentStateReadFromPayments(d.Source, d.Kind, d.BookingId, d.PaymentChannel)).ToList();
@@ -1735,11 +1616,6 @@ public sealed partial class FiscalDocumentService(
                 document.Total - paidExtras.GetValueOrDefault(document.Id));
     }
 
-    /// <summary>
-    /// Whether the payment state of a document is read from the payments of its booking: the documents CasaZen issued for a booking, except a credit note
-    /// (which credits money and is not collected) and the document of a booking whose portal collected the money (paid through the portal: CasaZen sees none of
-    /// its payments). Any other document keeps the state it was given. The one rule of the list, the detail and the export.
-    /// </summary>
     internal static bool IsPaymentStateReadFromPayments(FiscalDocumentSource source, DocumentKind kind, Guid? bookingId, FiscalPaymentChannel channel) =>
         source == FiscalDocumentSource.CasaZen && kind != DocumentKind.CreditNote && bookingId is not null && channel != FiscalPaymentChannel.Portal;
 
@@ -1758,7 +1634,6 @@ public sealed partial class FiscalDocumentService(
         if (document.BookingId is not { } bookingId || FiscalDocumentPortalCollection.TaxLeftToTheHost(document) <= 0m)
             return;
 
-        // A caller with no org of its own names the org of the document instead (ofOrg), as the payments are read.
         var records = ofOrg is { } org
             ? db.StayTouristTaxes.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).Where(t => t.OrgId == org)
             : db.StayTouristTaxes.AsQueryable();
@@ -1771,8 +1646,6 @@ public sealed partial class FiscalDocumentService(
             ? 0m
             : FiscalDocumentPortalCollection.CollectedOf(document, record.CollectionStatus, record.CollectedAmount, record.RefundedAmount);
     }
-
-    // ---------------------------------------------------------------- reads
 
     private async Task<FiscalDocument> RequireAsync(Guid documentId, CancellationToken ct) =>
         await db.FiscalDocuments.Include(d => d.Lines).FirstOrDefaultAsync(d => d.Id == documentId, ct) ?? throw NotFound(documentId);
@@ -1807,10 +1680,6 @@ public sealed partial class FiscalDocumentService(
         document.RecipientPec = data.Pec;
     }
 
-    /// <summary>
-    /// The recipient of a document made out to the guest of the booking by name (FIX/DOC-RECIPIENT): a private person with that name and nothing else. Every other field is set to
-    /// nothing, so a draft made again never keeps the address or the codes of an invoice data it no longer has.
-    /// </summary>
     private static void CopyRecipientName(string name, FiscalDocument document)
     {
         document.RecipientKind = InvoiceRecipientKind.Guest;
@@ -1827,7 +1696,6 @@ public sealed partial class FiscalDocumentService(
         document.RecipientPec = null;
     }
 
-    /// <summary>The recipient snapshot of <paramref name="from"/> copied to <paramref name="to"/> (a credit note, the replacement of a rejected document).</summary>
     internal static void CopyRecipient(FiscalDocument from, FiscalDocument to)
     {
         to.RecipientKind = from.RecipientKind;
@@ -1884,7 +1752,6 @@ public sealed partial class FiscalDocumentService(
         return trimmed.StartsWith("IT", StringComparison.Ordinal) ? trimmed[2..] : trimmed;
     }
 
-    /// <summary>A person's name as first and last name: the last word is the last name.</summary>
     private static (string First, string Last) SplitName(string? name)
     {
         var words = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -1918,10 +1785,8 @@ public sealed partial class FiscalDocumentService(
         BookingStatus Status,
         DateTime? NoShowAt)
     {
-        /// <summary>The nights of the stay (calendar days between check-in and check-out).</summary>
         public int Nights => Math.Max(0, (CheckOut.Date - CheckIn.Date).Days);
 
-        /// <summary>The date that chooses the tax rule of a document of the stay: its check-out.</summary>
         public DateOnly StayDate => DateOnly.FromDateTime(CheckOut);
     }
 }

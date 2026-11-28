@@ -53,10 +53,6 @@ public sealed class BookingNotifier(
     IGuestEmailLanguageProvider? emailLanguage = null,
     IGuestStayLinkProvider? stayLinks = null)
 {
-    /// <summary>
-    /// The four optional services of the check-in link were given (the check-in, the delivery, its options, the clock): the container gives them. Built without them the notifier says
-    /// nothing about the check-in and issues no link, in silence, so a test over the real container reads this (E23/F02/US01/T01).
-    /// </summary>
     internal bool IssuesCheckInLinks => checkIn is not null && linkDeliveries is not null && checkInOptions is not null && timeProvider is not null;
 
     /// <summary>
@@ -96,14 +92,10 @@ public sealed class BookingNotifier(
         // served there, on the CasaZen domain otherwise. Read once for the e-mail; never throws.
         var agency = await agencyLinks.ForOrgOrPlatformAsync(links, data.OrgId, cancellationToken);
 
-        // E23/F02/US01/T01: what the confirmation says about the online check-in, with the link when the check-in is already open. Never throws.
         var confirmationCheckIn = await PrepareCheckInAsync(data, agency, cancellationToken);
 
-        // E50/F01/US03/T01: the brand of the host (its logo, color and name; sent in its name, answers to it) while the guest portal is on; never throws, null = the CasaZen e-mail.
         var branding = await emailBranding.ForOrgOrNullAsync(data.OrgId, cancellationToken);
 
-        // E50/F01/US03/T02: with the guest portal on, the confirmation is written in the language of the guest (the check-in page, the country on the booking, the account of the host, Italian);
-        // without it, in Italian as ever. Never throws.
         var culture = await emailLanguage.CultureOrAsync(data.OrgId, data.BookingId, EmailTemplates.DefaultCulture, cancellationToken: cancellationToken);
 
         // E50/F01/US03/T03: with the guest portal on, the confirmation carries the stay link of the booking («Apri il tuo soggiorno»), made by the link service of the portal and nowhere else; the
@@ -130,7 +122,6 @@ public sealed class BookingNotifier(
                 branding,
                 stayUrl);
 
-            // The job that sends an e-mail with a link writes on the session whether the link really left.
             return confirmationCheckIn?.Link is { } issued
                 ? content with
                 {
@@ -139,8 +130,6 @@ public sealed class BookingNotifier(
                 : content;
         });
 
-        // The host is told of the new booking (e-mail, push, bell) the moment the e-mail of the guest is with the queue, BEFORE anything of the link is settled: no await with the token of
-        // the request sits between the two, so a request that is cancelled right after the confirmation was queued cannot make the host lose the alert.
         if (kind != BookingConfirmationKind.OnSite)
             AlertHostOfNewBooking(data, kind);
 
@@ -155,7 +144,6 @@ public sealed class BookingNotifier(
     /// </summary>
     private async Task<ConfirmationCheckIn?> PrepareCheckInAsync(BookingEmailData data, AgencyLinks agency, CancellationToken cancellationToken)
     {
-        // A link is not issued for an e-mail that cannot carry it: no public site to build it on, no address to send it to (an issued link, however unsent, stops the job from sending one).
         if (checkIn is null || linkDeliveries is null || !links.IsConfigured || string.IsNullOrWhiteSpace(data.GuestEmail))
             return null;
 
@@ -166,7 +154,6 @@ public sealed class BookingNotifier(
             var windowDays = (checkInOptions?.Value ?? new GuestCheckInOptions()).SendWindowDays;
             if (flowSettings is not null)
             {
-                // casazen/backend#978: the org's booking flow. The host sends the links (manual): the confirmation issues none and says nothing about it.
                 var flow = await flowSettings.GetAsync(data.OrgId, cancellationToken);
                 if (!flow.SendsCheckInLink)
                     return null;
@@ -191,7 +178,6 @@ public sealed class BookingNotifier(
                 case GuestCheckInAccessStatus.Open:
                     return await IssueLinkAsync(data, agency, today);
                 default:
-                    // Completed (the data or the communication were sent) or not applicable: nothing to say about a link.
                     return null;
             }
         }
@@ -202,10 +188,6 @@ public sealed class BookingNotifier(
         }
     }
 
-    /// <summary>
-    /// The check-in is open: issues the link the way the daily job does (one session, the same lifetime) and makes the notice that carries it. A link that cannot be issued is logged
-    /// with the booking only, and the notice is the day of the next run of the job, which issues it as it does today.
-    /// </summary>
     private async Task<ConfirmationCheckIn> IssueLinkAsync(BookingEmailData data, AgencyLinks agency, DateOnly today)
     {
         try
@@ -233,7 +215,6 @@ public sealed class BookingNotifier(
         return stillSelected ? BookingCheckInNotice.OnDay(DayOf(tomorrow)) : BookingCheckInNotice.RequestOnly;
     }
 
-    /// <summary>A calendar day as a date value of the emails: midnight UTC of the day (the storage convention of the dates of a stay), written without any time zone conversion.</summary>
     private static DateTime DayOf(DateOnly day) => day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
     /// <summary>
@@ -278,16 +259,8 @@ public sealed class BookingNotifier(
         }
     }
 
-    /// <summary>What the confirmation says about the online check-in and, when it carries the link, the link just issued (its raw token exists only here).</summary>
     private sealed record ConfirmationCheckIn(BookingCheckInNotice Notice, IssuedCheckInLink? Link);
 
-    /// <summary>
-    /// A booking that arrived from a channel (the channel manager) is confirmed (E08/F06/US01/T02, NF-79): the push to the hosts'
-    /// devices that a direct booking already sends, with the name of the channel in the title. No email to the guest (the channel
-    /// writes to its guest) and none to the host (the push is the alert). The recipients and the push key are the ones of
-    /// <see cref="AlertHostOfNewBooking"/>, the key being the booking: a redelivered event, or the creation and the confirmation of the
-    /// same booking, are one push. Skipped when the booking is no longer confirmed (cancelled in the meantime).
-    /// </summary>
     public async Task ChannelBookingAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
         var data = await TryLoadAsync(bookingId, "Channel booking", cancellationToken);
@@ -305,7 +278,6 @@ public sealed class BookingNotifier(
 
         try
         {
-            // No guest name on the lock screen: property, channel, dates and number of guests.
             var push = EmailTemplates.ChannelBookingPush(
                 EmailTemplates.DefaultCulture,
                 data.Summary.PropertyName,
@@ -422,7 +394,6 @@ public sealed class BookingNotifier(
         if (data is null)
             return;
 
-        // A booking cancelled in the meantime has nothing to tell.
         if (data.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
             return;
 
@@ -439,11 +410,6 @@ public sealed class BookingNotifier(
                 branding));
     }
 
-    /// <summary>
-    /// The deferred charge failed and needs the guest (BK-08, A3-14): the guest gets the link to pay on the checkout outcome
-    /// page (<paramref name="checkoutToken"/>, the raw token whose hash was just stored), the host is told. The last day to
-    /// pay is the day before <paramref name="cancellationDay"/> when an automatic cancellation applies.
-    /// </summary>
     public async Task DeferredChargeFailedAsync(
         Guid bookingId,
         string checkoutToken,
@@ -469,10 +435,6 @@ public sealed class BookingNotifier(
         AlertHostOfFailedDeferredCharge(data, guestAsked: true, cancelOn);
     }
 
-    /// <summary>
-    /// Every attempt of the deferred charge ended without a payment the guest could complete (Stripe unreachable, no saved
-    /// payment method): the host only, who handles the payment with the guest (BK-08).
-    /// </summary>
     public async Task DeferredChargeNotAttemptedAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
         var data = await TryLoadAsync(bookingId, "Deferred charge failure", cancellationToken);
@@ -480,10 +442,6 @@ public sealed class BookingNotifier(
             AlertHostOfFailedDeferredCharge(data, guestAsked: false, cancelOnDay: null);
     }
 
-    /// <summary>
-    /// "Paga più tardi" not paid in time: the system cancelled the booking and released its dates (BK-08). The guest gets
-    /// the standard cancellation email with its own cause (nothing charged), the host a notice.
-    /// </summary>
     public async Task DeferredChargeCancelledAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
         var data = await TryLoadAsync(bookingId, "Cancellation", cancellationToken);
@@ -557,7 +515,6 @@ public sealed class BookingNotifier(
 
         try
         {
-            // No guest name on the lock screen: property, dates and number of guests.
             var push = EmailTemplates.NewBookingPush(
                 EmailTemplates.DefaultCulture,
                 data.Summary.PropertyName,
@@ -572,10 +529,6 @@ public sealed class BookingNotifier(
         }
     }
 
-    /// <summary>
-    /// The new-booking push to the hosts of the booking, whichever way the booking came (a direct checkout, a channel): the key is the
-    /// booking, so a device gets one push per booking, and the audience is its hosts (until the per-user preferences of NF-65 decide).
-    /// </summary>
     private bool EnqueueNewBookingPush(BookingEmailData data, PushText push) =>
         pushNotifications.Enqueue(
             PushDeliveryKeys.NewBooking(data.BookingId),
@@ -599,7 +552,6 @@ public sealed class BookingNotifier(
             Queue(data.BookingId, template, to, render);
     }
 
-    /// <summary>Renders the email and hands it to the queue; true when the queue took it. Never throws.</summary>
     private bool Queue(Guid bookingId, string template, string? to, Func<EmailContent> render)
     {
         try
@@ -611,17 +563,12 @@ public sealed class BookingNotifier(
         }
         catch (Exception ex)
         {
-            // E.g. App:PublicSiteBaseUrl missing (Development/Testing only): the booking change stays.
             logger.LogError(ex, "Email {Template} for booking {BookingId} could not be prepared", template, bookingId);
         }
 
         return false;
     }
 
-    /// <summary>
-    /// The booking with what its emails show. Read by id: the payment webhook and the jobs have no tenant, and a host
-    /// request is already limited to the host's org by the tenant filter.
-    /// </summary>
     private async Task<BookingEmailData?> LoadAsync(Guid bookingId, CancellationToken cancellationToken)
     {
         var row = await db.Bookings
@@ -670,10 +617,8 @@ public sealed class BookingNotifier(
             row.CleaningFee,
             row.TouristTax,
             row.TotalPrice,
-            // The amounts of the emails are in the currency of the property (CHF-MONEY).
             StayCurrency.Normalize(row.PropertyCurrency));
 
-        // AM-03: the org's contact address, as ever, plus the member in charge of the property and the org's administrators.
         var tellEmails = await HostNotificationAudience
             .UsersToTell(db, row.OrgId, row.PropertyId, row.ResponsibleUserId, row.PropertyCreatorId)
             .Select(u => u.Email)

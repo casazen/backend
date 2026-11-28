@@ -37,7 +37,6 @@ public abstract class OctorateBookingWebhookHandler(
     IFeatureFlags featureFlags,
     ILogger logger) : IEventHandler<OctorateWebhookReceivedEvent>
 {
-    /// <summary>The Octorate event names (<see cref="OctorateWebhookEvents"/>) this handler deals with.</summary>
     protected abstract IReadOnlyCollection<string> WebhookTypes { get; }
 
     public async Task HandleAsync(OctorateWebhookReceivedEvent domainEvent, CancellationToken ct)
@@ -53,7 +52,6 @@ public abstract class OctorateBookingWebhookHandler(
             return;
         }
 
-        // The mapping the controller resolved the org from: it must still be confirmed, and still be that accommodation's.
         var mapping = await db.OctorateListingMappings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -90,7 +88,6 @@ public abstract class OctorateBookingWebhookHandler(
     }
 }
 
-/// <summary>A run triggered by a notification stopped before it read everything it had to: the event is delivered again (ids only in the message).</summary>
 public sealed class BookingImportIncompleteException(Guid eventId)
     : Exception($"The re-read of the reservations for the Octorate notification {eventId} stopped before the end; it is delivered again");
 

@@ -18,18 +18,15 @@ namespace Casazen.Core.Entities;
 [Table("PropertyAssistantSettings")]
 public class PropertyAssistantSettings : ITenantOwned
 {
-    /// <summary>Name of the unique index on (<see cref="OrgId"/>, <see cref="PropertyId"/>).</summary>
     public const string OrgPropertyIndexName = "UIX_PropertyAssistantSettings_OrgId_PropertyId";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, the one of its property.</summary>
     public Guid OrgId { get; set; }
 
     public Guid PropertyId { get; set; }
 
-    /// <summary><c>false</c> = the assistant is off for this property whatever the organization says; <c>null</c> = as the organization.</summary>
     public bool? Enabled { get; set; }
 
     public AssistantTone? Tone { get; set; }
@@ -37,7 +34,6 @@ public class PropertyAssistantSettings : ITenantOwned
     [MaxLength(OrgAssistantRules.SignatureMaxLength)]
     public string? Signature { get; set; }
 
-    /// <summary>With <see cref="HoursTo"/>: the hours of this property in which the assistant may send by itself; both <c>null</c> = as the organization.</summary>
     public TimeOnly? HoursFrom { get; set; }
 
     public TimeOnly? HoursTo { get; set; }
@@ -45,15 +41,10 @@ public class PropertyAssistantSettings : ITenantOwned
     [Precision(4, 3)]
     public decimal? ConfidenceThreshold { get; set; }
 
-    /// <summary>
-    /// The topics and situations never answered for this property; <c>null</c> = as the organization. When it is set it <b>replaces</b> the organization's
-    /// list: an empty list means «nothing forbidden for this property». Stored as <c>text[]</c>.
-    /// </summary>
     public List<string>? ForbiddenTopics { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The user who last saved the exceptions (<c>User.Id</c>), an opaque id with no foreign key.</summary>
     [MaxLength(OrgAssistantRules.UpdatedByUserIdMaxLength)]
     public string? UpdatedByUserId { get; set; }
 }

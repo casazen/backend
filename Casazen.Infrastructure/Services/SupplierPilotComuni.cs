@@ -3,7 +3,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="ISupplierPilotComuni" />
 public class SupplierPilotComuni(
     IOptions<SupplierRegistrationOptions> options,
     IComuneDirectory directory) : ISupplierPilotComuni
@@ -21,8 +20,6 @@ public class SupplierPilotComuni(
     }
 
     public async Task<bool> IsSelfServeEnabledAsync(CancellationToken cancellationToken = default) =>
-        // Any comune: the official list must be imported (nothing can be validated without it); a typo in the configured
-        // pilots never closes it. Restricted: at least one validated pilot.
         options.Value.AnyComune
             ? await directory.IsAvailableAsync(cancellationToken)
             : (await GetAsync(cancellationToken)).Count > 0;
@@ -49,7 +46,6 @@ public class SupplierPilotComuni(
         if (direct is not null || !pilots.Any(p => p.Validated))
             return direct;
 
-        // A cadastral code (H501) or a name of a validated pilot: the same comune of the list.
         var resolved = await directory.ResolveAsync([trimmed], cancellationToken);
         return resolved.TryGetValue(trimmed, out var comune)
             ? pilots.FirstOrDefault(p => p.Code == comune.IstatCode)
@@ -65,7 +61,6 @@ public class SupplierPilotComuni(
 
         if (!await directory.IsAvailableAsync(cancellationToken))
         {
-            // The list is not imported yet: the pilots are as configured, nothing can be validated.
             return (configured.Select(c => new SupplierPilot(c.Code.Trim(), c.Name.Trim(), Validated: false)).ToList(), []);
         }
 

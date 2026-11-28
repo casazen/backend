@@ -31,9 +31,6 @@ public class DevicesController(
         if (userId is null)
             return Unauthorized();
 
-        // PL-02: push notifications are about the host's org; a user without one has not completed the onboarding.
-        // PL-05 (A1-40): a supplier-only account has no host org (User.OrgId is the host org only): its device is
-        // registered under its linked supplier org, as before, so the supplier keeps getting the requests' pushes.
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken)
             ?? await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
         if (orgId is null)
@@ -64,11 +61,6 @@ public class DevicesController(
         return CreatedAtAction(nameof(Register), new { id = registration.Id }, Map(registration));
     }
 
-    /// <summary>
-    /// Removes the caller's registration of device <paramref name="deviceId"/> (the app calls it at logout, MO-05): that
-    /// device stops receiving the caller's pushes. Only the caller's own row: the same device id under another account
-    /// answers 404 and is left untouched.
-    /// </summary>
     [HttpDelete("{deviceId}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -79,8 +71,6 @@ public class DevicesController(
         if (userId is null)
             return Unauthorized();
 
-        // The path is percent-decoded before routing except for "%2F", which ASP.NET Core leaves encoded so a segment
-        // cannot become two: app builds before MO-03 registered Android build fingerprints full of '/', sent encoded.
         var id = deviceId.Replace("%2F", "/", StringComparison.OrdinalIgnoreCase).Trim();
 
         var registration = await db.DeviceRegistrations
@@ -94,13 +84,6 @@ public class DevicesController(
         return NoContent();
     }
 
-    /// <summary>
-    /// One row per (user, installation), the push token updated in place (MO-03, A6-06). The app sends a random UUID
-    /// generated at the first launch and kept in SecureStore; older builds sent the OS build id, shared by every phone
-    /// on the same OS build. An Expo push token belongs to one installation, so any other row carrying it (another user
-    /// who used this phone, or the same user under an old OS build id) is removed: the old ids disappear as the phones
-    /// register again, without a data migration that could drop a phone still on an old build.
-    /// </summary>
     private async Task<DeviceRegistration> UpsertAsync(
         string userId,
         Guid orgId,

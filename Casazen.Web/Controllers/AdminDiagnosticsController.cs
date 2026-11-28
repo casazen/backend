@@ -7,10 +7,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Operator diagnostics. <c>client-ip</c> shows how the forwarded headers middleware resolved the caller's own IP, to
-/// configure <c>ForwardedHeaders:KnownNetworks</c> / <c>ForwardLimit</c> for the Railway proxy chain (FD-10, #273).
-/// </summary>
 [ApiController]
 [Route("api/admin/diagnostics")]
 [Authorize(Policy = "AdminOnly")]

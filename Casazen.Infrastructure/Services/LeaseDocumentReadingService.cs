@@ -9,7 +9,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>What the lease says, to be compared with the receipt of its registration: a lease that is still a draft has nothing to compare.</summary>
 internal static class ReceiptFacts
 {
     public static IReadOnlyList<string> WarningsOf(RegistrationReceiptReading receipt, LeaseContract lease)
@@ -29,11 +28,6 @@ internal static class ReceiptFacts
     }
 }
 
-/// <summary>
-/// <see cref="ILeaseDocumentReadingService"/>: reads the receipt of the registration from the private bucket, in process, with no OCR, and
-/// compares it with the lease. The document is looked up with its lease in the query and must belong to the organization of that lease;
-/// anything else is the same <c>null</c>, and nothing is read for it.
-/// </summary>
 public sealed class LeaseDocumentReadingService(AppDbContext db, IFileStorage storage, IContractTextReader reader) : ILeaseDocumentReadingService
 {
     public async Task<LeaseDocumentReadingDto?> ReadAsync(Guid leaseId, Guid documentId, CancellationToken cancellationToken = default)

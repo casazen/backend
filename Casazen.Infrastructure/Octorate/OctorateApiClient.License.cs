@@ -14,13 +14,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 public sealed partial class OctorateApiClient
 {
-    /// <summary>The whole card of the accommodation: the short one has no <c>license</c> (S25).</summary>
     private const string LicenseCardFields = "all";
 
-    /// <summary>The longest plan name kept: anything longer is not the name of a plan of the channel manager (<c>FREE</c>, <c>PREMIUM</c>...).</summary>
     private const int MaxLicenseTierLength = 40;
 
-    /// <summary>The earliest day taken for the expiry of a license: a smaller number is a count, not a date, and is never read as one.</summary>
     private static readonly DateOnly EarliestLicenseExpiry = new(2000, 1, 1);
 
     public async Task<OctorateLicense> GetAccommodationLicenseAsync(string accommodationCode, CancellationToken ct)
@@ -29,7 +26,6 @@ public sealed partial class OctorateApiClient
         using var document = await GetJsonAsync(
             $"/rest/v1/accommodation/{Uri.EscapeDataString(id)}?fields={Uri.EscapeDataString(LicenseCardFields)}", "license", ct);
 
-        // An answer with no license object is one CasaZen cannot read, not a license with nothing in it.
         return ReadLicense(Unwrap(document.RootElement)) ?? throw new OctorateServerException(null);
     }
 
@@ -64,7 +60,6 @@ public sealed partial class OctorateApiClient
             LicenseExpiryOf(license));
     }
 
-    /// <summary>The day the license expires (<c>expireDay</c>, an ISO date or a moment), or <c>null</c> when it is missing or is not a plausible date.</summary>
     private static DateOnly? LicenseExpiryOf(JsonElement license)
     {
         if (DateTimeOf(license, "expireDay") is not { } moment)

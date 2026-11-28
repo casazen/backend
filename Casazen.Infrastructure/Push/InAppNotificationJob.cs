@@ -23,32 +23,19 @@ public sealed class QueuedInAppNotification
 
     public Guid AudienceId { get; set; }
 
-    /// <summary>A value of <c>PushTypes</c>.</summary>
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The service request for the <c>service-request-*</c> types, the subject of the event for the platform staff (a «Fallo per me» request),
-    /// the property for the Ticino types, the two alerts and the declaration of a day (<see cref="PushTypes.IsTicinoNotification"/>), and for their twins of a canton other than Ticino
-    /// (<see cref="PushTypes.IsSwissNotification"/>), the org for its administrators (the notices of its domain, <see cref="PushAudienceKind.OrgAdmins"/>), else the booking; <c>null</c> when
-    /// there is none.
-    /// </summary>
     public Guid? EntityId { get; set; }
 
     /// <summary>UTC instant of the event (when the push was queued), so a late run or a retry does not move it.</summary>
     public DateTime OccurredAt { get; set; }
 
-    /// <summary>
-    /// The context of the permission the hosts of a <see cref="PushAudienceKind.PropertyHosts"/> audience must also hold (<see cref="PushAudience.RequiredPermission"/>), the same as the push of the
-    /// event: the bell and the phone tell the same people. <c>null</c> for every other event, and for a job queued before it existed (no narrowing).
-    /// </summary>
     public string? AudiencePermissionContext { get; set; }
 
-    /// <summary>The permission itself (<c>alloggiati.submit</c>); <c>null</c> with <see cref="AudiencePermissionContext"/>.</summary>
     public string? AudiencePermissionKey { get; set; }
 
     public PushAudience ToAudience() => new(AudienceKind, AudienceId, RequiredPermission: AudienceRequiredPermission());
 
-    /// <summary>The permission the audience asks of the hosts, or <c>null</c> when it narrows nobody.</summary>
     internal NotificationPermission? AudienceRequiredPermission() =>
         AudiencePermissionContext is { Length: > 0 } context && AudiencePermissionKey is { Length: > 0 } key ? new NotificationPermission(context, key) : null;
 
@@ -63,20 +50,14 @@ public sealed class QueuedInAppNotification
         OccurredAt = UtcDateTime.Normalize(occurredAtUtc),
     };
 
-    /// <summary>The entity the bell entry of the event is about: see <see cref="EntityId"/>.</summary>
     private static Guid? EntityOf(PushAudience audience, PushNotificationPayload payload)
     {
-        // The audience of the platform staff names the subject of the event itself (PushAudience.PlatformStaff): that is what the bell opens.
-        // So does the audience of the administrators of an org (E40/F01/US02/T01): the event is about the org's own domain.
         if (audience.Kind is PushAudienceKind.PlatformStaff or PushAudienceKind.OrgAdmins)
             return audience.Id;
 
-        // E30/F02/US01/T01 and E30/F02/US02/T01: the alert about the 24 hours of a Ticino arrival day, and the declaration of a day, are about a property, and an arrival day is not an
-        // entity of its own. The entry carries the property (the audience of the push), no booking and no day: the client opens the Ticino page of the property on its first day to notify.
         if (audience.Kind == PushAudienceKind.PropertyHosts && PushTypes.IsTicinoNotification(payload.Type))
             return audience.Id;
 
-        // E31/F02/US01/T01: the same for the notification of an arrival day of a canton other than Ticino (the two alerts and the declaration of the day).
         if (audience.Kind == PushAudienceKind.PropertyHosts && PushTypes.IsSwissNotification(payload.Type))
             return audience.Id;
 
@@ -140,7 +121,6 @@ public sealed class InAppNotificationJob(
             return;
         }
 
-        // IgnoreQueryFilters([Tenant]): a job without a tenant; the key identifies the event, whatever its org.
         var alreadyTold = (await db.InAppNotifications
                 .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
                 .AsNoTracking()
@@ -204,7 +184,6 @@ public sealed class InAppNotificationJob(
             }
         }
 
-        // Real time (UI-12a): the open sessions of each user written now learn the new count. Best effort, after the rows are stored.
         foreach (var userId in writtenUsers)
         {
             try
@@ -227,7 +206,6 @@ public sealed class InAppNotificationJob(
             notification.AudienceId);
     }
 
-    /// <summary>How many times one user is inserted again after PostgreSQL aborts the statement with 40P01.</summary>
     private const int DeadlockAttempts = 4;
 
     private static bool IsRaceOrVanishedUser(Exception ex) =>
@@ -246,19 +224,16 @@ public sealed class InAppNotificationJob(
         return null;
     }
 
-    /// <summary>One user to tell, with the org its row belongs to (the org its bell reads it under).</summary>
     private sealed record Recipient(string UserId, Guid OrgId);
 
     private sealed record Recipients(IReadOnlyList<Recipient> Users)
     {
         public static Recipients None { get; } = new([]);
 
-        /// <summary>Users of the org the event belongs to, each once.</summary>
         public static Recipients Of(Guid orgId, IEnumerable<string> userIds) =>
             new([.. userIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).Select(userId => new Recipient(userId, orgId))]);
     }
 
-    /// <summary>The users of the audience, each once, with the org of each row: the org the event belongs to, or the staff member's own one.</summary>
     private async Task<Recipients> ResolveRecipientsAsync(QueuedInAppNotification notification, CancellationToken cancellationToken)
     {
         switch (notification.AudienceKind)
@@ -287,7 +262,6 @@ public sealed class InAppNotificationJob(
 
     private async Task<Recipients> BookingHostsAsync(Guid bookingId, string type, CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
         var booking = await db.Bookings
             .AsNoTracking()
             .IgnoreQueryFilters()
@@ -313,7 +287,6 @@ public sealed class InAppNotificationJob(
 
     private async Task<Recipients> PropertyHostsAsync(Guid propertyId, NotificationPermission? requiredPermission, CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the property's org.
         var property = await db.Properties
             .AsNoTracking()
             .IgnoreQueryFilters()
@@ -351,18 +324,8 @@ public sealed class InAppNotificationJob(
         return new Recipients([.. hosts.Users.Where(user => holders.Contains(user.UserId))]);
     }
 
-    /// <summary>
-    /// The people the push tells about a property of the org (AM-03, AM-03b): the member in charge, while they still reach the
-    /// property, and the org's administrators, active and not deactivated (<see cref="HostNotificationAudience"/>), the same query
-    /// the delivery job joins to the devices.
-    /// </summary>
-    /// <summary>
-    /// The users who decide the identity verification of the booking's guest (E03/F04/US02/T03): <c>verification.decision</c> and the property
-    /// in reach (<see cref="VerificationOperatorAudience"/>), the same people the push job reads the devices of.
-    /// </summary>
     private async Task<Recipients> VerificationOperatorsAsync(Guid bookingId, CancellationToken cancellationToken)
     {
-        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
         var booking = await db.Bookings
             .AsNoTracking()
             .IgnoreQueryFilters()
@@ -429,10 +392,6 @@ public sealed class InAppNotificationJob(
         return Recipients.Of(orgId, users);
     }
 
-    /// <summary>
-    /// The active users who operate the supplier org's inbox (linked by <c>User.SupplierOrgId</c>, or members whose org is the
-    /// supplier org): the people whose devices the delivery job reads for the same audience. The rows belong to the supplier org.
-    /// </summary>
     private async Task<Recipients> SupplierUsersAsync(Guid supplierOrgId, CancellationToken cancellationToken)
     {
         var users = await db.Users

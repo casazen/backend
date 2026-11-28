@@ -18,9 +18,6 @@ public class InternalActivitiesController(
     IStayLifecycleService? stayLifecycle = null,
     ILogger<InternalActivitiesController>? logger = null) : ControllerBase
 {
-    /// <summary>
-    /// Creates a new internal activity (cleaning, maintenance, check-in assistance).
-    /// </summary>
     [HttpPost]
     [ProducesResponseType(typeof(InternalActivity), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -49,10 +46,6 @@ public class InternalActivitiesController(
             activity);
     }
 
-    /// <summary>
-    /// Gets all internal activities within the caller's perimeter.
-    /// Staff with "Only some" perimeter sees only activities on their assigned properties.
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<InternalActivity>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -79,9 +72,6 @@ public class InternalActivitiesController(
         return Ok(activities);
     }
 
-    /// <summary>
-    /// Updates the status of an internal activity.
-    /// </summary>
     [HttpPut("{id}/status")]
     [ProducesResponseType(typeof(InternalActivity), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -102,10 +92,6 @@ public class InternalActivitiesController(
         return Ok(activity);
     }
 
-    /// <summary>
-    /// casazen/backend#978: the staff member completed the cleaning of a stay, so the booking flow of the org may declare the property ready now (when it says «when the
-    /// cleaning is done»). Best effort: the status is saved whatever happens here.
-    /// </summary>
     private async Task FollowCleaningDoneAsync(InternalActivity activity)
     {
         if (stayLifecycle is null
@@ -127,9 +113,6 @@ public class InternalActivitiesController(
         }
     }
 
-    /// <summary>
-    /// Gets activities assigned to the calling staff user within their perimeter.
-    /// </summary>
     [HttpGet("my-activities")]
     [ProducesResponseType(typeof(IReadOnlyList<InternalActivity>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -153,9 +136,6 @@ public class InternalActivitiesController(
         return Ok(activities);
     }
 
-    /// <summary>
-    /// Gets a single internal activity by ID.
-    /// </summary>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(InternalActivity), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

@@ -133,7 +133,6 @@ public sealed class CheckoutPaymentReconciliationService(
                 return Outcome.StillInFlight;
 
             case "succeeded":
-                // Not a payment of the checkout: nothing here to confirm. Left as it is, and counted so it shows in the log.
                 logger.LogWarning("Payment intent {PaymentIntentId} succeeded but is not a direct booking payment: left alone", paymentIntentId);
                 return Outcome.StillInFlight;
 

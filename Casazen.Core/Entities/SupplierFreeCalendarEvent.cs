@@ -28,19 +28,15 @@ public class SupplierFreeCalendarEvent
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
-    /// <summary>Hex SHA-256 of what the decision is about (series: the UID; single event: the UID and its start). Unique per supplier.</summary>
     [Required, MaxLength(KeyLength)]
     public string DecisionKey { get; set; } = string.Empty;
 
-    /// <summary>Hex SHA-256 of the UID (or of the content of an event without UID).</summary>
     [Required, MaxLength(KeyLength)]
     public string UidHash { get; set; } = string.Empty;
 
-    /// <summary>Title of the event cut to <see cref="SupplierAgendaLimits.LabelMaxLength"/> characters, or null.</summary>
     [MaxLength(SupplierAgendaLimits.LabelMaxLength)]
     public string? Summary { get; set; }
 
@@ -48,13 +44,10 @@ public class SupplierFreeCalendarEvent
 
     public bool Recurring { get; set; }
 
-    /// <summary>First instant (UTC) of the nearest occurrence that has not ended.</summary>
     public DateTime NextStartUtc { get; set; }
 
-    /// <summary>Instant (UTC) the nearest occurrence ends.</summary>
     public DateTime NextEndUtc { get; set; }
 
-    /// <summary>Occurrences of the event the last sync saw from today on (1 for a single event).</summary>
     public int Occurrences { get; set; } = 1;
 
     public DateTime FirstSeenAt { get; set; } = DateTime.UtcNow;

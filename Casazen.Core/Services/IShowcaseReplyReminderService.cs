@@ -8,7 +8,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IShowcaseReplyReminderService
 {
-    /// <summary>One pass. Never throws for a request it cannot handle: it counts it, and the next run goes on.</summary>
     Task<ShowcaseReplyReminderRun> SendDueAsync(CancellationToken cancellationToken = default);
 }
 
@@ -18,6 +17,5 @@ public interface IShowcaseReplyReminderService
 /// <param name="Failed">Requests that could not be handled because of an error: retried by the next run.</param>
 public sealed record ShowcaseReplyReminderRun(int Sent, int Conflicts, int Failed)
 {
-    /// <summary>Nothing was due.</summary>
     public static ShowcaseReplyReminderRun Empty { get; } = new(0, 0, 0);
 }

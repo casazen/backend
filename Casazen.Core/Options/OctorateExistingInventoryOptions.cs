@@ -18,42 +18,28 @@ public sealed class OctorateExistingInventoryOptions
 {
     public const string SectionName = "Octorate:ExistingInventory";
 
-    /// <summary>How many times the access to a channel is checked before the person may confirm it by hand, when the setting is not given.</summary>
     public const int DefaultAccessCheckMaxAttempts = 6;
 
-    /// <summary>Seconds before the first check of an access, doubled at each check, when the setting is not given.</summary>
     public const int DefaultAccessCheckBackoffSeconds = 30;
 
-    /// <summary>The longest wait between two checks of an access, in seconds.</summary>
     public const int MaxAccessCheckBackoffSeconds = 600;
 
-    /// <summary>The most checks of an access that may be asked for.</summary>
     public const int MaxAccessCheckMaxAttempts = 20;
 
-    /// <summary>Checks of the access to a channel before it is offered for the person's confirmation (1 to <see cref="MaxAccessCheckMaxAttempts"/>).</summary>
     public int AccessCheckMaxAttempts { get; set; } = DefaultAccessCheckMaxAttempts;
 
-    /// <summary>Seconds before the first check of an access; the wait doubles at each check up to <see cref="MaxAccessCheckBackoffSeconds"/>.</summary>
     public int AccessCheckBackoffSeconds { get; set; } = DefaultAccessCheckBackoffSeconds;
 
-    /// <summary>The capability flags of each channel, keyed by the portal code (for example <c>142</c>), compared without regard to case.</summary>
     public Dictionary<string, OctorateExistingInventoryChannelOptions> Channels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Approved initial calendar source, keyed by accommodation ID for this environment.</summary>
     public Dictionary<string, string> InitialCalendarPortals { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>The checks of the access, brought into their ranges.</summary>
     public int EffectiveAccessCheckMaxAttempts =>
         AccessCheckMaxAttempts is >= 1 and <= MaxAccessCheckMaxAttempts ? AccessCheckMaxAttempts : DefaultAccessCheckMaxAttempts;
 
-    /// <summary>The first wait of the checks of an access, brought into 1 to <see cref="MaxAccessCheckBackoffSeconds"/> seconds.</summary>
     public int EffectiveAccessCheckBackoffSeconds =>
         AccessCheckBackoffSeconds is >= 1 and <= MaxAccessCheckBackoffSeconds ? AccessCheckBackoffSeconds : DefaultAccessCheckBackoffSeconds;
 
-    /// <summary>
-    /// The wait after the <paramref name="attempt"/>-th check of an access (from 1): the first wait, doubled at each check, never longer than
-    /// <see cref="MaxAccessCheckBackoffSeconds"/>.
-    /// </summary>
     public TimeSpan BackoffAfter(int attempt)
     {
         var seconds = (double)EffectiveAccessCheckBackoffSeconds;
@@ -63,10 +49,6 @@ public sealed class OctorateExistingInventoryOptions
         return TimeSpan.FromSeconds(Math.Min(seconds, MaxAccessCheckBackoffSeconds));
     }
 
-    /// <summary>
-    /// True when <paramref name="operation"/> was verified on a real property for the channel <paramref name="channelCode"/> and its flag is on.
-    /// A channel that is not listed, an empty code and an operation that is not a member of <see cref="OctorateD6Operation"/> are not verified.
-    /// </summary>
     public bool IsVerified(string? channelCode, OctorateD6Operation operation)
     {
         var code = channelCode?.Trim();
@@ -84,24 +66,15 @@ public sealed class OctorateExistingInventoryOptions
     }
 }
 
-/// <summary>
-/// The evidence of the real-property pilot for one channel (<c>Octorate:ExistingInventory:Channels:{code}</c>): which operations of the D6
-/// sequence were run and recorded in the runbook. All off by default.
-/// </summary>
 public sealed class OctorateExistingInventoryChannelOptions
 {
-    /// <summary><c>IMPORT_ROOMS</c> was verified for this channel (<c>Octorate:ExistingInventory:Channels:{code}:ImportRooms</c>).</summary>
     public bool ImportRooms { get; set; }
 
-    /// <summary><c>IMPORT_RESERVATIONS</c> was verified for this channel (<c>Octorate:ExistingInventory:Channels:{code}:ImportReservations</c>).</summary>
     public bool ImportReservations { get; set; }
 
-    /// <summary><c>IMPORT_CALENDAR</c> was verified for this channel (<c>Octorate:ExistingInventory:Channels:{code}:ImportCalendar</c>).</summary>
     public bool ImportCalendar { get; set; }
 
-    /// <summary><c>MARK_CONNECTED</c> was verified for this channel (<c>Octorate:ExistingInventory:Channels:{code}:MarkConnected</c>).</summary>
     public bool MarkConnected { get; set; }
 
-    /// <summary>Whether this channel requires and supports committing the mapping after it has been read back.</summary>
     public bool CommitMapping { get; set; }
 }

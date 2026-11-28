@@ -132,7 +132,6 @@ public sealed record OwnerPortalStatementDetailDto(
     }
 }
 
-/// <summary>The part names the client sees, in the order of the PDF.</summary>
 internal static class OwnerPortalSectionNames
 {
     public static IReadOnlyList<OwnerStatementSection> All { get; } = Enum.GetValues<OwnerStatementSection>();
@@ -153,10 +152,6 @@ internal static class OwnerPortalSectionNames
     }
 }
 
-/// <summary>One part of a statement: its name, its total and its lines.</summary>
-/// <param name="Section">One of <c>stays</c>, <c>channelFees</c>, <c>withholding</c>, <c>commission</c>, <c>recharges</c>, <c>corrections</c>, <c>payments</c>.</param>
-/// <param name="Total">The sum of its lines that count: a line for information only (<c>informational</c>: the commission the agency bears) is not in it.</param>
-/// <param name="Lines">The lines, by day.</param>
 public sealed record OwnerPortalStatementSectionDto(string Section, decimal Total, IReadOnlyList<OwnerPortalStatementLineDto> Lines)
 {
     public static OwnerPortalStatementSectionDto From(OwnerStatementSection section, IReadOnlyList<OwnerStatementLine> lines) =>

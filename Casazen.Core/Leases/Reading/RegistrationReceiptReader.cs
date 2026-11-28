@@ -6,27 +6,17 @@ namespace Casazen.Core.Leases.Reading;
 /// <summary>What the receipt of the Agenzia delle Entrate says happened to the contract.</summary>
 public enum ReceiptOutcome
 {
-    /// <summary>The text is not (or not clearly) a receipt of the Agenzia.</summary>
     Unknown = 0,
 
-    /// <summary>The contract was registered ("il contratto è stato registrato", file "acquisito").</summary>
     Registered = 1,
 
-    /// <summary>The Agenzia discarded the request ("scartati: 1", file "scartato"): the contract is not registered.</summary>
     Rejected = 2,
 }
 
-/// <summary>
-/// What <see cref="RegistrationReceiptReader"/> read in the receipt of the registration (CF-DOCS-REAL, modello RLI12 of the Agenzia delle
-/// Entrate): the identification code, the number and series, the day of the registration, the office, the figures of the contract as the
-/// Agenzia recorded them and the municipality of the house. It holds no name, no fiscal code and no street: the people and the address of
-/// the house are not read. The values are given to the person to check; nothing is stored with the document but the names of the fields.
-/// </summary>
 public sealed record RegistrationReceiptReading
 {
     public ReceiptOutcome Outcome { get; init; }
 
-    /// <summary>"Codice identificativo del contratto" (17 characters, for example <c>TKM26T012345000AB</c>).</summary>
     public string? Code { get; init; }
 
     public string? Number { get; init; }
@@ -37,7 +27,6 @@ public sealed record RegistrationReceiptReading
 
     public string? Office { get; init; }
 
-    /// <summary>"Importo del canone": the rent of the year, in euros.</summary>
     public decimal? AnnualRent { get; init; }
 
     public DateOnly? Start { get; init; }
@@ -46,10 +35,8 @@ public sealed record RegistrationReceiptReading
 
     public DateOnly? StipulationDate { get; init; }
 
-    /// <summary>"Locazione agevolata immobile uso abitativo", as written.</summary>
     public string? Typology { get; init; }
 
-    /// <summary>The type of contract the typology says, when it says one.</summary>
     public LeaseContractType? TypeHint { get; init; }
 
     /// <summary>"Risulta contestualmente esercitata l'opzione per la cedolare secca": true when it says so, false when a registered receipt does not.</summary>
@@ -59,10 +46,8 @@ public sealed record RegistrationReceiptReading
 
     public string? Province { get; init; }
 
-    /// <summary>The receipt says what it must: it is registered with a code or a number, or it is discarded.</summary>
     public bool IsReceipt => Outcome != ReceiptOutcome.Unknown;
 
-    /// <summary>The names of the things that were read, never a value: what is kept with the document.</summary>
     public IReadOnlyList<string> FieldNames()
     {
         var names = new List<string>();
@@ -107,7 +92,6 @@ public static partial class RegistrationReceiptReader
     [GeneratedRegex(@"\bricevuta\s+di\s+avvenuta\s+registrazione\b", Options, Timeout)]
     private static partial Regex ReceiptTitle();
 
-    // "Il contratto e' stato registrato il 21/09/2026 al n. 012345 serie 3T e codice identificativo TKM26T012345000AB"
     [GeneratedRegex(@"\bcontratto\s+\p{L}'?\s+stato\s+registrato\s+il\s+(?<d>" + ReadingText.DatePattern + @")", Options, Timeout)]
     private static partial Regex RegisteredSentence();
 
@@ -147,7 +131,6 @@ public static partial class RegistrationReceiptReader
     [GeneratedRegex(@"\bdenominazione\s+(?<e>acquisit\w+|scartat\w+)", Options, Timeout)]
     private static partial Regex ListedOutcome();
 
-    /// <summary>Reads the receipt from the text of the PDF (empty or not a receipt: <see cref="RegistrationReceiptReading.Outcome"/> is <see cref="ReceiptOutcome.Unknown"/>).</summary>
     public static RegistrationReceiptReading Read(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -201,7 +184,6 @@ public static partial class RegistrationReceiptReader
     private static int CountOf(Regex regex, string flat) =>
         regex.Match(flat) is { Success: true } match && int.TryParse(match.Groups["n"].Value, out var count) ? count : 0;
 
-    /// <summary>The first identification code that looks like one: letters and digits, with both (a word that follows an empty field is not).</summary>
     private static string? CodeOf(string flat)
     {
         foreach (Match match in IdentificationCode().Matches(flat))
@@ -216,7 +198,6 @@ public static partial class RegistrationReceiptReader
 
     private static string Clean(string text) => text.Trim(' ', '.', ',', ':', '-');
 
-    /// <summary>"Locazione agevolata…" is a canone concordato, "…transitoria" a transitory lease, any other "locazione… uso abitativo" a free one.</summary>
     private static LeaseContractType? TypeOf(string? typology)
     {
         if (typology is null)
@@ -231,7 +212,6 @@ public static partial class RegistrationReceiptReader
     }
 }
 
-/// <summary>The stable codes of the ways a receipt can disagree with the contract it is about (the screen puts each in words).</summary>
 public static class RegistrationReceiptWarnings
 {
     public const string RentDiffers = "receipt_rent_differs";
@@ -243,7 +223,6 @@ public static class RegistrationReceiptWarnings
     public const string RegimeDiffers = "receipt_regime_differs";
 }
 
-/// <summary>What the contract of CasaZen says, to be compared with its receipt: the figures of the lease and the town of its house.</summary>
 public sealed record ReceiptLeaseFacts(
     decimal MonthlyRent,
     DateOnly Start,
@@ -259,7 +238,6 @@ public sealed record ReceiptLeaseFacts(
 /// </summary>
 public static class RegistrationReceiptCheck
 {
-    /// <summary>The year's rent of the receipt is the month's times twelve, up to the cents a division leaves and the rounding of an office.</summary>
     private const decimal RentTolerance = 1m;
 
     public static IReadOnlyList<string> Compare(RegistrationReceiptReading receipt, ReceiptLeaseFacts lease)
@@ -289,7 +267,6 @@ public static class RegistrationReceiptCheck
         return warnings;
     }
 
-    /// <summary>The same town, written in capitals or not, with or without its province or an accent.</summary>
     internal static bool SameTown(string a, string b)
     {
         var first = ReadingText.Normalize(a);

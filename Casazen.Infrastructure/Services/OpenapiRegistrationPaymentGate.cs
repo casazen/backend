@@ -11,9 +11,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Refuses an Openapi filing until a completed checkout matches the fixed Openapi + CasaZen quote. The check is scoped to the lease's org.
-/// </summary>
 public sealed class OpenapiRegistrationPaymentGate(
     AppDbContext db,
     IOptions<CedolareAdvisoryOptions> advisory,

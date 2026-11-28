@@ -38,19 +38,12 @@ public sealed class ListingPhotoSync(
     TimeProvider timeProvider,
     ILogger<ListingPhotoSync> logger)
 {
-    /// <summary>
-    /// How long a photo may wait unsent before the follow-up job takes it up: a run of the publication sends its photos within moments, so one still
-    /// waiting after this time was left by a run that stopped.
-    /// </summary>
     public static readonly TimeSpan PendingGrace = TimeSpan.FromMinutes(10);
 
-    /// <summary>What the task of a photo keeps when the photo was removed in CasaZen and could not be removed on the channel manager; it is not tried again.</summary>
     internal const string NotRemovedMessage = "The photo could not be removed on the channel manager: remove it there by hand.";
 
-    /// <summary>What the task of a photo keeps when the channel manager no longer knows the entry of the queue it was waiting on (a note for the logs and the support, never shown to the host).</summary>
     internal const string QueueEntryUnknownMessage = "The channel manager does not know the entry of the photo queue.";
 
-    /// <summary>Sends the photos not sent yet, and removes the ones that left the gallery.</summary>
     public async Task SendAsync(Property property, string accommodationId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -81,11 +74,6 @@ public sealed class ListingPhotoSync(
         await RemoveAsync(tasks.Where(t => t.Status == PhotoUploadStatus.RemovePending), accommodationId, ct);
     }
 
-    /// <summary>
-    /// Sends the photos a run that stopped left unsent (<see cref="PhotoUploadStatus.Pending"/> in <paramref name="tasks"/>, still in the gallery of
-    /// <paramref name="property"/>). It makes no task and looks at no other photo: the publication the host asked for is finished, nothing more.
-    /// Returns how many tasks moved.
-    /// </summary>
     public async Task<int> ResumeAsync(Property property, IReadOnlyCollection<PhotoUploadTask> tasks, string accommodationId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -97,10 +85,6 @@ public sealed class ListingPhotoSync(
         return pending.Count(t => t.Status != PhotoUploadStatus.Pending);
     }
 
-    /// <summary>
-    /// Reads the queue of the channel manager for the photos still waiting (<see cref="PhotoUploadStatus.Uploading"/>): <c>Done</c> with the name
-    /// Octorate gave the photo, or <c>Error</c> with the reason; and removes the photos that left the gallery. Returns how many tasks changed.
-    /// </summary>
     public async Task<int> ReadQueueAsync(IReadOnlyCollection<PhotoUploadTask> tasks, string accommodationId, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(tasks);
@@ -132,7 +116,6 @@ public sealed class ListingPhotoSync(
         return changed;
     }
 
-    /// <summary>Sends each task by the address of its photo and records what the channel manager answers.</summary>
     private async Task UploadAsync(Guid propertyId, IReadOnlyCollection<PhotoUploadTask> tasks, string accommodationId, CancellationToken ct)
     {
         foreach (var task in tasks)
@@ -143,7 +126,6 @@ public sealed class ListingPhotoSync(
             }
             catch (OctorateRateLimitException)
             {
-                // The org's calls for the minute are spent: the photos left stay pending, and the follow-up job takes them up (ResumeAsync).
                 logger.LogWarning("Photos of property {PropertyId}: the rate limit of the org stopped the sending, the rest stays pending", propertyId);
                 break;
             }
@@ -167,7 +149,6 @@ public sealed class ListingPhotoSync(
             var neverTaken = false;
             if (string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(task.OctorateQueueId))
             {
-                // The photo may still be on its way: when the queue says it is done, its name is the one to delete; while it waits, nothing yet.
                 var entry = await client.GetPhotoQueueAsync(accommodationId, task.OctorateQueueId, ct);
                 if (entry is { State: OctoratePhotoQueueState.Waiting })
                     continue;
@@ -182,8 +163,6 @@ public sealed class ListingPhotoSync(
             }
             else if (!neverTaken && !string.IsNullOrEmpty(task.OctorateQueueId))
             {
-                // The channel manager has the photo, or may have it (the queue gave no name, or no longer knows the entry), and there is no name to delete
-                // it with: it is not «removed». The task says so, is not tried again, and the host is told to remove the photo there by hand.
                 logger.LogWarning("Photo task {TaskId} of property {PropertyId}: no name to delete the photo with, it stays on the channel manager", task.Id, task.PropertyId);
                 task.Status = PhotoUploadStatus.Error;
                 task.ErrorMessage = NotRemovedMessage;
@@ -203,7 +182,6 @@ public sealed class ListingPhotoSync(
         return changed;
     }
 
-    /// <summary>Whether a photo that left the gallery still has to be removed on the channel manager: not one already removed, nor one whose removal failed.</summary>
     private static bool CanLeave(PhotoUploadTask task) =>
         task.Status is PhotoUploadStatus.Pending or PhotoUploadStatus.Uploading or PhotoUploadStatus.Done
         || (task.Status == PhotoUploadStatus.Error && task.ErrorMessage != NotRemovedMessage);
@@ -231,8 +209,6 @@ public sealed class ListingPhotoSync(
                 break;
         }
 
-        // The channel manager has the photo and gave no name: it stays Done (it is there, and is never sent again), and the host is told once that a
-        // photo removed in CasaZen will have to be removed there by hand. Marking it as an error would send it again at the next publication.
         if (task is { Status: PhotoUploadStatus.Done, OctoratePhotoId: null })
         {
             logger.LogWarning("Photo task {TaskId} of property {PropertyId}: the channel manager took the photo without naming it", task.Id, task.PropertyId);

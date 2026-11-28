@@ -27,11 +27,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IComplianceArchiveService
 {
-    /// <summary>
-    /// The proofs held, newest first, one page of them. The receipts of a tourist tax declaration or payment are part of the list and of its
-    /// <see cref="ComplianceArchivePage.TotalCount"/> only when <see cref="ComplianceArchiveQuery.MoneyProofs"/> is true.
-    /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">A property is asked for that the caller does not reach.</exception>
     Task<ComplianceArchivePage> ListAsync(HostScope scope, ComplianceArchiveQuery query, CancellationToken ct);
 
     /// <summary>The proofs of one stay (the Alloggiati receipts of its arrival day) and the log of what was sent for it.</summary>
@@ -67,7 +62,6 @@ public interface IComplianceArchiveService
     /// </summary>
     Task<ComplianceCoverageReport> GetCoverageReportAsync(HostScope scope, ComplianceReportQuery query, CancellationToken ct);
 
-    /// <summary>The coverage report as a PDF or a CSV, built on request and never stored. It never claims to be issued by an authority.</summary>
     Task<ComplianceReportFile> ExportReportAsync(HostScope scope, ComplianceReportQuery query, ComplianceReportFormat format, CancellationToken ct);
 
     /// <summary>
@@ -94,56 +88,35 @@ public interface IComplianceArchiveService
     Task<ComplianceReceiptCoverage> GetReceiptCoverageAsync(HostScope scope, DateOnly day, IReadOnlyList<Guid> propertyIds, CancellationToken ct);
 }
 
-/// <summary>Limits of the lists of the archive.</summary>
 public static class ComplianceArchiveLimits
 {
-    /// <summary>The proofs of a page when the caller does not say.</summary>
     public const int DefaultPageSize = 25;
 
-    /// <summary>The most proofs of a page.</summary>
     public const int MaxPageSize = 100;
 
-    /// <summary>The first year a proof may be filed under: before it is a typing mistake.</summary>
     public const int MinYear = 2000;
 
-    /// <summary>
-    /// The most flats one receipt can name (E20/F02/US01/T01): a guard on the size of the request. The real bound is the flats of the org it may cover,
-    /// each of them checked against the org and the reach of the caller; a list longer than this is refused before anything is read.
-    /// </summary>
     public const int MaxCoveredProperties = 500;
 }
 
-/// <summary>Error codes of the archive (ProblemDetails <c>code</c>, FD-05).</summary>
 public static class ComplianceArchiveErrorCodes
 {
-    /// <summary>404: no proof with that id for the caller (another org's, one out of its reach and an unknown one are the same answer).</summary>
     public const string ProofNotFound = "compliance_proof_not_found";
 
-    /// <summary>404: no stay with that id for the caller (same answer for another org's and for one out of its reach).</summary>
     public const string BookingNotFound = "compliance_booking_not_found";
 
-    /// <summary>422: the proof has no file, or an empty one.</summary>
     public const string ProofFileInvalid = "compliance_proof_file_invalid";
 
-    /// <summary>415: the file is not a PDF, a JPEG or a PNG, whatever its name or its declared type say.</summary>
     public const string ProofTypeUnsupported = "compliance_proof_type_unsupported";
 
-    /// <summary>413: the file is larger than <c>Compliance:Archive:UploadMaxMegabytes</c>.</summary>
     public const string ProofTooLarge = "compliance_proof_too_large";
 
-    /// <summary>422: the day of the proof is in the future or before the first supported year.</summary>
     public const string ProofDayInvalid = "compliance_proof_day_invalid";
 
-    /// <summary>422: the kind of the proof is not one of <see cref="ManualProofKind"/>.</summary>
     public const string ProofKindInvalid = "compliance_proof_kind_invalid";
 
-    /// <summary>422: the proofs of the period are more than one export carries; the host asks for a shorter period.</summary>
     public const string ExportTooLarge = "compliance_export_too_large";
 
-    /// <summary>
-    /// 422: the flats a receipt is asked to cover are not acceptable (E20/F02/US01/T01): a list for a kind of proof that covers one flat only, a flat outside
-    /// Italy, more flats than <see cref="ComplianceArchiveLimits.MaxCoveredProperties"/>, or no flat at all where a list is asked for.
-    /// </summary>
     public const string ProofCoverageInvalid = "compliance_proof_coverage_invalid";
 }
 
@@ -201,15 +174,8 @@ public sealed record ComplianceArchiveEntry(
     IReadOnlyList<ComplianceCoveredProperty>? CoveredProperties = null,
     int? CoveredStays = null);
 
-/// <summary>A flat a proof covers: its id and its name (E20/F02/US01/T01).</summary>
-/// <param name="Id">The flat.</param>
-/// <param name="Name">Its name.</param>
 public sealed record ComplianceCoveredProperty(Guid Id, string Name);
 
-/// <summary>What a receipt of one day would prove for one flat: the stays of the flat that arrived that day and owe the communication.</summary>
-/// <param name="PropertyId">The flat.</param>
-/// <param name="PropertyName">Its name.</param>
-/// <param name="Stays">The stays that become proven (zero for a flat with no stay arriving that day).</param>
 public sealed record ComplianceReceiptCoverageProperty(Guid PropertyId, string PropertyName, int Stays);
 
 /// <summary>
@@ -221,11 +187,6 @@ public sealed record ComplianceReceiptCoverageProperty(Guid PropertyId, string P
 /// <param name="Properties">The flats, each with its stays.</param>
 public sealed record ComplianceReceiptCoverage(DateOnly Day, int Stays, IReadOnlyList<ComplianceReceiptCoverageProperty> Properties);
 
-/// <summary>One page of the archive.</summary>
-/// <param name="Items">The proofs, newest first.</param>
-/// <param name="Page">The page, from 1.</param>
-/// <param name="PageSize">The proofs of a page.</param>
-/// <param name="TotalCount">The proofs that match the query, all pages together.</param>
 public sealed record ComplianceArchivePage(IReadOnlyList<ComplianceArchiveEntry> Items, int Page, int PageSize, int TotalCount);
 
 /// <summary>One line of the send log of a stay: what was sent, when, and by whom.</summary>
@@ -243,47 +204,18 @@ public sealed record ComplianceSendLogLine(
     string? Reference,
     string? SentBy);
 
-/// <summary>What the archive holds about one stay.</summary>
-/// <param name="BookingId">The stay.</param>
-/// <param name="PropertyId">Its property.</param>
-/// <param name="Proofs">
-/// The receipts of its arrival day that cover its flat, newest first (a receipt may cover several flats, E20/F02/US01/T01); one that covers a flat the caller does
-/// not reach is not listed.
-/// </param>
-/// <param name="SendLog">What was sent for it, newest first.</param>
 public sealed record ComplianceBookingCompliance(
     Guid BookingId,
     Guid PropertyId,
     IReadOnlyList<ComplianceArchiveEntry> Proofs,
     IReadOnlyList<ComplianceSendLogLine> SendLog);
 
-/// <summary>
-/// How a proof is handed to the caller. Exactly one of <paramref name="SignedUrl"/> and <paramref name="Content"/> is set. The caller
-/// disposes <paramref name="Content"/>.
-/// </summary>
-/// <param name="SignedUrl">A short-lived signed address of the private bucket (the caller redirects to it); <c>null</c> when the storage cannot sign.</param>
-/// <param name="Content">The file, when there is no signed address.</param>
-/// <param name="FileName">A name made by the server from the kind and the day.</param>
-/// <param name="ContentType">What the file is.</param>
 public sealed record ComplianceArchiveDownload(Uri? SignedUrl, Stream? Content, string FileName, string ContentType);
 
-/// <summary>The proofs of a period to export: the days are Europe/Rome calendar dates, both included.</summary>
-/// <param name="From">First day.</param>
-/// <param name="To">Last day.</param>
-/// <param name="PropertyId">Only this property; <c>null</c> = every property of the caller's reach.</param>
-/// <param name="MoneyProofs">
-/// Whether the caller may read money (<c>payment.read</c>). Only then are the receipts of a tourist tax declaration or payment in the ZIP, its
-/// index and its file count; false (the default) leaves them out.
-/// </param>
 public sealed record ComplianceArchiveExportQuery(DateOnly From, DateOnly To, Guid? PropertyId = null, bool MoneyProofs = false);
 
-/// <summary>An export built in memory: the ZIP, positioned at its start; the caller disposes it.</summary>
-/// <param name="Content">The ZIP.</param>
-/// <param name="FileName">A name made by the server from the period.</param>
-/// <param name="FileCount">The proofs in it (the index is not counted).</param>
 public sealed record ComplianceArchiveExportFile(Stream Content, string FileName, int FileCount) : IAsyncDisposable
 {
-    /// <summary>Disposes the ZIP.</summary>
     public ValueTask DisposeAsync() => Content.DisposeAsync();
 }
 
@@ -304,16 +236,10 @@ public sealed record UploadComplianceProofRequest(
     string UploadedByUserId,
     IReadOnlyList<Guid>? CoveredPropertyIds = null);
 
-/// <summary>The days a coverage report looks at: Europe/Rome calendar dates, both included.</summary>
-/// <param name="From">First day.</param>
-/// <param name="To">Last day.</param>
-/// <param name="PropertyId">Only this property; <c>null</c> = every property of the caller's reach.</param>
 public sealed record ComplianceReportQuery(DateOnly From, DateOnly To, Guid? PropertyId = null);
 
-/// <summary>The reasons the coverage report adds to the stable codes of the traffic light (<see cref="ComplianceReasonCodes"/>).</summary>
 public static class ComplianceReportReasons
 {
-    /// <summary>Nothing is owed for the stay: the guests never came (a no-show), so there is nobody to communicate.</summary>
     public const string NoShow = "no_show";
 }
 
@@ -377,23 +303,15 @@ public sealed record ComplianceCoverageReport(
     ComplianceCoverageCounts Counts,
     IReadOnlyList<ComplianceReportRow> Rows);
 
-/// <summary>The file formats of the report.</summary>
 public enum ComplianceReportFormat
 {
-    /// <summary>A spreadsheet for Italian settings: UTF-8 with a BOM, <c>;</c>, one table.</summary>
     Csv,
 
-    /// <summary>A PDF on A4.</summary>
     Pdf,
 }
 
-/// <summary>A report built on request: the bytes, what they are, and a name made by the server from the period.</summary>
-/// <param name="Content">The file.</param>
-/// <param name="ContentType"><c>text/csv</c> or <c>application/pdf</c>.</param>
-/// <param name="FileName">The name to download it under.</param>
 public sealed record ComplianceReportFile(byte[] Content, string ContentType, string FileName);
 
-/// <summary>The rules of the proofs of the archive, apart from any storage.</summary>
 public static class ComplianceArchiveRules
 {
     /// <summary>
@@ -403,7 +321,6 @@ public static class ComplianceArchiveRules
     /// </summary>
     public static readonly ManualProofKind[] MoneyKinds = [ManualProofKind.TouristTaxDeclaration, ManualProofKind.TouristTaxPayment];
 
-    /// <summary>True for a record of money (<see cref="MoneyKinds"/>).</summary>
     public static bool IsMoneyKind(ManualProofKind kind) => MoneyKinds.Contains(kind);
 
     /// <summary>True for the kinds that are about a month (ISTAT and tourist tax), filed under the first day of the month.</summary>
@@ -414,11 +331,9 @@ public static class ComplianceArchiveRules
     public static DateOnly FileDay(ManualProofKind kind, DateOnly day) =>
         IsPeriodKind(kind) ? new DateOnly(day.Year, day.Month, 1) : day;
 
-    /// <summary>The month (<c>yyyy-MM</c>) of a period kind; <c>null</c> for a day.</summary>
     public static string? PeriodOf(ManualProofKind kind, DateOnly day) =>
         IsPeriodKind(kind) ? ComplianceLightRules.PeriodKey(day) : null;
 
-    /// <summary>The extension of a content type of the archive (<c>.pdf</c>, <c>.jpg</c>, <c>.png</c>).</summary>
     public static string ExtensionOf(string contentType) => contentType switch
     {
         "application/pdf" => ".pdf",
@@ -427,7 +342,6 @@ public static class ComplianceArchiveRules
         _ => string.Empty,
     };
 
-    /// <summary>A short stable word for a kind, for the names of files.</summary>
     public static string SlugOf(ManualProofKind kind) => kind switch
     {
         ManualProofKind.AlloggiatiReceipt => "alloggiati",
@@ -444,6 +358,5 @@ public static class ComplianceArchiveRules
     public static string DownloadName(ManualProofKind kind, DateOnly day, string contentType) =>
         $"{SlugOf(kind)}-{(IsPeriodKind(kind) ? ComplianceLightRules.PeriodKey(day) : day.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))}{ExtensionOf(contentType)}";
 
-    /// <summary>Until when a proof uploaded at <paramref name="uploadedAt"/> is kept.</summary>
     public static DateTime RetainUntil(DateTime uploadedAt) => uploadedAt.AddYears(ManualComplianceProof.RetentionYears);
 }

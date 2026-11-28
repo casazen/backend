@@ -30,11 +30,6 @@ public sealed record SequenceFailure(string? Code, string Check, bool Correctabl
 /// <param name="QualityOk">True when the frame has exactly one face and passes the capture rules of the check-in.</param>
 public sealed record FrameObservation(int Index, long TimestampMs, int FaceCount, DetectedFace? Face, double YawDegrees, double PitchDegrees, bool QualityOk);
 
-/// <summary>How a step of the challenge was answered: the move asked, the furthest the head went in that direction inside the window of the step, and when the move was answered.</summary>
-/// <param name="Step">The place of the step in the challenge, from 0.</param>
-/// <param name="Action">The move asked, a code of <see cref="Casazen.Core.Identity.PresenceActions"/>.</param>
-/// <param name="PeakDegrees">The most the pose departed from the baseline in the direction asked, inside the window of the step with its tolerance (0 when no frame had a pose there); negative when the head only went the other way.</param>
-/// <param name="AnsweredAtMs">The time of the first frame at which the departure reached the minimum of the policy; null when the step was not answered.</param>
 public sealed record StepPeak(int Step, string Action, double PeakDegrees, long? AnsweredAtMs);
 
 /// <summary>
@@ -54,13 +49,11 @@ public sealed record SequenceValidationReport(
     IReadOnlyList<FrameObservation> Frames,
     IReadOnlyList<StepPeak> StepPeaks)
 {
-    /// <summary>True when the sequence could not be judged (the check <c>processing</c> failed): nothing says it is valid or that it is not.</summary>
     public bool IsUnavailable => Failures.Any(failure => string.Equals(failure.Check, VerificationReasons.Checks.Processing, StringComparison.Ordinal));
 
     /// <summary>True when the sequence did not pass and every reason is one a new recording can fix: the case for the one guided retry.</summary>
     public bool AllFailuresCorrectable => !Passed && Failures.All(failure => failure.Correctable);
 
-    /// <summary>The report of a sequence that could not be judged: never passed, one failure of the check <c>processing</c>, result <c>unavailable</c>, not correctable.</summary>
     public static SequenceValidationReport NotAvailable()
     {
         return new SequenceValidationReport(

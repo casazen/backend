@@ -19,10 +19,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class OrgInvitationService
 {
-    /// <summary>
-    /// The Auth0 roles the onboarding gives an owner by rental type; a person who leaves its empty org for another loses them,
-    /// whatever the rental type it chose (only the roles it can hold are removed, the others are left alone).
-    /// </summary>
     private static readonly UserRole[] OnboardingOwnerRoles = [UserRole.PropertyOwner, UserRole.LongTermLandlord];
 
     public async Task<OrgInvitationAccepted> AcceptAsync(AcceptOrgInvitation request, CancellationToken cancellationToken = default)
@@ -32,7 +28,6 @@ public sealed partial class OrgInvitationService
         if (!OrgInvitationTokens.TryNormalize(request.Token, out var token))
             throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
 
-        // The consents are checked before anything is read or written, so a refusal never depends on a rollback.
         var (consentsValid, consentsError) = onboarding.ValidateConsents(request.Consents, requireConsents: true);
         if (!consentsValid)
             throw ConsentsRefused(consentsError);
@@ -40,7 +35,6 @@ public sealed partial class OrgInvitationService
         var hash = OrgInvitationTokens.Hash(token);
         var now = Now;
 
-        // Read without tracking: it is read again, tracked, under the locks.
         var seen = await db.OrgInvitations.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(i => i.TokenHash == hash, cancellationToken);
         if (seen is null || !OrgInvitationTokens.Matches(seen.TokenHash, token))
@@ -49,7 +43,6 @@ public sealed partial class OrgInvitationService
         var account = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == request.UserId, cancellationToken)
                       ?? throw new NotFoundException($"User {request.UserId} not found");
 
-        // Staff never join a customer's org, whatever the invitation says.
         if (await IsPlatformAdminAsync(request.CallerIsPlatformAdmin, account, cancellationToken))
             throw new DomainForbiddenException(OrgInvitationErrors.PlatformAdmin, "InvitationPlatformAdmin");
 
@@ -69,7 +62,6 @@ public sealed partial class OrgInvitationService
             throw Gone(OrgInvitationErrors.Invalid, "InvitationInvalid");
         await RequireAgencyAsync(seen.OrgId, cancellationToken);
 
-        // What the account is in an org today decides: join, leave an empty org of its own for this one, or refuse.
         AcceptPlan plan;
         try
         {
@@ -115,11 +107,8 @@ public sealed partial class OrgInvitationService
             var user = await db.Users.FirstAsync(u => u.Id == request.UserId, cancellationToken);
             await LeaveTheOldOrgAsync(user, lockedPlan, now, cancellationToken);
 
-            // «Solo alcuni» is the collaborator's (AM-03). The creation refuses it for another role, but an invitation sent
-            // before that rule must still be accepted: the person reaches the whole org, as that role does.
             var propertyScope = invitation.Role == OrgRole.Collaborator ? invitation.PropertyScope : PropertyScope.All;
 
-            // The member and every membership of its role, in this transaction.
             try
             {
                 await orgMembership.AddMemberAsync(
@@ -133,8 +122,6 @@ public sealed partial class OrgInvitationService
             }
             catch (DomainConflictException ex) when (ex.Code is OrgMembershipErrors.AlreadyMember or OrgMembershipErrors.OtherOrg)
             {
-                // Another organisation's invitation got the person first (the unique index of the member row decided):
-                // for the person it is the same answer as having an organisation to begin with. Nothing is saved.
                 throw new DomainConflictException(OrgInvitationErrors.UserHasOrganization, "InvitationUserHasOrganization");
             }
 
@@ -160,8 +147,6 @@ public sealed partial class OrgInvitationService
             invitation.ClosedAt = now;
             invitation.UpdatedAt = now;
 
-            // The person is onboarded as a member: the host gate wants the onboarding completed and the consents of the
-            // org it joins (decision D14: the four of the onboarding, again).
             user.OnboardingCompletedAt ??= now;
             user.UpdatedAt = now;
 
@@ -170,7 +155,6 @@ public sealed partial class OrgInvitationService
             if (!consents.Success)
                 throw ConsentsRefused(consents.Error);
 
-            // In the org joined (not the one the request's tenant may still be), in the save that closes the invitation.
             activityLog.Record(OrgActivity.Of(
                 invitation.OrgId,
                 OrgActivityType.InvitationAccepted,
@@ -183,7 +167,6 @@ public sealed partial class OrgInvitationService
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        // The inner writes invalidated the cache before the commit; once more now that it is committed.
         authorizationCache.Invalidate(request.UserId);
 
         if (plan.OldOrgId is not null)
@@ -201,8 +184,6 @@ public sealed partial class OrgInvitationService
             LeftEmptyOrg: plan.OldOrgId is not null);
     }
 
-    // ─── What the account is today ──────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// What the acceptance does with the org the account already has.
     /// </summary>
@@ -216,12 +197,6 @@ public sealed partial class OrgInvitationService
     /// </param>
     private sealed record AcceptPlan(Guid? OldOrgId, Guid? DetachedLegacyOrgId);
 
-    /// <summary>
-    /// The plan for <paramref name="userId"/> joining <paramref name="targetOrgId"/>, or the refusal:
-    /// already a member of the org (409 <c>org_member_already_member</c>); a member who is not an owner, or the owner of an
-    /// org whose member row does not match its link, of another org (409 <c>invitation_user_has_organization</c>, no
-    /// merging). Whether the org of an owner can be left is decided next, by the emptiness check.
-    /// </summary>
     private async Task<AcceptPlan> PlanAsync(string userId, Guid targetOrgId, CancellationToken cancellationToken)
     {
         var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, cancellationToken);
@@ -247,7 +222,6 @@ public sealed partial class OrgInvitationService
             .Select(o => (OrgType?)o.OrgType)
             .FirstOrDefaultAsync(cancellationToken);
 
-        // A host org without an owner row (an owner the backfill did not know): it can be left only if it is empty too.
         return type == OrgType.Host ? new AcceptPlan(current, null) : new AcceptPlan(null, current);
     }
 
@@ -291,12 +265,6 @@ public sealed partial class OrgInvitationService
         return PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, [.. locks]);
     }
 
-    /// <summary>
-    /// Stages and saves the end of everything the account had in the org it leaves (the owner row and the memberships,
-    /// through <see cref="IOrgMembershipService.AbandonEmptyOrgAsync"/>), deactivates that org (its consents and the rest
-    /// stay as they are) and takes the owner's marks off the account. Or, for a legacy link to an org that is not a host
-    /// org, only unlinks it.
-    /// </summary>
     private async Task LeaveTheOldOrgAsync(User user, AcceptPlan plan, DateTime now, CancellationToken cancellationToken)
     {
         if (plan.DetachedLegacyOrgId is Guid legacy)
@@ -318,7 +286,6 @@ public sealed partial class OrgInvitationService
         oldOrg.IsActive = false;
         oldOrg.UpdatedAt = now;
 
-        // It was an owner: no longer the rental type it chose, and no owner role in the DB.
         user.Role = UserRole.None;
         user.RentalType = null;
         user.UpdatedAt = now;
@@ -351,9 +318,6 @@ public sealed partial class OrgInvitationService
         }
     }
 
-    // ─── State of the invitation ────────────────────────────────────────────────────────────────────────
-
-    /// <summary>410 with the reason the link cannot be used any more; nothing when it still can.</summary>
     private static void EnsureAcceptable(OrgInvitation invitation, DateTime now)
     {
         switch (invitation.Status)
@@ -370,7 +334,6 @@ public sealed partial class OrgInvitationService
             throw Gone(OrgInvitationErrors.Expired, "InvitationExpired");
     }
 
-    /// <summary>True when the invitation was accepted by this very account and the account still is an active member of the org.</summary>
     private async Task<bool> IsReplayAsync(OrgInvitation invitation, string userId, CancellationToken cancellationToken) =>
         invitation.Status == OrgInvitationStatus.Accepted
         && string.Equals(invitation.AcceptedByUserId, userId, StringComparison.Ordinal)
@@ -396,7 +359,6 @@ public sealed partial class OrgInvitationService
         return new OrgInvitationAccepted(invitation.OrgId, OrgName(org), invitation.Role, invitation.Areas.ToList(), LeftEmptyOrg: false);
     }
 
-    /// <summary>The token says the caller is staff, or the account is a platform administrator (<see cref="PlatformAdministrators"/>).</summary>
     private async Task<bool> IsPlatformAdminAsync(bool tokenSaysAdmin, User account, CancellationToken cancellationToken) =>
         tokenSaysAdmin
         || await PlatformAdministrators.Of(db).AsNoTracking().AnyAsync(u => u.Id == account.Id, cancellationToken);
@@ -405,10 +367,6 @@ public sealed partial class OrgInvitationService
 
     private static DomainGoneException Gone(string code, string messageKey) => new(code, messageKey);
 
-    /// <summary>
-    /// The consents sent were not valid (the controller checks them first, so this is for a direct caller): the same codes as
-    /// the onboarding, as a 422.
-    /// </summary>
     private static DomainRuleException ConsentsRefused(ConsentValidationError? error) =>
         error?.Type == ConsentValidationErrorType.StaleVersion
             ? new DomainRuleException("stale_documents", "ConsentsStale")

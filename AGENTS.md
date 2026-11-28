@@ -52,6 +52,14 @@ dotnet format --verify-no-changes
 - Ogni stringa visibile ha le sue chiavi in italiano e inglese (backend: `IStringLocalizer<T>` + `.resx`; frontend: `t()`), e ogni funzione visibile a host, ospite, fornitore o staff aggiorna la **demo** (`DemoShowcaseCatalog`).
 - Insidie ricorrenti (altre in `.claude/rules/gotchas.md`): `DateTime.UtcNow` internamente; fuso dell'immobile come stringa IANA (`Europe/Rome` di default) e conversioni con `TimezoneHelper`; tutti gli endpoint `/api` richiedono il JWT Auth0 salvo quelli esplicitamente pubblici (health, prenotazione e pagine pubbliche, testi legali, webhook); i webhook rispondono entro 3 secondi e delegano a Hangfire; la firma dei webhook Stripe si verifica sempre; le aliquote dell'imposta di soggiorno stanno nelle entità `TaxRate`, mai nel codice.
 
+## Commenti nel codice
+
+Il codice funge da commento: nomi chiari, funzioni piccole. Un commento che non spiega un **perché** si toglie.
+
+- **Non si scrivono**: commenti che ripetono il nome, i parametri o ciò che il codice dice già; `///` descrittivi (`<summary>`, `<param>`, `<returns>` che parafrasano la firma); «Arrange / Act / Assert»; intestazioni e separatori di sezione; sigle di ticket o di requisiti (`US-004`, `NF-66`, `#123`); codice commentato.
+- **Resta** solo il commento che spiega il **perché** di una logica applicativa non ovvia: regola di business, legale, fiscale o di conformità; invariante; vincolo di concorrenza o di ordine; stranezza di un sistema esterno; ragione di sicurezza. Breve, nel punto in cui serve.
+- **Restano sempre** i commenti funzionali (direttive per gli strumenti, `#pragma`, riferimenti) e i `TODO`/`FIXME`.
+
 ## Flusso di consegna
 
 - Branch `feature/<nome>`, `fix/<nome>` o `hotfix/<nome>` **da `develop`**; commit in Conventional Commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`), **senza** riga `Co-Authored-By`.

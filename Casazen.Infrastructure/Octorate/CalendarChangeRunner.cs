@@ -42,16 +42,10 @@ public sealed class CalendarChangeRunner(
     ILogger<CalendarChangeRunner> logger,
     IBackgroundJobClient? jobs = null) : ICalendarChangeRunner
 {
-    /// <summary>The most processes one run takes.</summary>
     public const int BatchSize = 30;
 
-    /// <summary>The most processes of one org one run takes: the rest wait for the next run.</summary>
     public const int PerOrgBatch = 10;
 
-    /// <summary>
-    /// The most reads of the state of a process (<c>GET /rest/v1/calendar/process/{id}</c>, one unit of quota each) one run makes for an org, all its processes together: the
-    /// follow-up never takes the quota the push and the other calls of the org need. What is not read waits for the next pass.
-    /// </summary>
     public const int MaxReadsPerPass = 25;
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
@@ -92,7 +86,6 @@ public sealed class CalendarChangeRunner(
         var failures = new List<Exception>();
         foreach (var org in due.GroupBy(p => p.OrgId))
         {
-            // The reads of the follow-up of one org in this pass share one budget: the quota is the org's.
             var budget = new FollowBudget();
             foreach (var item in org.Take(PerOrgBatch))
             {
@@ -119,7 +112,6 @@ public sealed class CalendarChangeRunner(
 
     public async Task<CalendarChangeState> RetryAsync(Guid processId, CancellationToken cancellationToken = default)
     {
-        // In a request the tenant filter hides the process of another org.
         var process = await db.CalendarChangeProcesses.FirstOrDefaultAsync(p => p.Id == processId, cancellationToken)
             ?? throw new NotFoundException("Calendar change not found")
             {
@@ -147,16 +139,11 @@ public sealed class CalendarChangeRunner(
         process.NextAttemptAt = now;
         await db.SaveChangesAsync(cancellationToken);
 
-        // Once, right after the save: the recurring job is the safety net.
         jobs?.Enqueue<CalendarChangeProcessJob>(job => job.RunAsync(processId, CancellationToken.None));
         logger.LogInformation("Calendar change {ProcessId} asked again: state {State}", processId, process.State);
         return process.State;
     }
 
-    /// <summary>
-    /// Reads the quota of the channel manager once for the org in this pass and lets the follow-up read only what is left of it less the reserve of the push. A quota that cannot
-    /// be read now leaves nothing to read: the chunks stay accepted and are asked again later.
-    /// </summary>
     private async Task LimitToQuotaAsync(FollowBudget budget, CancellationToken ct)
     {
         if (budget.QuotaRead)
@@ -176,7 +163,6 @@ public sealed class CalendarChangeRunner(
         }
     }
 
-    /// <summary>Asks the channel manager how the chunks it accepted are doing and records what it says (and only that).</summary>
     private async Task FollowAsync(Guid processId, FollowBudget budget, CancellationToken ct)
     {
         var process = await db.CalendarChangeProcesses.FirstOrDefaultAsync(p => p.Id == processId, ct);
@@ -185,7 +171,6 @@ public sealed class CalendarChangeRunner(
 
         var orgId = process.OrgId;
         var chunks = await db.CalendarChangeChunks.Where(c => c.ProcessId == processId && c.OrgId == orgId).ToListAsync(ct);
-        // A process that is wholly confirmed is asked once more, after ConfirmedRecheckAfter: an error that shows up after the confirmation (the endpoint says so) is not left out of sight.
         var recheck = process.State == CalendarChangeState.Confirmed;
 
         // Each chunk is followed for ConfirmationWindow after ITS own last call (the first call of the process for a chunk that has none), not after the first call of the
@@ -198,7 +183,6 @@ public sealed class CalendarChangeRunner(
             .ToList();
         if (accepted.Count == 0)
         {
-            // Accepted chunks whose window is over, and nothing else to send: the process is not due again for them.
             if (chunks.Any(c => c.State == CalendarChunkState.Accepted) && !chunks.Any(c => c.State == CalendarChunkState.Pending))
             {
                 process.NextAttemptAt = null;
@@ -226,7 +210,6 @@ public sealed class CalendarChangeRunner(
                 var verdicts = new List<CalendarProcessVerdict>();
                 foreach (var id in ids)
                 {
-                    // The reads of this pass are used up, or the quota is at its reserve: what is left waits, accepted, as the push waits for a quota.
                     if (budget.Remaining <= 0)
                     {
                         transient = true;
@@ -242,8 +225,6 @@ public sealed class CalendarChangeRunner(
                     }
                     catch (OctorateException ex) when (ex is OctorateRateLimitException or OctorateServerException)
                     {
-                        // Cannot tell now (no answer, an answer that reports an error of its own, a quota that is used up: a 403 of its own type, OCT-13): asked again
-                        // later, after the five minutes the push waits for a quota. Never read as «the endpoint is not there».
                         transient = true;
                         stop = true;
                         quotaWait |= ex is OctorateRateLimitException { QuotaExhausted: true };
@@ -252,7 +233,6 @@ public sealed class CalendarChangeRunner(
                     }
                     catch (OctorateException ex)
                     {
-                        // 404 or another refusal: the endpoint is not there for this process (D7). Nothing is claimed and it is not asked again.
                         stop = true;
                         logger.LogInformation("Calendar change {ProcessId}: the channel manager gives no state of the process ({Code})", processId, ex.Code);
                         break;

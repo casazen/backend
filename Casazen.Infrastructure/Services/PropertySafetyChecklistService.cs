@@ -81,7 +81,6 @@ public class PropertySafetyChecklistService(
 
     private async Task<Guid> GetOrgIdAsync(Guid propertyId, CancellationToken cancellationToken)
     {
-        // Tenant filter: another org's property is not found.
         var orgId = await db.Properties
             .Where(p => p.Id == propertyId)
             .Select(p => (Guid?)p.OrgId)
@@ -153,7 +152,6 @@ public class PropertySafetyChecklistService(
             }
         }
 
-        // SC-08: the confirmation covers the answers of this save only.
         checklist.ConfirmedAt = input.Confirm ? now : null;
         checklist.ConfirmedBy = input.Confirm ? userId : null;
         checklist.ConfirmedTextVersion = input.Confirm ? SafetyChecklistRules.DeclarationTextVersion : null;
@@ -161,14 +159,12 @@ public class PropertySafetyChecklistService(
         checklist.UpdatedBy = userId;
     }
 
-    /// <summary>Copies the answer of one item, keeping only the details that item collects. True when anything changed.</summary>
     private static bool ApplyItem(PropertySafetyChecklistItem item, SafetyChecklistItemInput? incoming)
     {
         var code = item.Code;
         var withDevices = code == SafetyItemCode.FireExtinguishers || SafetyChecklistRules.IsDetector(code);
         var detector = SafetyChecklistRules.IsDetector(code);
 
-        // An imported answer stays "to review" until the host answers the item.
         var answer = incoming?.Answer ?? (item.Answer == SafetyItemAnswer.ToReview ? SafetyItemAnswer.ToReview : null);
         var quantity = withDevices ? incoming?.Quantity : null;
         var location = withDevices ? Clean(incoming?.Location) : null;

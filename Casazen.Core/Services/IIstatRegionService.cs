@@ -116,24 +116,17 @@ public sealed record IstatCoverageView(
     string? SourceUrl,
     DateTime? VerifiedAt);
 
-/// <summary>The stable codes of the errors of the region table.</summary>
 public static class IstatRegionErrors
 {
-    /// <summary>The territory is not a row of the table (404).</summary>
     public const string NotFoundCode = "istat_region_not_found";
 
-    /// <summary>The source is not an absolute https address (422).</summary>
     public const string SourceInvalidCode = "istat_region_source_invalid";
 
-    /// <summary>The portal is not an absolute https address (422).</summary>
     public const string PortalInvalidCode = "istat_region_portal_invalid";
 
-    /// <summary>A monthly deadline without a day from 1 to 31, or a day on another kind (422).</summary>
     public const string DeadlineInvalidCode = "istat_region_deadline_invalid";
 
-    /// <summary>A name that is not a statistical field of the lists (422).</summary>
     public const string FieldsInvalidCode = "istat_region_fields_invalid";
 
-    /// <summary>The kind of row the audit trail names: <c>RegulatoryDataAuditEntry.EntityType</c>.</summary>
     public const string AuditEntityType = "IstatRegionRule";
 }

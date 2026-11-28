@@ -56,7 +56,6 @@ public sealed class LocalCheckInDocumentReader(
 
             var (read, machine) = await ReadLocalAsync(bytes!, cancellationToken);
 
-            // Nothing was read of the document: no zone is read either, and everything is still to be typed.
             IReadOnlyList<ZonedField> fields = read.Read ? await ReadZonesAsync(bytes!, machine, lookForPortrait, cancellationToken) : [];
             return new CheckInZonedRead(read, fields, CheckInPrefillFields.MissingFrom(read.Fields, fields));
         }
@@ -66,7 +65,6 @@ public sealed class LocalCheckInDocumentReader(
         }
     }
 
-    /// <summary>The upload as bytes, or the reason it is not read: an empty or too large one is <c>too_large</c> (as it always was), one that is not a JPEG, a PNG or a WebP <c>unsupported_file</c>.</summary>
     private static async Task<(byte[]? Bytes, CheckInDocumentRead? Failure)> ReadBytesAsync(Stream content, CancellationToken cancellationToken)
     {
         byte[] bytes;
@@ -79,7 +77,6 @@ public sealed class LocalCheckInDocumentReader(
             return (null, CheckInDocumentRead.Failed("too_large"));
         }
 
-        // An empty upload answers like an oversized one, as it always did (the endpoint refuses an empty file before asking).
         if (bytes.Length == 0)
             return (bytes, CheckInDocumentRead.Failed("too_large"));
         if (!IsSupportedPicture(bytes))
@@ -181,13 +178,11 @@ public sealed class LocalCheckInDocumentReader(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The prefill is a help, never a decision: the type only is logged (a message could carry what was being read) and the guest types what is missing.
             logger?.LogWarning("Zoned prefill of a document not run ({ErrorType})", ex.GetType().Name);
             return [];
         }
     }
 
-    /// <summary>The fields of <paramref name="primary"/>, with the ones it misses taken from <paramref name="other"/>.</summary>
     private static CheckInDocumentFields Supplement(CheckInDocumentFields primary, CheckInDocumentFields other) => primary with
     {
         ResidenceStreet = primary.ResidenceStreet ?? other.ResidenceStreet,
@@ -212,7 +207,6 @@ public sealed class LocalCheckInDocumentReader(
 
     private static string? Gender(string? sex) => sex switch { "M" => "Male", "F" => "Female", _ => null };
 
-    /// <summary>JPEG, PNG or WebP, from the file header (the declared content type is ignored), as the endpoint always accepted.</summary>
     private static bool IsSupportedPicture(ReadOnlySpan<byte> bytes) =>
         (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
         || (bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)

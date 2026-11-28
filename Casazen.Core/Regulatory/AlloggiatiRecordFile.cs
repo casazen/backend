@@ -34,26 +34,19 @@ namespace Casazen.Core.Regulatory;
 /// </remarks>
 public static class AlloggiatiRecordFile
 {
-    /// <summary>Characters of a line, without the line break.</summary>
     public const int LineLength = 168;
 
-    /// <summary>Lines of one file: one per guest, at most 1000 (<c>MANUALEALBERGHI.pdf</c>, paragraph 12).</summary>
     public const int MaxLines = 1000;
 
-    /// <summary>Between two lines: ASCII 13 and 10; not after the last line.</summary>
     public const string LineBreak = "\r\n";
 
-    /// <summary>Format of the arrival and birth dates.</summary>
     public const string DateFormat = "dd/MM/yyyy";
 
-    /// <summary>One field of the line: <see cref="Start"/> is the 0-based position ("DA"), <see cref="Length"/> the characters.</summary>
     public readonly record struct FieldSpan(string Name, int Start, int Length)
     {
-        /// <summary>Position of the last character ("A" of the official table).</summary>
         public int End => Start + Length - 1;
     }
 
-    /// <summary>The official table of the record (<c>MANUALEALBERGHI.pdf</c> p. 34, <c>MANUALEWS.pdf</c> p. 19), in order.</summary>
     public static IReadOnlyList<FieldSpan> Layout { get; } =
     [
         new("TipoAlloggiato", 0, 2),
@@ -94,10 +87,6 @@ public static class AlloggiatiRecordFile
         ['İ'] = "I",
     };
 
-    /// <summary>
-    /// The line of every guest of the stay, in order, or the reasons why the file cannot be built. A file is built only for
-    /// complete data with every official code found; nothing is guessed, truncated or left blank to make it fit.
-    /// </summary>
     public static AlloggiatiRecordFileResult Build(IReadOnlyList<AlloggiatiGuestRow> guests)
     {
         var issues = new List<AlloggiatiRecordFileIssue>();
@@ -202,7 +191,6 @@ public static class AlloggiatiRecordFile
         if (failed)
             return null;
 
-        // Past the checks above every value is present; a field that still cannot be written reports the field.
         var line = new StringBuilder(LineLength);
         var ok = true;
 
@@ -239,7 +227,6 @@ public static class AlloggiatiRecordFile
         }
         else
         {
-            // Born abroad: "il campo va comunque completato con spazi bianchi" (MANUALEALBERGHI.pdf, paragraph 12).
             line.Append(' ', Layout[7].Length + Layout[8].Length);
         }
 
@@ -258,13 +245,11 @@ public static class AlloggiatiRecordFile
         }
         else
         {
-            // Family and group members: the three document fields (5 + 20 + 9 characters) are blank.
             line.Append(' ', Layout[11].Length + Layout[12].Length + Layout[13].Length);
         }
 
         if (ok && line.Length != LineLength)
         {
-            // Unreachable while Layout and the appends above agree: never emit a line the portal would shift.
             Issue(AlloggiatiRecordFileIssueKind.DataIncomplete);
             ok = false;
         }
@@ -273,39 +258,28 @@ public static class AlloggiatiRecordFile
     }
 }
 
-/// <summary>Outcome of <see cref="AlloggiatiRecordFile.Build"/>: the text and its line count, or the issues that block it.</summary>
 public sealed record AlloggiatiRecordFileResult(string? Text, int LineCount, IReadOnlyList<AlloggiatiRecordFileIssue> Issues)
 {
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
 
     public bool Success => Issues.Count == 0 && Text is not null;
 
-    /// <summary>The file as bytes: UTF-8 without byte order mark (the manual asks for UTF-8 and a line starts at position 0).</summary>
     public byte[] ToBytes() => Utf8WithoutBom.GetBytes(Text ?? string.Empty);
 }
 
-/// <param name="Position">Position of the guest at fault (0-based, as in the summary); -1 when it concerns the whole stay.</param>
-/// <param name="Field">Record field at fault (camelCase, <c>AlloggiatiRecordRules.Field*</c>), when there is one.</param>
 public sealed record AlloggiatiRecordFileIssue(int Position, AlloggiatiRecordFileIssueKind Kind, string? Field);
 
-/// <summary>Why the record file cannot be built.</summary>
 public enum AlloggiatiRecordFileIssueKind
 {
-    /// <summary>No guest is registered for the stay.</summary>
     NoGuests,
 
-    /// <summary>More guests than lines of a file.</summary>
     TooManyGuests,
 
-    /// <summary>A guest lacks a field of the record, or does not fit the order of the stay.</summary>
     DataIncomplete,
 
-    /// <summary>The official code of a field is not found in the imported tables.</summary>
     CodeToComplete,
 
-    /// <summary>The stay lasts less than 1 or more than 30 days: one schedina cannot hold it.</summary>
     StayDaysOutOfRange,
 
-    /// <summary>The name cannot be written with the letters the portal accepts.</summary>
     NameNotRepresentable,
 }

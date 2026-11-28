@@ -2,10 +2,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.HostedServices;
 
-/// <summary>
-/// Loads the admin AI override once at startup, so the subprocessor list and the first generation see it. A database
-/// that does not have the table yet keeps the server configuration.
-/// </summary>
 public sealed class AiSettingsWarmupHostedService(
     IAiRuntimeSettings settings,
     ILogger<AiSettingsWarmupHostedService> logger) : BackgroundService

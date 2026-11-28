@@ -44,7 +44,6 @@ public sealed class OnboardingFlowActivationService(
             }
             catch (DbUpdateException ex) when (attempt == 1 && OrgTeamAccess.IsUniqueViolation(ex, PropertyFlowActivation.PropertyFlowIndexName))
             {
-                // Nothing of this call was saved: the rows and the events of the failed save go, and the call reads again.
                 db.ChangeTracker.Clear();
             }
         }
@@ -121,7 +120,6 @@ public sealed class OnboardingFlowActivationService(
         {
             if (!statuses.TryGetValue(id, out var status))
             {
-                // Another org's, deleted, or outside the reach: the same answer as an id that does not exist.
                 outcomes.Add(Outcome(id, FlowActivationOutcomes.NotFound));
                 continue;
             }
@@ -151,7 +149,6 @@ public sealed class OnboardingFlowActivationService(
                 db.PropertyFlowActivations.Add(row);
             }
 
-            // A reactivation reuses the row: it says who activated first only through the history of the events.
             row.ActivatedAt = now;
             row.ActivatedByUserId = actorUserId;
             row.DeactivatedAt = null;
@@ -172,7 +169,6 @@ public sealed class OnboardingFlowActivationService(
         return outcomes;
     }
 
-    /// <summary>The distinct ids of the call, in the order given; 422 for an empty list (never «all») or one beyond the cap.</summary>
     private static List<Guid> Validate(HostScope scope, string actorUserId, OnboardingFlow flow, IReadOnlyCollection<Guid> propertyIds)
     {
         ArgumentNullException.ThrowIfNull(scope);
@@ -195,7 +191,6 @@ public sealed class OnboardingFlowActivationService(
         return ids;
     }
 
-    /// <summary>The key of an event: one for each change of a property and flow (a later activation is a new event).</summary>
     private static string DedupKey(string change, Guid propertyId, OnboardingFlow flow, DateTime at) =>
         string.Create(CultureInfo.InvariantCulture, $"onboarding-flow-{change}:{propertyId:N}:{(int)flow}:{at.Ticks}");
 
@@ -203,7 +198,6 @@ public sealed class OnboardingFlowActivationService(
 
     private void Log(string change, Guid orgId, OnboardingFlow flow, IReadOnlyList<FlowActivationOutcome> outcomes)
     {
-        // Ids and counts only.
         logger.LogInformation(
             "Onboarding flow {Flow} of org {OrgId} {Change}: {Outcomes}",
             flow,
@@ -215,7 +209,6 @@ public sealed class OnboardingFlowActivationService(
     private DateTime Now() => timeProvider.GetUtcNow().UtcDateTime;
 }
 
-/// <inheritdoc cref="IFlowActivationReader" />
 public sealed class FlowActivationReader(AppDbContext db, IOnboardingFlowStatusService flowStatus) : IFlowActivationReader
 {
     public async Task<bool> IsActiveAsync(Guid propertyId, OnboardingFlow flow, CancellationToken ct) =>
@@ -231,7 +224,6 @@ public sealed class FlowActivationReader(AppDbContext db, IOnboardingFlowStatusS
         if (ids.Count == 0)
             return active;
 
-        // Only a property with an activation standing can have an active flow: the others are not evaluated.
         var standing = await db.PropertyFlowActivations
             .AsNoTracking()
             .Where(a => ids.Contains(a.PropertyId) && a.DeactivatedAt == null)
@@ -240,7 +232,6 @@ public sealed class FlowActivationReader(AppDbContext db, IOnboardingFlowStatusS
 
         foreach (var org in standing.GroupBy(a => a.OrgId))
         {
-            // A system read of the org's own properties (the whole org): the reach of a person plays no part in whether a flow runs.
             var statuses = await flowStatus.GetStatusesAsync(
                 new HostScope(org.Key),
                 [.. org.Select(a => a.PropertyId).Distinct()],

@@ -31,7 +31,6 @@ public sealed class OwnerInvitationBatchController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
-    /// <summary>Every owner inside the reach with the state of its invitation.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<OwnerInvitationStatusDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -45,9 +44,6 @@ public sealed class OwnerInvitationBatchController(
         return Ok(items.Select(OwnerInvitationStatusDto.From).ToList());
     }
 
-    /// <summary>
-    /// The batch that confirming would send: nothing is sent. 422 <c>owner_invitation_selection_empty</c> for an empty list of owners (never «all»).
-    /// </summary>
     [HttpPost("preview")]
     [ProducesResponseType(typeof(OwnerInvitationPreviewDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
@@ -88,10 +84,6 @@ public sealed class OwnerInvitationBatchController(
         return Ok(OwnerInvitationBatchResultDto.From(result));
     }
 
-    /// <summary>
-    /// Sends the owner of the invitation a new link and withdraws the one in force. 404 <c>owner_invitation_not_found</c>; 409 <c>owner_invitation_used</c>
-    /// when the owner has accepted; 422 <c>owner_invitation_email_not_queued</c>; 429 at the limit of the day.
-    /// </summary>
     [HttpPost("{invitationId:guid}/resend")]
     [ProducesResponseType(typeof(OwnerInvitationStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -108,10 +100,6 @@ public sealed class OwnerInvitationBatchController(
         return Ok(OwnerInvitationStatusDto.From(await invitations.ResendAsync(scope, userId, invitationId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Withdraws an invitation in force: its link stops working. A second withdrawal answers the same and writes nothing. 404
-    /// <c>owner_invitation_not_found</c>; 409 <c>owner_invitation_used</c> (accepted) or <c>owner_invitation_not_live</c> (lapsed).
-    /// </summary>
     [HttpPost("{invitationId:guid}/revoke")]
     [ProducesResponseType(typeof(OwnerInvitationStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

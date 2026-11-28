@@ -17,25 +17,14 @@ public sealed class VercelDomainsOptions
     /// </summary>
     public string? ApiToken { get; set; }
 
-    /// <summary>Id (<c>prj_…</c>) or name of the Vercel project that serves the web app (<c>Vercel__ProjectId</c>).</summary>
     public string? ProjectId { get; set; }
 
-    /// <summary>
-    /// Id (<c>team_…</c>) of the team that owns the project, sent as <c>teamId</c>; empty for a project of a personal account
-    /// or when the token is scoped to the team.
-    /// </summary>
     public string? TeamId { get; set; }
 
-    /// <summary>Base URL of the Vercel REST API (https). The documented API host of the provider, overridden only by tests.</summary>
     public string ApiBaseUrl { get; set; } = "https://api.vercel.com";
 
-    /// <summary>Seconds one call to the API may take before it is treated as unavailable.</summary>
     public int TimeoutSeconds { get; set; } = 10;
 
-    /// <summary>
-    /// The token and the project are both set: the platform can activate custom domains. When this is false the settings page
-    /// says so honestly, no domain is reported as active, and the health check names the missing variables (D9).
-    /// </summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiToken) && !string.IsNullOrWhiteSpace(ProjectId);
 
     /// <summary>Names of the Railway variables that are missing (never their values).</summary>

@@ -10,7 +10,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 internal static class CrmDatabaseErrors
 {
-    /// <summary>Names the error for a log: <c>DbUpdateException/23505/UIX_GuestContacts_OrgId_Channel_ValueHash</c>, or the type alone.</summary>
     public static string Describe(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);

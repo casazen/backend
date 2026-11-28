@@ -22,10 +22,8 @@ public class OwnerPortalContact : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key: the agency of the owner profile.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The owner profile the contact acts for (<c>PropertyOwner.Id</c>).</summary>
     public Guid PropertyOwnerId { get; set; }
 
     /// <summary>
@@ -36,11 +34,9 @@ public class OwnerPortalContact : ITenantOwned
     [Required]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>The first name of the contact. <b>Encrypted at rest</b> with <see cref="Email"/>; <see cref="NameMaxLength"/> is the rule of the service.</summary>
     [Required]
     public string FirstName { get; set; } = string.Empty;
 
-    /// <summary>The last name of the contact. <b>Encrypted at rest</b> with <see cref="Email"/>; <see cref="NameMaxLength"/> is the rule of the service.</summary>
     [Required]
     public string LastName { get; set; } = string.Empty;
 
@@ -52,7 +48,6 @@ public class OwnerPortalContact : ITenantOwned
     [MaxLength(HashLength)]
     public string EmailHash { get; set; } = string.Empty;
 
-    /// <summary>What the contact may do (a mask of <see cref="OwnerPortalPermission"/>); never empty.</summary>
     public OwnerPortalPermission Permissions { get; set; }
 
     public OwnerPortalContactStatus Status { get; set; } = OwnerPortalContactStatus.Invited;
@@ -62,20 +57,16 @@ public class OwnerPortalContact : ITenantOwned
     [MaxLength(HashLength)]
     public string TokenHash { get; set; } = string.Empty;
 
-    /// <summary>When the link of the invitation lapses (UTC).</summary>
     public DateTime InvitationExpiresAt { get; set; }
 
-    /// <summary>The owner who invited (<c>OwnerUser.Id</c>).</summary>
     public Guid InvitedByOwnerUserId { get; set; }
 
-    /// <summary>The account of the contact once it accepted (<c>OwnerUser.Id</c>).</summary>
     public Guid? OwnerUserId { get; set; }
 
     public DateTime? AcceptedAt { get; set; }
 
     public DateTime? RevokedAt { get; set; }
 
-    /// <summary>Who withdrew it: <c>User.Id</c> of the agency, or <c>owner:{OwnerUser.Id}</c>.</summary>
     [MaxLength(ActorMaxLength)]
     public string? RevokedBy { get; set; }
 

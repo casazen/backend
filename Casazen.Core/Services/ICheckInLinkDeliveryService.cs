@@ -29,11 +29,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ICheckInLinkDeliveryService
 {
-    /// <summary>
-    /// First delivery of <paramref name="link"/>, just issued for the booking: writes (or starts again) the row of the booking and makes the first attempt. Never throws
-    /// for what the channel manager answers: the answer is the state of the row. The row of a booking whose link is already being delivered (the same session) is
-    /// returned as it is. A booking that does not exist is a <see cref="Exceptions.NotFoundException"/>.
-    /// </summary>
     Task<CheckInLinkDeliveryView> DeliverAsync(Guid bookingId, IssuedCheckInLink link, CancellationToken ct = default);
 
     /// <summary>
@@ -70,11 +65,6 @@ public interface ICheckInLinkDeliveryService
     /// </param>
     Task<int> RetryWaitingAsync(Func<Guid, Guid, Task<IssuedCheckInLink>> issueLink, CancellationToken ct = default);
 
-    /// <summary>
-    /// The delivery of a booking of <paramref name="orgId"/> as the host sees it, or <c>null</c> when the booking has none. <paramref name="includeLink"/> is true only
-    /// for a caller who can already copy the link (<c>booking.write</c> on the property): then <see cref="CheckInLinkDeliveryView.Link"/> holds it while it can still be
-    /// used. The caller checked the booking was within its reach.
-    /// </summary>
     Task<CheckInLinkDeliveryView?> GetAsync(Guid orgId, Guid bookingId, bool includeLink, CancellationToken ct = default);
 
     /// <summary>
@@ -100,30 +90,22 @@ public sealed record CheckInLinkDeliveryView(
     DateTime? ExpiresAt,
     string? Link)
 {
-    /// <summary>True when the service took the link over (a channel other than the host's hands): the caller then does not queue the e-mail itself.</summary>
     public bool IsAutomatic => Channel != CheckInLinkChannel.Manual;
 }
 
-/// <summary>Why a row of the delivery ended (<see cref="Entities.CheckInLinkDelivery.EndedReason"/>): codes, never a text.</summary>
 public static class CheckInLinkEndReasons
 {
-    /// <summary>The guest completed the check-in.</summary>
     public const string CheckInCompleted = "check_in_completed";
 
-    /// <summary>The booking is no longer one that takes a check-in: cancelled, a no-show, checked out, or not confirmed.</summary>
     public const string BookingNotActive = "booking_not_active";
 
-    /// <summary>The link expired and nobody issued another.</summary>
     public const string LinkExpired = "link_expired";
 
-    /// <summary>Another link of the booking replaced this one.</summary>
     public const string LinkReplaced = "link_replaced";
 
-    /// <summary>The host generated or sent a link itself: it carries the link from here.</summary>
     public const string HostLink = "host_link";
 }
 
-/// <summary>The rules of the delivery that need no database, in one place (E23/F01/US01/T01, T02).</summary>
 public static class CheckInLinkDeliveryRules
 {
     /// <summary>The least time between two automatic attempts of one booking that waits for the chat or that failed for a reason worth a retry.</summary>
@@ -132,29 +114,21 @@ public static class CheckInLinkDeliveryRules
     /// <summary>The least time between two reads of the contact of a guest after a refusal: no retry storm against a channel manager that says no (T02).</summary>
     public static readonly TimeSpan ContactRetryInterval = TimeSpan.FromDays(1);
 
-    /// <summary>
-    /// The least time between two sends to the chat of a booking whose last send the channel manager refused for the chat permission: the copy of the conversations reads the listing fine and
-    /// moves its state at every pass, so it says nothing about the permission to send. One refused message a day, never one an hour (each leaves a message in the state error in the thread).
-    /// </summary>
     public static readonly TimeSpan RefusedSendRetryInterval = TimeSpan.FromDays(1);
 
     /// <summary>The attempts of an automatic delivery that failed for a reason worth a retry (a limit, an outage), the first one included.</summary>
     public const int MaxAttempts = 3;
 
-    /// <summary>The code of a message of the chat whose outcome nobody knows: it may have left, so it is never sent again (OCT-10).</summary>
     public const string ManualVerifyCode = "manual_verify";
 
-    /// <summary>The listing of the booking has no confirmed mapping: nothing is written to a channel for it (OCT-04).</summary>
     public const string NotMappedCode = "mapping_not_confirmed";
 
-    /// <summary>A waiting state: the link waits for something that is not the host's to do (the permission, the conversation, a way to the guest, the IP addresses).</summary>
     public static bool IsWaiting(CheckInLinkDeliveryState state) =>
         state is CheckInLinkDeliveryState.WaitingChatPermission
             or CheckInLinkDeliveryState.WaitingThread
             or CheckInLinkDeliveryState.WaitingContact
             or CheckInLinkDeliveryState.WaitingStaticIps;
 
-    /// <summary>The link has not reached the guest and the host may have to carry it: a waiting state or a failure. It is what the «To do» «Copia link» stands for.</summary>
     public static bool NeedsTheHost(CheckInLinkDeliveryState state) => IsWaiting(state) || state == CheckInLinkDeliveryState.Failed;
 
     /// <summary>

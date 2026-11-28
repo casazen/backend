@@ -28,33 +28,23 @@ namespace Casazen.Core.Entities;
 [Table("GuestMergeCandidates")]
 public class GuestMergeCandidate : ITenantOwned
 {
-    /// <summary>Lowest <see cref="Score"/>.</summary>
     public const int MinScore = 0;
 
-    /// <summary>Highest <see cref="Score"/>.</summary>
     public const int MaxScore = 100;
 
-    /// <summary>Column length of <see cref="DecidedByUserId"/>: the one of <c>User.Id</c>, the Auth0 subject.</summary>
     public const int DecidedByUserIdMaxLength = 255;
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the org of the two profiles (TN-2). Server-set, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The smaller of the two profile ids (see the remarks).</summary>
     public Guid ProfileAId { get; set; }
 
-    /// <summary>The larger of the two profile ids (see the remarks).</summary>
     public Guid ProfileBId { get; set; }
 
-    /// <summary>How sure the matching is that the two profiles are the same guest, from <see cref="MinScore"/> to <see cref="MaxScore"/>.</summary>
     public int Score { get; set; }
 
-    /// <summary>
-    /// The reasons for the proposal, as a JSON array of codes, for example <c>["same_phone","same_name_birth"]</c>. Codes only, no personal data.
-    /// </summary>
     [Required, Column(TypeName = "jsonb")]
     public string ReasonsJson { get; set; } = "[]";
 
@@ -62,10 +52,8 @@ public class GuestMergeCandidate : ITenantOwned
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>UTC instant a person merged the pair or dismissed it; <c>null</c> while it is <see cref="GuestMergeStatus.Proposed"/>.</summary>
     public DateTime? DecidedAt { get; set; }
 
-    /// <summary>The person who decided (<c>User.Id</c>, the Auth0 subject: a string in this code base, not a Guid); <c>null</c> while the pair is proposed.</summary>
     [MaxLength(DecidedByUserIdMaxLength)]
     public string? DecidedByUserId { get; set; }
 }

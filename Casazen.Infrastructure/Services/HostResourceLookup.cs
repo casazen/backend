@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc />
 public sealed class HostResourceLookup(AppDbContext db) : IHostResourceLookup
 {
     public Task<HostResource?> ForPropertyAsync(Guid propertyId, CancellationToken cancellationToken = default) =>

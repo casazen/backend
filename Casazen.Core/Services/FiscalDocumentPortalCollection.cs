@@ -25,11 +25,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static class FiscalDocumentPortalCollection
 {
-    /// <summary>
-    /// The part of <paramref name="document"/> the portal collected and the part of the tourist tax still to collect at the property, or <c>null</c> when nothing is left to collect: the document
-    /// has no tourist tax line the portal left to the host (the document of another channel, a credit note, a document without a line of tourist tax), or the collection of the stay
-    /// (<see cref="FiscalDocument.TouristTaxCollected"/>) records all of that tax as collected. Nothing changes for such a document.
-    /// </summary>
     public static PortalCollectionSplit? SplitOf(FiscalDocument document)
     {
         var tax = TaxLeftToTheHost(document);
@@ -37,10 +32,6 @@ public static class FiscalDocumentPortalCollection
         return toCollect > 0m ? new PortalCollectionSplit(document.Total - tax, toCollect) : null;
     }
 
-    /// <summary>
-    /// The tourist tax the portal left to the host on <paramref name="document"/>: its lines of tourist tax (never more than the total), whatever E25 records of their collection; zero for
-    /// every document that is not the guest document of a portal and for a portal document with no such line.
-    /// </summary>
     public static decimal TaxLeftToTheHost(FiscalDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -86,7 +77,6 @@ public static class FiscalDocumentPortalCollection
 /// </param>
 public sealed record PortalCollectionSplit(decimal PaidViaPortal, decimal ToCollectAtTheProperty)
 {
-    /// <summary>Whether <paramref name="line"/> is the part to collect at the property: a line of tourist tax of the document this split was made for.</summary>
     public bool IsToCollect(FiscalDocumentLine line)
     {
         ArgumentNullException.ThrowIfNull(line);

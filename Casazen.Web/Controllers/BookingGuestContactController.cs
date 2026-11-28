@@ -10,12 +10,6 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// How a host writes to the guest of a booking (E05/F02/US02/T01, NF-63): through which channel the guest can be reached now, and the first message when
-/// the guest has no conversation yet. The booking is authorized as a row of its property, like the messages of a direct booking (<c>booking.read</c> to
-/// ask, <c>booking.write</c> to write, and the caller's reach on the property), and a booking the caller does not reach answers 404, like a missing
-/// one; the service applies the same scope in SQL. No answer carries an address or a phone number of the guest, and no log carries the words.
-/// </summary>
 [ApiController]
 [Route("api/bookings/{id:guid}")]
 [Authorize(Policy = CasazenPolicies.BookingRead)]

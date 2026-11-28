@@ -36,11 +36,6 @@ public class ActivitiesController(
     ImportedListingTodoReconciler? importedListings = null,
     IAuthorizationService? authorization = null) : ControllerBase
 {
-    /// <summary>
-    /// The open "To do" items the caller reaches, sorted by the server: the most urgent first, then by deadline (the ones
-    /// without a deadline last), then by creation; at most <see cref="TodoLimits.MaxPendingItems"/>.
-    /// </summary>
-    /// <response code="200">The items (an empty array when the caller has no org or no scope).</response>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<TodoActivityDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -62,8 +57,6 @@ public class ActivitiesController(
         return Ok(items.Select(TodoActivityDto.From).ToList());
     }
 
-    /// <summary>How many of the caller's open items are urgent (<see cref="ActivityUrgency.High"/>): the number on the nav badge.</summary>
-    /// <response code="200"><c>{ count }</c>.</response>
     [HttpGet("count")]
     [ProducesResponseType(typeof(TodoCountDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -110,7 +103,6 @@ public class ActivitiesController(
         return NoContent();
     }
 
-    /// <summary>The caller's scope on its org, or <c>null</c> when it has no org or reaches nothing (never widened).</summary>
     private async Task<HostScope?> ScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
@@ -163,7 +155,6 @@ public sealed record TodoActivityDto(
     DateTime CreatedAt,
     DateTime? ScheduledAt = null)
 {
-    /// <summary>The item of a "To do" row (one that <see cref="IInternalActivityService.GetPendingAsync"/> returns).</summary>
     public static TodoActivityDto From(InternalActivity activity)
     {
         ArgumentNullException.ThrowIfNull(activity);
@@ -185,5 +176,4 @@ public sealed record TodoActivityDto(
     }
 }
 
-/// <summary>The number of urgent items of the caller's "To do" list: <c>{ count }</c>.</summary>
 public sealed record TodoCountDto(int Count);

@@ -19,7 +19,6 @@ public class StayAlertState : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the booking (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Booking))]
@@ -34,20 +33,16 @@ public class StayAlertState : ITenantOwned
     /// </summary>
     public DateTime ReferenceDate { get; set; }
 
-    /// <summary>Last stage sent for <see cref="ReferenceDate"/> (0 = none yet). Meaning per type: see <see cref="StayAlertType"/>.</summary>
     public int Stage { get; set; }
 
-    /// <summary>Messages sent for this stay and type, all dates included (each message is one email plus one push).</summary>
     public int AlertCount { get; set; }
 
-    /// <summary>UTC instant of the last message.</summary>
     public DateTime? LastAlertAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>Kinds of stay alert with their own sequence of stages (stored as an integer).</summary>
 public enum StayAlertType
 {
     /// <summary>
@@ -56,29 +51,13 @@ public enum StayAlertType
     /// </summary>
     AlloggiatiDeadline = 1,
 
-    /// <summary>Communication rejected by the portal or failed (<see cref="AlloggiatiWebStatus.Errore"/>, <see cref="AlloggiatiWebStatus.Rifiutato"/>): one stage.</summary>
     AlloggiatiFailed = 2,
 
-    /// <summary>Check-out day reminder to the host: one stage.</summary>
     CheckoutReminder = 3,
 
-    // E03/F02/US02/T01 (NF-52, CHK-12): the values below are appended, never renumbered; the rows already stored keep their meaning.
-
-    /// <summary>
-    /// The communication was sent, entrusted to the channel manager or declared sent, and no receipt is archived the day after (at
-    /// <c>StayAlerts:ReceiptMissingHourLocal</c>): one stage.
-    /// </summary>
     ReceiptMissing = 4,
 
-    /// <summary>
-    /// A stay of at most one night (the 6-hour term) that is not entrusted to the channel manager, when the arrival is within
-    /// <c>StayAlerts:ShortStayRiskHours</c>: one stage.
-    /// </summary>
     ShortStayAtRisk = 5,
 
-    /// <summary>
-    /// A stay over 30 nights, which the channel manager does not send by itself: one alert the day before the arrival, at
-    /// <c>StayAlerts:OverThirtyNightsHourLocal</c>.
-    /// </summary>
     OverThirtyNights = 6,
 }

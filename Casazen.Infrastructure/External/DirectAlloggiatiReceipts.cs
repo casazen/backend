@@ -14,7 +14,6 @@ public sealed class DirectAlloggiatiReceipts(AppDbContext db, DirectAlloggiatiSo
     {
         if (!environment.Live) return [];
         var now = clock.GetUtcNow().UtcDateTime;
-        // A worker can die before writing the result. Both reservation and report move together.
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             var expired = db.AlloggiatiSendAttempts.Where(a => a.Mode == AlloggiatiMode.Live &&
@@ -39,7 +38,6 @@ public sealed class DirectAlloggiatiReceipts(AppDbContext db, DirectAlloggiatiSo
             attempt.Status is not (AlloggiatiAttemptStatus.Accepted or AlloggiatiAttemptStatus.PartiallyAccepted)) return;
         var day = RomeCalendar.DateInRome(attempt.ReservedAt);
         var today = clock.TodayInRomeAsDateOnly();
-        // A call spanning midnight cannot be attributed to a daily PDF with certainty.
         if (day != RomeCalendar.DateInRome(attempt.CompletedAt.Value) || day >= today || day < today.AddDays(-30)) return;
         var date = day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var receipt = await db.AlloggiatiReceipts.SingleOrDefaultAsync(r => r.OrgId == attempt.OrgId && r.AccountKey == attempt.AccountKey
@@ -71,7 +69,6 @@ public sealed class DirectAlloggiatiReceipts(AppDbContext db, DirectAlloggiatiSo
             db.Add(receipt);
         }
         attempt.ReceiptId = receipt.Id;
-        // A daily PDF is evidence only in combination with this attempt's known positive response.
         if (attempt.Status == AlloggiatiAttemptStatus.Accepted)
         {
             var report = await db.AlloggiatiWebReports.SingleOrDefaultAsync(r => r.OrgId == attempt.OrgId && r.BookingId == attempt.BookingId

@@ -18,10 +18,8 @@ public static class OnboardingServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        // The state of the six flows on each property (E10/F01/US01/T02): computed on every read, nothing is written.
         services.AddScoped<IOnboardingFlowStatusService, OnboardingFlowStatusService>();
 
-        // The mapping, read through the mapping service of E02 and never from its tables; the prerequisites the flows share.
         services.AddScoped<IPropertyMappingReader, ChannelMappingReader>();
         services.AddScoped<FlowPrerequisiteReader>();
 
@@ -35,9 +33,6 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IFlowReadinessProvider, DocumentsFlowProvider>();
         services.AddScoped<IFlowReadinessProvider, ReportsFlowProvider>();
 
-        // The plan of the twelve parts, the path of UX-10 and the deferral (E10/F01/US01/T03). One evaluator for each of the twelve parts (order
-        // 10): messages and AI, fiscal documents and partners read the facts of E05, E06 and E09 (E10/F01/US04/T01) in place of the placeholders that
-        // answered «not provided» (order 0). NotProvidedPartEvaluator stays as the answer for a part that has no evaluator.
         services.AddScoped<IOnboardingPlanService, OnboardingPlanService>();
         services.AddScoped<IOnboardingPartEvaluator, OctorateConnectionPartEvaluator>();
         services.AddScoped<IOnboardingPartEvaluator, PropertiesPartEvaluator>();
@@ -51,11 +46,8 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IOnboardingPartEvaluator, FiscalDocumentsPartEvaluator>();
         services.AddScoped<IOnboardingPartEvaluator, PartnersPartEvaluator>();
 
-        // The twelfth part, «Guest registration» (E29/F02/US01/T02, NF-129): the municipality of every Swiss property and, for Ticino, the structure number.
         services.AddScoped<IOnboardingPartEvaluator, GuestRegistrationPartEvaluator>();
 
-        // The activation of the flows, the reader of the active flows for the consumers, the final read-only test with one check for each flow
-        // that has one (the others are skipped as «not provided»), and the hourly "To do" sync (E10/F01/US01/T04).
         services.Configure<OnboardingOptions>(configuration.GetSection(OnboardingOptions.SectionName));
         services.AddScoped<IOnboardingFlowActivationService, OnboardingFlowActivationService>();
         services.AddScoped<IFlowActivationReader, FlowActivationReader>();
@@ -81,11 +73,8 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<ISupportVaultService, SupportVaultService>();
         services.AddScoped<IPropertyIstatCredentialsService, PropertyIstatCredentialsService>();
 
-        // «Fatto» runs the verifier of the panel step for the org of the request, in a scope of its own under that org (E20/F03/US01/T02).
         services.AddScoped<IAssistPanelVerification, OrgScopedPanelVerification>();
 
-        // The integration settings (E10/F01/US02/T01, NF-108): the overview of the connection and of what can be reopened, and the reopen of a
-        // part. It reads the facts the other epics store and clears a deferral through the plan; it adds no path that changes a sender.
         services.AddScoped<IOnboardingIntegrationService, OnboardingIntegrationService>();
 
         // The bulk configuration of an agency (E10/F02/US01/T01, NF-105): a choice applied to many properties through the sender switch of E03, the
@@ -94,8 +83,6 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IOnboardingBulkService, OnboardingBulkService>();
         services.AddScoped<IOnboardingBulkImportService, OnboardingBulkImportService>();
 
-        // The owner portfolio of an agency (E10/F02/US02/T01, NF-109): the import of the owners and of their shares of the properties from a CSV
-        // or Excel file, and the readiness of every owner and property for the owner accounting and the portal. It never sends an invitation.
         services.AddScoped<IOwnerOnboardingService, OwnerOnboardingService>();
 
         return services;

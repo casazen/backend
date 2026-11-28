@@ -16,10 +16,6 @@ public class PlanCatalogDto
     public string[] Features { get; set; } = [];
     public string StripePriceId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// False when the plan has no Stripe Price id in this environment (<c>Billing__Prices__&lt;Tier&gt;</c>, PL-11): the
-    /// checkout answers 422 <c>billing_plan_unavailable</c>.
-    /// </summary>
     public bool Purchasable { get; set; }
 }
 
@@ -45,17 +41,11 @@ public class CreateCheckoutSessionRequest
     /// </summary>
     public string? SuccessUrl { get; set; }
 
-    /// <summary>Optional return page of an abandoned payment, same rule as <see cref="SuccessUrl"/>. Default: <c>?checkout=cancel</c>.</summary>
     public string? CancelUrl { get; set; }
 }
 
-/// <summary>Optional body of <c>POST /api/billing/portal-session</c> (PL-16).</summary>
 public class CreatePortalSessionRequest
 {
-    /// <summary>
-    /// Page of the web app the portal links back to, same allow-list as <see cref="CreateCheckoutSessionRequest.ReturnPath"/>.
-    /// Default: the short-rent plan page.
-    /// </summary>
     public string? ReturnPath { get; set; }
 }
 
@@ -80,13 +70,10 @@ public class SubscriptionDto
     public string? BillingCountry { get; set; }
     public string? VatId { get; set; }
 
-    /// <summary>SDI recipient code ("codice destinatario") for the Italian e-invoice (PL-13).</summary>
     public string? SdiRecipientCode { get; set; }
 
-    /// <summary>PEC address for the Italian e-invoice (PL-13).</summary>
     public string? PecEmail { get; set; }
 
-    /// <summary>Codice fiscale of the billed person or company (PL-13).</summary>
     public string? FiscalCode { get; set; }
 }
 
@@ -100,7 +87,6 @@ public class UpdateBillingProfileRequest
     /// <summary>Optional SDI recipient code ("codice destinatario"): letters and digits, at most 7. Omitted = unchanged, "" = cleared.</summary>
     public string? SdiRecipientCode { get; set; }
 
-    /// <summary>Optional PEC address for the e-invoice. Omitted = unchanged, "" = cleared.</summary>
     public string? PecEmail { get; set; }
 
     /// <summary>Optional codice fiscale of the billed person or company: letters and digits, at most 16. Omitted = unchanged, "" = cleared.</summary>

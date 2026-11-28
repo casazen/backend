@@ -15,7 +15,6 @@ public class ServiceRequestGroupJob(IServiceRequestGroupRunService runService, I
 {
     public const string RecurringJobId = "service-request-groups";
 
-    /// <summary>Every 5 minutes: a window is followed at most 5 minutes after it ends.</summary>
     public const string Cron = "*/5 * * * *";
 
     // One run at a time; a second run started anyway (a retry, the dashboard) waits for the first and then finds nothing due.

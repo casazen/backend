@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Octorate;
 
-/// <summary>Resolves a country from an explicit code or an unambiguous official municipality, never from an unverified model guess.</summary>
 internal static class OctorateImportCountryResolver
 {
     public static async Task<(string Country, string? City)> ResolveAsync(
@@ -41,11 +40,9 @@ internal static class OctorateImportCountryResolver
         var name = city.ToUpperInvariant();
         var italian = await db.Comuni.AsNoTracking().AnyAsync(c => c.IsActive && c.Name.ToUpper() == name, ct);
         var swiss = await db.SwissMunicipalities.AsNoTracking().AnyAsync(c => c.OfficialName.ToUpper() == name, ct);
-        // Only an unambiguous official municipality can authorize an AI-extracted city.
         if (italian == swiss)
             return (supplied is "IT" or "CH" ? supplied : string.Empty, listing.City);
         var verified = italian ? "IT" : "CH";
-        // A conflicting upstream code requires review; neither source silently wins.
         if (supplied is "IT" or "CH" && supplied != verified)
             return (string.Empty, listing.City);
         return (verified, city);

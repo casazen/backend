@@ -15,7 +15,6 @@ namespace Casazen.Core.GuestPortal;
 /// </remarks>
 public interface IGuestPortalLinkService
 {
-    /// <summary>The active link of the booking as it is stored (expired or not), or <c>null</c> when it has none.</summary>
     Task<GuestPortalLink?> GetActiveAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -30,17 +29,12 @@ public interface IGuestPortalLinkService
         string? createdByUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Revokes the active link, if any, and makes a new one with a new token, in one transaction; <c>null</c> (and nothing revoked) when the booking
-    /// may not have a link. The new link is the only active one of the booking.
-    /// </summary>
     Task<GuestPortalLink?> RegenerateAsync(
         Guid orgId,
         Guid bookingId,
         string? createdByUserId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Revokes the active link of the booking: its token stops opening at once. <c>false</c> when there was none.</summary>
     Task<bool> RevokeAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -50,11 +44,7 @@ public interface IGuestPortalLinkService
     /// </summary>
     Task<GuestPortalLink?> ResolveAsync(string? token, CancellationToken cancellationToken = default);
 
-    /// <summary>The address of the link on the CasaZen domain: <c>App:PublicSiteBaseUrl</c> + <c>/s/</c> + token.</summary>
     string BuildUrl(GuestPortalLink link);
 }
 
-/// <summary>An active stay link and whether the call just made it.</summary>
-/// <param name="Link">The active link.</param>
-/// <param name="Created"><c>true</c> when this call made it, <c>false</c> when the booking already had it.</param>
 public sealed record GuestPortalLinkResult(GuestPortalLink Link, bool Created);

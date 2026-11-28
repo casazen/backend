@@ -1,36 +1,20 @@
 namespace Casazen.Core.Suppliers;
 
-/// <summary>
-/// Period of the supplier work KPIs (SU-11, A4-15): Europe/Rome calendar dates, both ends included, today at most.
-/// </summary>
 public enum SupplierKpiPeriod
 {
-    /// <summary>From the 1st of the current month to today.</summary>
     CurrentMonth,
 
-    /// <summary>The whole previous calendar month.</summary>
     PreviousMonth,
 
-    /// <summary>The last 30 days, today included.</summary>
     Last30Days,
 
-    /// <summary>From 1 January of the current year to today.</summary>
     CurrentYear,
 
-    /// <summary>
-    /// The last three calendar months, today included (SP-04e): from the day after the same day three months ago to today
-    /// (on 16 October, from 17 July).
-    /// </summary>
     Last3Months,
 }
 
-/// <summary>Calendar dates of a <see cref="SupplierKpiPeriod"/>.</summary>
 public static class SupplierKpiPeriods
 {
-    /// <summary>
-    /// First and last Europe/Rome calendar date (both included) of <paramref name="period"/>, for the Rome calendar day
-    /// <paramref name="todayInRome"/>.
-    /// </summary>
     public static (DateOnly From, DateOnly To) Resolve(SupplierKpiPeriod period, DateOnly todayInRome)
     {
         var monthStart = new DateOnly(todayInRome.Year, todayInRome.Month, 1);
@@ -60,7 +44,6 @@ public static class SupplierKpiPeriods
         return (previousTo.AddDays(1 - days), previousTo);
     }
 
-    /// <summary>The periods <c>GET api/supplier/dashboard/overview</c> accepts, in the order the console offers them.</summary>
     public static IReadOnlyList<SupplierKpiPeriod> OverviewPeriods { get; } =
     [
         SupplierKpiPeriod.CurrentMonth,
@@ -68,7 +51,6 @@ public static class SupplierKpiPeriods
         SupplierKpiPeriod.Last3Months,
     ];
 
-    /// <summary>The <c>period</c> value of the overview for <paramref name="period"/>: <c>current-month</c>, <c>last-30-days</c> or <c>last-3-months</c>.</summary>
     public static string OverviewToken(SupplierKpiPeriod period) => period switch
     {
         SupplierKpiPeriod.CurrentMonth => "current-month",
@@ -77,10 +59,6 @@ public static class SupplierKpiPeriods
         _ => throw new ArgumentOutOfRangeException(nameof(period), period, "Not a period of the overview."),
     };
 
-    /// <summary>
-    /// The period of the overview named <paramref name="value"/> (<c>current-month</c>, <c>last-30-days</c>, <c>last-3-months</c>; any
-    /// case, <c>_</c> or <c>-</c>); a missing value is the current month. False for any other value, including the enum names and numbers.
-    /// </summary>
     public static bool TryParseOverview(string? value, out SupplierKpiPeriod period)
     {
         var text = value?.Trim().Replace('_', '-').ToLowerInvariant();

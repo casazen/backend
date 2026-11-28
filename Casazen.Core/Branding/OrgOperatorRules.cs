@@ -14,16 +14,10 @@ public static partial class OrgOperatorRules
     public const string LegalNameTooLongCode = "org_operator_legal_name_too_long";
     public const string RegisteredOfficeTooLongCode = "org_operator_registered_office_too_long";
 
-    /// <summary>Longest legal name ("ragione sociale"), after whitespace is collapsed; the same bound as the name of the org.</summary>
     public const int LegalNameMaxLength = 200;
 
-    /// <summary>Longest registered office ("sede legale"): street, postal code, town and province in one line.</summary>
     public const int RegisteredOfficeMaxLength = 300;
 
-    /// <summary>
-    /// The legal name as stored: trimmed, whitespace collapsed, <c>null</c> when empty. Throws <see cref="DomainRuleException"/>
-    /// (<see cref="LegalNameTooLongCode"/>) above <see cref="LegalNameMaxLength"/> characters.
-    /// </summary>
     public static string? NormalizeLegalName(string? value)
     {
         var collapsed = Collapse(value);
@@ -32,11 +26,6 @@ public static partial class OrgOperatorRules
             : throw new DomainRuleException(LegalNameTooLongCode, "OrgOperatorLegalNameTooLong", LegalNameMaxLength);
     }
 
-    /// <summary>
-    /// The registered office as stored, by the same rule as <see cref="NormalizeLegalName"/>. Throws
-    /// <see cref="DomainRuleException"/> (<see cref="RegisteredOfficeTooLongCode"/>) above <see cref="RegisteredOfficeMaxLength"/>
-    /// characters.
-    /// </summary>
     public static string? NormalizeRegisteredOffice(string? value)
     {
         var collapsed = Collapse(value);

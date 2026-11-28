@@ -27,18 +27,14 @@ public sealed class NotificationPreferenceService(
     TimeProvider timeProvider,
     ILogger<NotificationPreferenceService> logger) : INotificationPreferenceService
 {
-    /// <summary>Code, in <see cref="NotificationChannelAvailability.UnavailableReason"/>, of a channel with no infrastructure behind it yet.</summary>
     public const string WebPushNotAvailableReason = "web_push_not_available";
 
-    /// <summary>Code of the 422 for a save with nothing to save.</summary>
     public const string EmptyUpdateCode = "notification_preferences_empty";
 
-    /// <summary>Code of the 422 for a save that names a kind of event twice.</summary>
     public const string DuplicateEventCode = "notification_event_duplicated";
 
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
-    /// <summary>How many times a save is repeated when another save of the same person wins the unique index at the same moment.</summary>
     private const int SaveAttempts = 3;
 
     public async Task<NotificationPreferencesView> GetAsync(string userId, CancellationToken ct)
@@ -58,7 +54,6 @@ public sealed class NotificationPreferenceService(
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         ArgumentNullException.ThrowIfNull(update);
 
-        // Everything is checked before anything is written: an update with one bad entry saves nothing.
         var events = update.Events ?? [];
         if (update.QuietHours is null && events.Count == 0)
             throw new DomainRuleException(EmptyUpdateCode, "NotificationPreferencesEmpty");
@@ -92,7 +87,6 @@ public sealed class NotificationPreferenceService(
             }
             catch (DbUpdateException ex) when (OrgTeamAccess.IsUniqueViolation(ex) && attempt < SaveAttempts)
             {
-                // Another save of the same person created the row first: read it again and change it.
                 db.ChangeTracker.Clear();
             }
         }
@@ -125,7 +119,6 @@ public sealed class NotificationPreferenceService(
                 context.EventType,
                 chosen.TryGetValue(candidate.UserId, out var saved) ? saved : null);
 
-            // The email goes to the person's own address: an account with none cannot be emailed.
             if (string.IsNullOrWhiteSpace(candidate.Email))
                 channels &= ~NotificationChannels.Email;
 
@@ -152,8 +145,6 @@ public sealed class NotificationPreferenceService(
         return recipients;
     }
 
-    // ─── Save ───
-
     private async Task WriteAsync(
         Guid orgId,
         string userId,
@@ -165,7 +156,6 @@ public sealed class NotificationPreferenceService(
 
         if (quietHours is not null)
         {
-            // Whole minutes: a quiet window is read and written as 22:00, never as 22:00:00.0000001.
             var start = new TimeOnly(quietHours.Start.Hour, quietHours.Start.Minute);
             var end = new TimeOnly(quietHours.End.Hour, quietHours.End.Minute);
             var preferences = await ReadPreferences(orgId, [userId], tracked: true).FirstOrDefaultAsync(ct);
@@ -187,7 +177,6 @@ public sealed class NotificationPreferenceService(
                 var row = existing.FirstOrDefault(s => s.EventType == entry.EventType);
                 if (row is null)
                 {
-                    // Through the set, never only the collection of a parent: a row with its key already set is an insert.
                     db.UserNotificationChannelSettings.Add(new UserNotificationChannelSetting
                     {
                         OrgId = orgId,
@@ -207,11 +196,8 @@ public sealed class NotificationPreferenceService(
         await db.SaveChangesAsync(ct);
     }
 
-    // ─── Resolve ───
-
     private sealed record Candidate(string UserId, string Email);
 
-    /// <summary>The people who may hear about the event: the audience of the property, or the administrators of the org.</summary>
     private async Task<List<Candidate>> AudienceAsync(NotificationEventContext context, CancellationToken ct)
     {
         IQueryable<User> audience;
@@ -225,8 +211,6 @@ public sealed class NotificationPreferenceService(
             var creator = context.CreatorUserId;
             if (creator is null)
             {
-                // The caller did not say who is in charge: read it from the property, in the org of the event. A deleted property, or one
-                // of another org, has no audience.
                 var property = await db.Properties
                     .AsNoTracking()
                     .IgnoreQueryFilters([Tenant])
@@ -260,21 +244,12 @@ public sealed class NotificationPreferenceService(
             .ToList();
     }
 
-    /// <summary>
-    /// The ones who hold the permission in its context (<see cref="IContextAuthorizationService"/>: the memberships of the person, after its
-    /// onboarding). An error while the memberships are read is thrown, not answered as «no»: <see cref="ResolveAsync"/> runs in the event bus and
-    /// in jobs, and a person dropped for a passing error would be missed for good, while an exception makes the event be delivered again.
-    /// </summary>
     private async Task<List<Candidate>> HoldingAsync(List<Candidate> candidates, NotificationPermission required, CancellationToken ct)
     {
-        // The one place that narrows an audience to a permission, shared with the push job and the job of the bell (HostNotificationAudience.HoldingAsync).
         var holders = (await HostNotificationAudience.HoldingAsync(contextAuthorization, candidates.Select(c => c.UserId), required, ct)).ToHashSet(StringComparer.Ordinal);
         return candidates.Where(candidate => holders.Contains(candidate.UserId)).ToList();
     }
 
-    // ─── Reads ───
-
-    /// <summary>The host org of the user, or <c>null</c> when it has none, is not active or was deactivated in its team.</summary>
     private async Task<Guid?> HostOrgOfAsync(string userId, CancellationToken ct)
     {
         var caller = await CallerTenantQuery.For(db, userId).FirstOrDefaultAsync(ct);

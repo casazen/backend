@@ -64,7 +64,6 @@ public class QuesturaCredentialsController(
         return Ok(QuesturaCredentialsStatusDto.From(status));
     }
 
-    /// <summary>Removes the credentials of the property (204, also when there were none).</summary>
     [HttpDelete]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -89,7 +88,6 @@ public class QuesturaCredentialsController(
         Guid propertyId,
         HostOperationRequirement operation)
     {
-        // Tenant filter: another org's property is not found.
         var resource = await hostResources.ForPropertyAsync(propertyId, HttpContext.RequestAborted);
         if (resource is null)
             return (null, this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound"));

@@ -29,12 +29,8 @@ namespace Casazen.Web.Controllers;
 [PrivateAnswer]
 public class PublicFiscalDocumentsController(IFiscalDocumentDeliveryService delivery) : ControllerBase
 {
-    /// <summary>The largest body taken: the token of a link is a few hundred characters.</summary>
     public const int MaxBodyBytes = 4096;
 
-    /// <summary>
-    /// The summary of the document: the kind, the number, the day of the issue, the total and its currency. 404 <c>document_link_invalid</c> for every token that does not open this document.
-    /// </summary>
     [HttpPost("{id:guid}")]
     [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType(typeof(PublicFiscalDocumentSummaryDto), StatusCodes.Status200OK)]
@@ -45,9 +41,6 @@ public class PublicFiscalDocumentsController(IFiscalDocumentDeliveryService deli
         return summary is null ? LinkInvalid() : Ok(PublicFiscalDocumentSummaryDto.From(summary));
     }
 
-    /// <summary>
-    /// The PDF of the document, in the language of the request, as the host sees it. 404 <c>document_link_invalid</c> for every token that does not open this document.
-    /// </summary>
     [HttpPost("{id:guid}/pdf")]
     [RequestSizeLimit(MaxBodyBytes)]
     [ProducesResponseType(typeof(FileContentResult), StatusCodes.Status200OK)]

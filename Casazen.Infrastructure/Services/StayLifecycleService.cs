@@ -74,7 +74,6 @@ public sealed class StayLifecycleService(
             booking.NoShowAt = UtcNow();
             booking.UpdatedAt = UtcNow();
 
-            // The mark, saved with it, once per booking (E12/F01/US01/T03): the fiscal documents of the stay follow it (what the guest is charged is the consideration).
             await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingNoShowMarked, booking, BookingEventOrigin.Host, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
@@ -97,7 +96,6 @@ public sealed class StayLifecycleService(
         }
         catch (DomainException ex)
         {
-            // The host moved first (registered it, marked a no-show, cancelled), or the day is not the right one any more: nothing to do.
             logger.LogInformation("Automatic arrival of booking {BookingId} not registered: {Code}", bookingId, ex.Code);
             return null;
         }
@@ -113,7 +111,6 @@ public sealed class StayLifecycleService(
             if (StayLifecycleRules.ArrivalError(booking, today) is { } error)
                 throw error;
 
-            // The automation registers a stay the host did not mark a no-show: a mark made meanwhile wins.
             if (origin == BookingEventOrigin.System && booking.NoShowAt is not null)
                 throw new DomainConflictException(BookingErrorCodes.NotConfirmed, "BookingArrivalNotConfirmed");
 
@@ -151,7 +148,6 @@ public sealed class StayLifecycleService(
 
             booking.CheckoutWizardStartedAt ??= UtcNow();
             booking.UpdatedAt = UtcNow();
-            // The progress of the wizard (CO-17): created once, kept when the wizard is opened again.
             await LoadOrCreateCheckoutAsync(booking, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
@@ -181,7 +177,6 @@ public sealed class StayLifecycleService(
         }
         catch (DomainException ex)
         {
-            // The host moved first (checked it out, opened the wizard, marked a no-show, cancelled): nothing to do.
             logger.LogInformation("Automatic departure of booking {BookingId} not registered: {Code}", bookingId, ex.Code);
             return null;
         }
@@ -202,7 +197,6 @@ public sealed class StayLifecycleService(
                 return null;
 
             record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
-            // Declared already, or the host said «not yet» at the check-out (damages, missing items): the host declares it.
             if (record.PropertyReadyAt is not null || record.PropertyReady == false)
                 return record;
 
@@ -211,7 +205,6 @@ public sealed class StayLifecycleService(
             record.CurrentStep = CheckoutWizardStep.PropertyReady;
             record.UpdatedAt = UtcNow();
 
-            // The declaration closes the cleaning "To do" of the stay, as the host's does: its event is saved with it, once.
             await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.PropertyReadyDeclared, booking, BookingEventOrigin.System, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
@@ -238,11 +231,9 @@ public sealed class StayLifecycleService(
             if (StayLifecycleRules.CheckOutError(booking, today, checkOut.RegisterArrival) is { } error)
                 throw error;
 
-            // The wizard closes only what it opened (CO-17): its answers were given after the start.
             if (checkOut.Wizard is not null && booking.CheckoutWizardStartedAt is null)
                 throw new DomainConflictException(BookingErrorCodes.CheckoutWizardNotStarted, "CheckoutWizardNotStarted");
 
-            // The automation never closes a stay the host is closing (the wizard is open) or marked a no-show.
             if (origin == BookingEventOrigin.System && (booking.CheckoutWizardStartedAt is not null || booking.NoShowAt is not null))
                 throw new DomainConflictException(BookingErrorCodes.CheckoutWizardNotStarted, "CheckoutWizardNotStarted");
 
@@ -250,21 +241,16 @@ public sealed class StayLifecycleService(
             if (arrivalRegistered)
                 await MarkArrivedAsync(booking, today, origin, cancellationToken);
 
-            // Joins this transaction (same context): the request and the check-out are saved together or not at all.
             var turnoverRequest = checkOut.Turnover is null
                 ? null
                 : await CreateTurnoverRequestAsync(booking, checkOut.Turnover, cancellationToken);
 
-            // Checked out: the stay-alerts job no longer reminds it (CO-10).
             booking.Status = BookingStatus.CheckedOut;
             booking.CheckedOutAt = UtcNow();
             booking.UpdatedAt = UtcNow();
-            // CO-15: retention is now computed nightly from the stay's check-out date, no eager extension here.
             var record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
             CloseCheckout(record, checkOut, turnoverRequest);
 
-            // casazen/backend#978: a check-out that declares nothing (the endpoint, the automatic departure) leaves the property to the booking flow of the org, which
-            // declares it ready now when it says so (at the check-out, or when the cleaning of the stay is already done). The wizard's answer is the host's and wins.
             var readyByFlow = record.PropertyReadyAt is null
                 && checkOut.Wizard is null
                 && record.PropertyReady != false
@@ -298,7 +284,6 @@ public sealed class StayLifecycleService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(progress);
-        // Only category codes are kept (SU-03): an unknown one is a 422 now, not at the check-out.
         var skipped = progress.CleaningChoice == CheckoutCleaningChoice.Skip;
         var category = skipped || string.IsNullOrWhiteSpace(progress.CleaningCategory)
             ? null
@@ -342,7 +327,6 @@ public sealed class StayLifecycleService(
             if (booking.Status != BookingStatus.CheckedOut)
                 throw new DomainConflictException(BookingErrorCodes.CheckoutNotCompleted, "CheckoutNotCompleted");
 
-            // A stay closed before CO-17 has no row yet: the declaration creates it (its check-out time is unknown).
             record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
             if (record.PropertyReadyAt is not null)
                 return record;
@@ -354,7 +338,6 @@ public sealed class StayLifecycleService(
             record.CurrentStep = CheckoutWizardStep.PropertyReady;
             record.UpdatedAt = UtcNow();
 
-            // The declaration closes the cleaning "To do" of the stay: its event is saved with the declaration, once.
             await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.PropertyReadyDeclared, booking, BookingEventOrigin.Host, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
@@ -363,10 +346,6 @@ public sealed class StayLifecycleService(
         return record;
     }
 
-    /// <summary>
-    /// Closes the check-out record with the check-out. From the wizard it records what the host declared; from
-    /// <c>POST /check-out</c> nothing is declared, so the property is not ready until the host says so (cockpit).
-    /// </summary>
     private void CloseCheckout(StayCheckout record, StayCheckOut checkOut, ServiceRequest? turnoverRequest)
     {
         var now = UtcNow();
@@ -401,7 +380,6 @@ public sealed class StayLifecycleService(
         record.PropertyReadyAt = wizard.PropertyReady ? now : null;
     }
 
-    /// <summary>The check-out record of the booking, created (not saved) when missing. Called under the booking lock.</summary>
     private async Task<StayCheckout> LoadOrCreateCheckoutAsync(Booking booking, CancellationToken cancellationToken)
     {
         var record = await db.StayCheckouts.FirstOrDefaultAsync(c => c.BookingId == booking.Id, cancellationToken);
@@ -435,20 +413,14 @@ public sealed class StayLifecycleService(
     {
         booking.Status = BookingStatus.CheckedIn;
 
-        // A late arrival after a no-show (NF-45): the guests did come, the mark goes.
         booking.NoShowAt = null;
         if (booking.ArrivedAt is null && booking.CheckInDate.Date == todayInRome.Date)
             booking.ArrivedAt = UtcNow();
         booking.UpdatedAt = UtcNow();
 
-        // The check-in of the stay, whichever way the arrival is registered: saved with it, once per booking (ADR-022-R1, R8).
         await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.CheckInCompleted, booking, origin, cancellationToken);
     }
 
-    /// <summary>
-    /// Whether the booking flow of the org declares the property of <paramref name="booking"/> ready at its check-out (casazen/backend#978): always with the trigger
-    /// «at the check-out»; with «when the cleaning is done» only when a cleaning of the stay is already done. No settings service (a test): never.
-    /// </summary>
     private async Task<bool> IsReadyAtCheckOutAsync(Booking booking, CancellationToken cancellationToken)
     {
         if (flowSettings is null)
@@ -461,10 +433,6 @@ public sealed class StayLifecycleService(
         return flow.DeclaresReadyWhenCleaningDone && await StayCleaningState.IsDoneAsync(db, booking.OrgId, booking.Id, cancellationToken);
     }
 
-    /// <summary>
-    /// Tells the hosts of the booking, live, that CasaZen did a step of the stay in their place (bell, pop-up, the open page refreshed): best effort after the save, never
-    /// undoing the step. The property only, never the guest.
-    /// </summary>
     private void PushFlowStep(Booking booking, BookingFlowAutomaticStep step) =>
         BookingFlowLiveRefresh.Tell(pushNotifications, booking.Id, booking.Property?.Name, step, logger);
 
@@ -513,8 +481,6 @@ public sealed class StayLifecycleService(
         catch (Exception ex) when (ex is NotFoundException
             or DomainRuleException { Code: ServiceRequestErrorCodes.SupplierInactive or ServiceRequestErrorCodes.SupplierOutsideComune })
         {
-            // The supplier of the turnover request is missing, not active or not covering the comune (SU-10 typed
-            // errors): the check-out is not saved and the host gets the check-out's own 422 (FD-05).
             logger.LogWarning(
                 ex,
                 "Turnover request of booking {BookingId} to supplier {SupplierOrgId} refused at check-out",

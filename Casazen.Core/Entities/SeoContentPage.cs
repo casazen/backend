@@ -4,10 +4,6 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// A public SEO page of a comune (US-020). The public (page, hub, sitemap) sees <b>only</b> the revision an admin approved,
-/// <see cref="PublishedRevisionId"/>; a page without one is not public (SE-01, A8-04, A8-05).
-/// </summary>
 [Table("SeoContentPages")]
 public class SeoContentPage
 {
@@ -39,14 +35,12 @@ public class SeoContentPage
     /// </summary>
     public LegalReviewStatus LegalReviewStatus { get; set; } = LegalReviewStatus.Draft;
 
-    /// <summary>The approved revision the public sees; <c>null</c>: the page is not public (never approved, or withdrawn).</summary>
     public Guid? PublishedRevisionId { get; set; }
 
     public SeoContentRevision? PublishedRevision { get; set; }
 
     public bool CounselRequired { get; set; }
 
-    /// <summary>When <see cref="PublishedRevisionId"/> was approved; <c>null</c> when the page is not public.</summary>
     public DateTime? PublishedAt { get; set; }
 
     public DateTime? LastRefreshedAt { get; set; }

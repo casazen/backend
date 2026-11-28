@@ -43,11 +43,5 @@ public interface ICalendarChangeRunner
     /// </summary>
     Task<int> RunDueAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Asks again for a process the host sees failed or partly sent: its failed chunks go back to <c>Pending</c>, the process to <c>Queued</c>, and a run is
-    /// enqueued. Returns the new state.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainConflictException"><c>calendar_change_not_retryable</c> (409): the process is not <c>Failed</c> or <c>PartiallySent</c>.</exception>
-    /// <exception cref="Exceptions.NotFoundException">There is no such process for the caller.</exception>
     Task<Entities.Enums.CalendarChangeState> RetryAsync(Guid processId, CancellationToken cancellationToken = default);
 }

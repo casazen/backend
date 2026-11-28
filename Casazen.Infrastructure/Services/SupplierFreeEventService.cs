@@ -7,20 +7,16 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Stable codes of the answer about a free-looking calendar event. Each has a resource key. Never rename a code.</summary>
 public static class SupplierFreeEventErrorCodes
 {
-    /// <summary>The answer is not "Available" or "Busy". HTTP 422.</summary>
     public const string InvalidDecision = "free_event_decision_invalid";
 
-    /// <summary>The event was already answered (by this or another session). HTTP 409.</summary>
     public const string AlreadyDecided = "free_event_already_decided";
 
     public const string InvalidDecisionMessageKey = "FreeEventDecisionInvalid";
     public const string AlreadyDecidedMessageKey = "FreeEventAlreadyDecided";
 }
 
-/// <summary>One unanswered free-looking event of the supplier's calendar, for its console.</summary>
 public sealed record SupplierFreeEventItem(
     Guid Id,
     string? Summary,
@@ -38,10 +34,8 @@ public sealed record SupplierFreeEventItem(
 /// </summary>
 public class SupplierFreeEventService(AppDbContext db, ILogger<SupplierFreeEventService> logger)
 {
-    /// <summary>Rows listed at most: the sync keeps no more than <see cref="ICal.ICalFreeEvents.MaxPendingOccurrences"/> unanswered events.</summary>
     private const int MaxListed = ICal.ICalFreeEvents.MaxPendingOccurrences;
 
-    /// <summary>Events not answered yet, the next to happen first.</summary>
     public async Task<IReadOnlyList<SupplierFreeEventItem>> ListPendingAsync(Guid orgId, CancellationToken ct = default)
     {
         var rows = await db.SupplierFreeCalendarEvents
@@ -58,13 +52,11 @@ public class SupplierFreeEventService(AppDbContext db, ILogger<SupplierFreeEvent
             .ToList();
     }
 
-    /// <summary>How many events wait for an answer (the dashboard shows it).</summary>
     public Task<int> CountPendingAsync(Guid orgId, CancellationToken ct = default) =>
         db.SupplierFreeCalendarEvents
             .AsNoTracking()
             .CountAsync(e => e.OrgId == orgId && e.Decision == SupplierFreeEventDecision.Pending, ct);
 
-    /// <summary>Reads the answer of a request: "Available" or "Busy", any case. Null for anything else (including "Pending").</summary>
     public static SupplierFreeEventDecision? ParseDecision(string? value)
     {
         var text = value?.Trim();

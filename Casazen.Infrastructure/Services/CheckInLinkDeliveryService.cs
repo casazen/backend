@@ -68,10 +68,8 @@ public sealed class CheckInLinkDeliveryService(
     /// </summary>
     internal static readonly string[] TransientCodes = ["octorate_rate_limited", "octorate_unavailable"];
 
-    /// <summary>The most rows one pass of the hourly job looks at.</summary>
     internal const int RetryBatchSize = 200;
 
-    /// <summary>The code of a failure to queue the e-mail that has none of its own.</summary>
     internal const string EmailNotQueuedCode = "email_not_queued";
 
     /// <summary>The code of a link that cannot be delivered because its check-in session is not there.</summary>
@@ -92,12 +90,10 @@ public sealed class CheckInLinkDeliveryService(
 
         if (delivery is null)
         {
-            // DbSet.Add: the row carries its own Guid, so only Add tracks it as new.
             delivery = new CheckInLinkDelivery { OrgId = booking.OrgId, BookingId = booking.Id, CreatedAt = now };
             db.CheckInLinkDeliveries.Add(delivery);
         }
 
-        // The row starts again for the new link. With both flags off it holds no token (nobody needs it) and says only why the link is not going anywhere.
         StartAgain(delivery, link.SessionId, NewBehaviorOn(booking) ? link.Token : null, now);
         await db.SaveChangesAsync(ct);
 
@@ -115,7 +111,6 @@ public sealed class CheckInLinkDeliveryService(
             .FirstOrDefaultAsync(d => d.OrgId == booking.OrgId && d.BookingId == bookingId, ct);
         if (delivery is null)
         {
-            // DbSet.Add: the row carries its own Guid, so only Add tracks it as new.
             delivery = new CheckInLinkDelivery { OrgId = booking.OrgId, BookingId = booking.Id, CreatedAt = now };
             db.CheckInLinkDeliveries.Add(delivery);
         }
@@ -150,13 +145,11 @@ public sealed class CheckInLinkDeliveryService(
         if (session is null)
             return;
 
-        // The session of the link says what the e-mail job of the link writes when the provider accepts the e-mail: handed over, and when.
         session.LinkEmailStatus = GuestCheckInLinkEmailStatus.Sent;
         session.LinkEmailError = null;
         session.SentAt = now;
         session.UpdatedAt = now;
 
-        // The row, only while it is still the one of this link: a later link started it again for itself.
         var delivery = await OpenRowOfLinkAsync(bookingId, sessionId, ct);
         if (delivery is not null)
         {
@@ -172,7 +165,6 @@ public sealed class CheckInLinkDeliveryService(
 
         try
         {
-            // The link is with the guest: a «To do» to carry it, if the booking had one, is over (the same as any other way that ends in «sent»).
             await CloseTodoAsync(session.OrgId, bookingId, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -187,11 +179,9 @@ public sealed class CheckInLinkDeliveryService(
         var now = Now();
         var session = await FindSessionAsync(bookingId, sessionId, ct);
 
-        // A link the guest already opened (or completed) reached the guest, whatever the provider answered: nothing failed, nothing to take back.
         if (session is null || session.Status != GuestCheckInSessionStatus.Inviato)
             return;
 
-        // Taken back: nobody has this link (only its hash is stored), so it expires and the daily job issues and sends a new one at its next run.
         session.LinkEmailStatus = GuestCheckInLinkEmailStatus.Failed;
         session.LinkEmailError = errorCode;
         session.Status = GuestCheckInSessionStatus.Scaduto;
@@ -213,13 +203,11 @@ public sealed class CheckInLinkDeliveryService(
             errorCode);
     }
 
-    /// <summary>The check-in session <paramref name="sessionId"/>, only when it is a session of the booking (the tenant filter is off: the callers are jobs and the notifier, by id).</summary>
     private async Task<GuestCheckInSession?> FindSessionAsync(Guid bookingId, Guid sessionId, CancellationToken ct) =>
         await db.GuestCheckInSessions
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .FirstOrDefaultAsync(s => s.Id == sessionId && s.BookingId == bookingId, ct);
 
-    /// <summary>The row of the booking, when it has not ended and still stands for the link <paramref name="sessionId"/>.</summary>
     private async Task<CheckInLinkDelivery?> OpenRowOfLinkAsync(Guid bookingId, Guid sessionId, CancellationToken ct) =>
         await db.CheckInLinkDeliveries
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -249,7 +237,6 @@ public sealed class CheckInLinkDeliveryService(
         {
             ct.ThrowIfCancellationRequested();
 
-            // One row at a time: nothing of the previous row stays in the change tracker.
             db.ChangeTracker.Clear();
             try
             {
@@ -291,8 +278,6 @@ public sealed class CheckInLinkDeliveryService(
                 .FirstOrDefaultAsync(ct);
             expiresAt = session?.ExpiresAt;
 
-            // The link only to a caller who can already copy one, and only while it can be copied and used: the row waits or failed, it did not end, its token is there and
-            // the link is still open.
             if (includeLink
                 && delivery.EndedAt is null
                 && CheckInLinkDeliveryRules.NeedsTheHost(delivery.State)
@@ -301,25 +286,17 @@ public sealed class CheckInLinkDeliveryService(
                 && session.ExpiresAt >= Now()
                 && publicSiteLinks.IsConfigured)
             {
-                // The link the host copies is the one the guest would get (E40/F01/US01/T03): on the agency's own domain when its guest area is there.
                 link = (await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, orgId, ct)).GuestCheckIn(delivery.LinkToken);
             }
         }
 
         var view = ViewOf(delivery, expiresAt, link);
 
-        // E23/F02/US01/T01: a row that went by e-mail describes the link it was written for. The reminder of the missing data, a link the guest asks for, the compliance autopilot and the
-        // daily job after an expiry issue other links without touching it, so the row is read against the newest link of the booking and never says «sent» for a link that is over.
         return delivery.Channel == CheckInLinkChannel.Email && delivery.EndedAt is null
             ? await FollowNewestLinkAsync(delivery, view, ct)
             : view;
     }
 
-    /// <summary>
-    /// The view of an e-mail row that has not ended, read against the newest check-in link of its booking. Its own link is the newest: the row is the truth while the link is open, a failure
-    /// stays what the host sees (the link was taken back), and a delivery that was in flight or sent for a link that is over is over. A later link exists: the state of its e-mail is where the
-    /// link of the booking stands (<c>Sent</c>, <c>Sending</c> while queued, <c>Failed</c> with its code; a link nobody e-mailed is the host's to carry), and it is over when that link is.
-    /// </summary>
     private async Task<CheckInLinkDeliveryView> FollowNewestLinkAsync(CheckInLinkDelivery delivery, CheckInLinkDeliveryView view, CancellationToken ct)
     {
         var newest = await db.GuestCheckInSessions
@@ -379,14 +356,6 @@ public sealed class CheckInLinkDeliveryService(
         await EndRowAsync(delivery, reason, Now(), ct);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // One attempt
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Tries the ways to the guest for the link <paramref name="token"/> and leaves the row in the state it ends in (saved), then keeps the «To do» and the notice of the
-    /// host in step. <paramref name="sessionLanguage"/> is the language the guest chose on the check-in page, when it did.
-    /// </summary>
     private async Task AttemptAsync(
         CheckInLinkDelivery delivery,
         Booking booking,
@@ -398,7 +367,6 @@ public sealed class CheckInLinkDeliveryService(
     {
         delivery.LastAttemptAt = now;
 
-        // An address the booking has (the host wrote it, or an earlier read gave it): the e-mail, as for any booking.
         if (HasEmail(booking))
         {
             await SendByEmailAsync(delivery, token, now, ct);
@@ -410,7 +378,6 @@ public sealed class CheckInLinkDeliveryService(
         var contactOn = ContactOn;
         if (!OtaChannelActionPolicy.IsChannelBooking(booking) || (!chatOn && !contactOn))
         {
-            // No way to the guest that CasaZen may use: the host carries the link. The row says why.
             Settle(delivery, CheckInLinkChannel.Manual, CheckInLinkDeliveryState.WaitingContact, null);
             await SaveAndTellHostAsync(delivery, booking, now, ct);
             return;
@@ -429,8 +396,6 @@ public sealed class CheckInLinkDeliveryService(
 
             if (chat.State == CheckInLinkDeliveryState.Sending)
             {
-                // The message is with the channel manager and has not been sent yet: the link is not delivered. The row stays open with its token (an error, or the host, may need it),
-                // the contact of the guest is not asked for (the chat has the link), and the hourly pass reads the message again.
                 Settle(delivery, CheckInLinkChannel.PortalChat, CheckInLinkDeliveryState.Sending, null);
                 delivery.OtaMessageId = chat.MessageId;
                 await SaveAndTellHostAsync(delivery, booking, now, ct);
@@ -459,7 +424,6 @@ public sealed class CheckInLinkDeliveryService(
             }
             catch (Exception ex) when (ex is OctorateException or DomainException)
             {
-                // Not an answer about the contact (a limit, an outage): the read did not happen, it is asked again at the next pass, and the code is on the row.
                 contactError = CodeOf(ex);
                 logger.LogWarning(
                     "The contact of the guest of booking {BookingId} (org {OrgId}) could not be read for the check-in link ({Code})", booking.Id, delivery.OrgId, contactError);
@@ -468,7 +432,6 @@ public sealed class CheckInLinkDeliveryService(
 
         if (chat is not null)
         {
-            // The chat is on: its state is the one the host sees (it resolves by itself: the sync reads the chat, a thread arrives).
             Settle(delivery, CheckInLinkChannel.PortalChat, chat.State, chat.ErrorCode);
         }
         else if (delivery.ContactRefused)
@@ -484,24 +447,19 @@ public sealed class CheckInLinkDeliveryService(
         }
         else
         {
-            // The contact was read and gave no address (or it cannot be read now): no way to the guest, the host carries the link.
             Settle(delivery, CheckInLinkChannel.Manual, CheckInLinkDeliveryState.WaitingContact, null);
         }
 
         await SaveAndTellHostAsync(delivery, booking, now, ct);
     }
 
-    /// <summary>The code of a refusal of the contact (the same the exception carries; a test keeps them equal).</summary>
     internal const string OctorateSensitiveDataCode = "octorate_sensitive_data_not_allowed";
 
-    /// <summary>The one message of the chat: the thread of the booking, the text in the language of the guest, one send for one key.</summary>
     private async Task<ChatAttempt> TryChatAsync(Booking booking, string token, DateTime expiresAt, string? sessionLanguage, CancellationToken ct)
     {
         if (await targets.AccommodationOfAsync(booking.PropertyId, ct) is not { } accommodation)
             return ChatAttempt.Failed(CheckInLinkDeliveryRules.NotMappedCode);
 
-        // The chat of the listing is not in its license (the last pass of the copy of the conversations said so): there is no thread to find and a send would be
-        // refused, so no call is made and the link waits for the permission.
         var notLicensed = await db.OtaMessageSyncStates
             .AsNoTracking()
             .AnyAsync(
@@ -518,8 +476,6 @@ public sealed class CheckInLinkDeliveryService(
 
         var key = await KeyOfAsync(booking, threadId.Value, token, ct);
         var agency = await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId, ct);
-        // E50/F01/US03/T03: with the guest portal on the message also carries the stay link of the booking, made by the link service of the portal. The chat flag above still decides whether the
-        // message is sent at all; without the portal the text is the one it has always been.
         var stayUrl = await stayLinks.UrlOrNullAsync(booking.OrgId, booking.Id, ct);
         var text = ChatText(agency, booking, token, expiresAt, sessionLanguage, stayUrl);
 
@@ -542,12 +498,10 @@ public sealed class CheckInLinkDeliveryService(
         }
         catch (NotFoundException)
         {
-            // The conversation went between the read and the send (a new mapping moved it, the guest was erased): there is none now.
             return ChatAttempt.Waiting(CheckInLinkDeliveryState.WaitingThread, MessageContactOptions.NoConversationReason);
         }
         catch (Exception ex) when (ex is OctorateException or DomainException)
         {
-            // A refusal before or around the send: the connector is not connected, the listing is not mapped, the thread is closed, a limit, an outage. The code is the state.
             var code = CodeOf(ex);
             logger.LogWarning("The check-in link of booking {BookingId} (org {OrgId}) did not go to the chat ({Code})", booking.Id, booking.OrgId, code);
             return ChatAttempt.Failed(code);
@@ -558,11 +512,8 @@ public sealed class CheckInLinkDeliveryService(
             case OtaMessageDeliveryState.Sent:
                 return ChatAttempt.Done(result.Message?.Id);
             case OtaMessageDeliveryState.Created or OtaMessageDeliveryState.WaitingAuthorization:
-                // With the channel manager, which has not sent it yet (or waits for the authorization of the channel): the link is not delivered, and the message may still end in
-                // error. The row stays open; the hourly pass reads the message again.
                 return ChatAttempt.OnItsWay(result.Message?.Id);
             case OtaMessageDeliveryState.ManualVerify:
-                // It may have left: never sent again, and never shown as sent.
                 return ChatAttempt.Failed(CheckInLinkDeliveryRules.ManualVerifyCode);
             default:
                 return result.ErrorCode == OtaMessageSyncErrorCodes.ChatNotLicensed
@@ -571,7 +522,6 @@ public sealed class CheckInLinkDeliveryService(
         }
     }
 
-    /// <summary>The reservation conversation of the booking, at the property of the booking (a conversation moved to another house by a new mapping is not its own).</summary>
     private async Task<Guid?> ReservationThreadAsync(Booking booking, CancellationToken ct) =>
         await db.OtaMessageThreads
             .AsNoTracking()
@@ -585,11 +535,6 @@ public sealed class CheckInLinkDeliveryService(
             .Select(t => (Guid?)t.Id)
             .FirstOrDefaultAsync(ct);
 
-    /// <summary>
-    /// The key of the next send of the link: the booking and the token, and for each message of the same link that the channel manager refused (the state
-    /// <see cref="OtaMessageDeliveryState.Error"/>: nothing left, so the key is spent) the next of <c>-1</c>, <c>-2</c>, ... A key whose message is in any other state is
-    /// the one to use again: the send finds that message and sends nothing.
-    /// </summary>
     private async Task<string> KeyOfAsync(Booking booking, Guid threadId, string token, CancellationToken ct)
     {
         var baseKey = CheckInLinkDeliveryRules.IdempotencyKey(booking.Id, token);
@@ -614,10 +559,6 @@ public sealed class CheckInLinkDeliveryService(
         return key;
     }
 
-    /// <summary>
-    /// The text of the message: the language the guest chose on the check-in page, else the one of the country on the booking, else Italian followed by English in the
-    /// same message (a stay from a portal comes with no country, and the guest's language is not known). Plain text, short, no name of a portal or of a supplier.
-    /// </summary>
     private static string ChatText(AgencyLinks agency, Booking booking, string token, DateTime expiresAt, string? sessionLanguage, string? stayUrl = null)
     {
         // E40/F01/US01/T03: on the agency's own domain when its guest area is served there, on the CasaZen domain otherwise.
@@ -630,7 +571,6 @@ public sealed class CheckInLinkDeliveryService(
         return language is { } known ? Compose(known) : Compose("it") + "\n\n" + Compose("en");
     }
 
-    /// <summary>The e-mail of the link to the address the booking has: handed to the queue of the e-mails, whose job records its outcome on the check-in session.</summary>
     private async Task SendByEmailAsync(CheckInLinkDelivery delivery, string token, DateTime now, CancellationToken ct)
     {
         if (delivery.SessionId is not { } sessionId)
@@ -655,10 +595,6 @@ public sealed class CheckInLinkDeliveryService(
         else
             Settle(delivery, CheckInLinkChannel.Email, CheckInLinkDeliveryState.Failed, outcome.Error ?? EmailNotQueuedCode);
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The hourly pass
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// The rows one pass looks at: at most <see cref="RetryBatchSize"/>, the oldest attempt first, <b>chosen in the query among the ones that are due or over</b>. A pass takes a bounded
@@ -727,7 +663,6 @@ public sealed class CheckInLinkDeliveryService(
             .ToListAsync(ct);
     }
 
-    /// <summary>One row of the hourly pass: ended, left alone, or tried again. True when it was tried again.</summary>
     private async Task<bool> RetryOneAsync(Guid id, Func<Guid, Guid, Task<IssuedCheckInLink>> issueLink, DateTime now, CancellationToken ct)
     {
         var delivery = await db.CheckInLinkDeliveries.FirstOrDefaultAsync(d => d.Id == id, ct);
@@ -747,7 +682,6 @@ public sealed class CheckInLinkDeliveryService(
             return false;
         }
 
-        // A message the channel manager had not sent yet is read again, never sent again.
         if (delivery.State == CheckInLinkDeliveryState.Sending)
             return await SettleSendingAsync(delivery, booking, now, ct);
 
@@ -764,7 +698,6 @@ public sealed class CheckInLinkDeliveryService(
         var language = session.Language;
         if (string.IsNullOrEmpty(token))
         {
-            // A row made while the flags were off holds no token, and nobody has its link (only its hash exists): a new link replaces it.
             var link = await issueLink(booking.Id, booking.OrgId);
             StartAgain(delivery, link.SessionId, link.Token, now);
             token = link.Token;
@@ -776,12 +709,6 @@ public sealed class CheckInLinkDeliveryService(
         return true;
     }
 
-    /// <summary>
-    /// A row whose message the channel manager had not sent yet (<see cref="CheckInLinkDeliveryState.Sending"/>): the message is read again from the copy of the conversation (the sync stores
-    /// the state the channel manager reached; nothing is asked of it here). <b>Sent</b>: the link is delivered (the token is cleared and the «To do» closed). <b>Error</b>: the link did not reach
-    /// the guest, so the row fails with the code of a message the channel manager reports as failed, the host gets its «To do» and the notice, and the token is still there for «Copia link».
-    /// Any other state (an outcome nobody knows, a message that is gone) fails the same way with the code of an outcome nobody knows. Still on its way: nothing changes. True when the row changed.
-    /// </summary>
     private async Task<bool> SettleSendingAsync(CheckInLinkDelivery delivery, Booking booking, DateTime now, CancellationToken ct)
     {
         var messageId = delivery.OtaMessageId;
@@ -843,8 +770,6 @@ public sealed class CheckInLinkDeliveryService(
                 if (!recovered)
                     return false;
 
-                // A wait that came from the send itself (the channel manager refused an automatic message of the booking) is not one the copy can lift: it reads the listing fine and moves
-                // its state at every pass, so a pass proves nothing. The send is tried again at most once a day, never one refused message an hour in the thread of the guest.
                 return sinceLastAttempt >= CheckInLinkDeliveryRules.RefusedSendRetryInterval || !await SendWasRefusedAsync(booking, ct);
 
             case CheckInLinkDeliveryState.WaitingThread:
@@ -854,7 +779,6 @@ public sealed class CheckInLinkDeliveryService(
                 return ContactOn && ContactMayBeRead(delivery, now);
 
             case CheckInLinkDeliveryState.WaitingContact:
-                // Made while the flags were off (or by a read that gave no address): due only when a way is on that was not tried, and not more than once an hour.
                 return sinceLastAttempt >= CheckInLinkDeliveryRules.RetryInterval
                        && (ChatOn || (ContactOn && ContactMayBeRead(delivery, now)));
 
@@ -868,10 +792,6 @@ public sealed class CheckInLinkDeliveryService(
         }
     }
 
-    /// <summary>
-    /// The channel manager refused an automatic message written in a conversation of the booking (the state <see cref="OtaMessageDeliveryState.Error"/>): the permission the link waits for is
-    /// the one the send was refused for, which the copy of the conversations does not read.
-    /// </summary>
     private async Task<bool> SendWasRefusedAsync(Booking booking, CancellationToken ct)
     {
         return await db.OtaMessages
@@ -884,13 +804,8 @@ public sealed class CheckInLinkDeliveryService(
                 ct);
     }
 
-    /// <summary>
-    /// Why the row is over, or <c>null</c> while it is not: the booking is no longer one that takes a check-in, the guest completed it, or the link expired or was
-    /// replaced (by another link of the booking: the host issued one).
-    /// </summary>
     private async Task<string?> EndReasonAsync(CheckInLinkDelivery delivery, Booking booking, DateTime now, CancellationToken ct)
     {
-        // Active is the one definition (confirmed, checked in or checked out, not a no-show); a stay that is over takes no check-in any more.
         if (!AlloggiatiStatusRules.IsDue(booking) || booking.Status == BookingStatus.CheckedOut)
             return CheckInLinkEndReasons.BookingNotActive;
 
@@ -913,10 +828,6 @@ public sealed class CheckInLinkDeliveryService(
             ? CheckInLinkEndReasons.LinkReplaced
             : CheckInLinkEndReasons.LinkExpired;
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The row and the host
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private static void StartAgain(CheckInLinkDelivery delivery, Guid sessionId, string? token, DateTime now)
     {
@@ -949,7 +860,6 @@ public sealed class CheckInLinkDeliveryService(
         delivery.SentAt = now;
         delivery.OtaMessageId = messageId;
 
-        // Delivered: nobody needs the raw token any more.
         delivery.LinkToken = null;
     }
 
@@ -974,7 +884,6 @@ public sealed class CheckInLinkDeliveryService(
             "Check-in link delivery of booking {BookingId} (org {OrgId}) ended: {Reason}", delivery.BookingId, delivery.OrgId, reason);
     }
 
-    /// <summary>Saves the row and keeps the host's «To do» and notice in step with it. The notice is best effort: it never fails the delivery.</summary>
     private async Task SaveAndTellHostAsync(CheckInLinkDelivery delivery, Booking booking, DateTime now, CancellationToken ct)
     {
         delivery.UpdatedAt = now;
@@ -997,7 +906,6 @@ public sealed class CheckInLinkDeliveryService(
                 return;
             }
 
-            // Only while the new behavior is on for a stay from a portal: with both flags off nothing is added to what the host sees.
             if (!NewBehaviorOn(booking) || !CheckInLinkDeliveryRules.NeedsTheHost(delivery.State))
                 return;
 
@@ -1018,7 +926,6 @@ public sealed class CheckInLinkDeliveryService(
     /// <summary>The code is one of a failure worth a retry (a limit, an outage: <see cref="TransientCodes"/>).</summary>
     private static bool IsTransient(string? code) => code is not null && TransientCodes.Contains(code, StringComparer.Ordinal);
 
-    /// <summary>The «To do» «Copia link»: once for the booking, however it ends (a host who closed it by hand does not get it back), due at the start of the check-in day.</summary>
     private async Task RaiseTodoAsync(CheckInLinkDelivery delivery, Booking booking, CancellationToken ct)
     {
         if (await BookingTodoItems.WasRaisedAsync(db, delivery.OrgId, ActivityType.CheckInLinkToSend, booking.Id, ct))
@@ -1048,7 +955,6 @@ public sealed class CheckInLinkDeliveryService(
         }
     }
 
-    /// <summary>Key of the reason of the «To do» in <c>EmailTexts</c> (Italian and English).</summary>
     internal const string TodoReasonKey = "TodoReason_CheckInLinkToSend";
 
     private async Task CloseTodoAsync(Guid orgId, Guid bookingId, CancellationToken ct)
@@ -1063,11 +969,9 @@ public sealed class CheckInLinkDeliveryService(
         }
         catch (NotFoundException)
         {
-            // Closed meanwhile.
         }
     }
 
-    /// <summary>The bell, the pop-up and the live update of the hosts of the booking (the decorator of the push does the three): once for each link that failed for good.</summary>
     private void TellHosts(CheckInLinkDelivery delivery, Booking booking, System.Globalization.CultureInfo culture)
     {
         if (push is null || delivery.SessionId is not { } sessionId)
@@ -1093,21 +997,12 @@ public sealed class CheckInLinkDeliveryService(
             : EmailTemplates.DefaultCulture;
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // Small things
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private bool ChatOn => featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.PortalChatCheckInLink);
 
     private bool ContactOn => featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.GuestContactInfo);
 
-    /// <summary>The new behavior is on for a booking: a stay from a portal, with at least one of the two ways on.</summary>
     private bool NewBehaviorOn(Booking booking) => OtaChannelActionPolicy.IsChannelBooking(booking) && (ChatOn || ContactOn);
 
-    /// <summary>
-    /// The contact of the guest is read once for the booking, and again only after a refusal, at most once a day (<see cref="CheckInLinkDeliveryRules.ContactRetryInterval"/>):
-    /// a channel manager that said no is not asked in a loop, and one that answered is not asked twice.
-    /// </summary>
     private static bool ContactMayBeRead(CheckInLinkDelivery delivery, DateTime now) =>
         delivery.ContactReadAt is not { } at
         || (delivery.ContactRefused && now - at >= CheckInLinkDeliveryRules.ContactRetryInterval);
@@ -1121,7 +1016,6 @@ public sealed class CheckInLinkDeliveryService(
         _ => ex.GetType().Name,
     };
 
-    /// <summary>The booking with its guest and its property, or <c>null</c> when it is not there (or its property was deleted: no check-in link is delivered for it).</summary>
     private async Task<Booking?> LoadBookingAsync(Guid bookingId, Guid? orgId, CancellationToken ct)
     {
         var booking = await db.Bookings
@@ -1149,7 +1043,6 @@ public sealed class CheckInLinkDeliveryService(
 
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>What the chat of the portal answered for the link: delivered, on its way (with the channel manager, not sent yet), waiting for something, or failed with a code.</summary>
     private sealed record ChatAttempt(bool Delivered, CheckInLinkDeliveryState State, string? ErrorCode, Guid? MessageId)
     {
         public static ChatAttempt Done(Guid? messageId) => new(true, CheckInLinkDeliveryState.Sent, null, messageId);

@@ -44,7 +44,6 @@ public class CalendarDaysController(
         [FromQuery] string[]? propertyIds = null,
         CancellationToken cancellationToken = default)
     {
-        // The days the calendar can write, and the ids: the same bounds and the same list as the calendar of the host.
         if (!CalendarController.InBounds(fromDay)
             || !CalendarController.InBounds(toDay)
             || !CalendarController.TryParseIds(propertyIds, out var ids))

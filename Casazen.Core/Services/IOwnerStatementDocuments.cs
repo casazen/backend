@@ -25,11 +25,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOwnerStatementDocuments
 {
-    /// <summary>
-    /// What a statement says, grouped as the PDF has it (the stays, the channel commissions, the withholding, the commission of the property manager, the recharges
-    /// and expenses, the corrections and the payments, and the tourist tax box): the one source of the PDF, the CSV and the owner portal. 404
-    /// <c>owner_statement_version_not_found</c> for a version that is not of <paramref name="orgId"/>.
-    /// </summary>
     Task<OwnerStatementContent> GetContentAsync(Guid orgId, Guid versionId, string? language = null, CancellationToken ct = default);
 
     /// <summary>
@@ -38,28 +33,16 @@ public interface IOwnerStatementDocuments
     /// </summary>
     Task<OwnerStatementFile> GetPdfAsync(Guid orgId, Guid versionId, string? language = null, CancellationToken ct = default);
 
-    /// <summary>The CSV of a version (UTF-8 with a BOM, <c>;</c>, the same lines, totals and tourist tax as the PDF). 404 <c>owner_statement_version_not_found</c>.</summary>
     Task<OwnerStatementFile> GetCsvAsync(Guid orgId, Guid versionId, string? language = null, CancellationToken ct = default);
 
-    /// <summary>
-    /// Builds the PDF of <paramref name="version"/> from <paramref name="entries"/> (the lines it was cut from), stores it in the private bucket and stages its
-    /// owner document (type statement, <c>Id</c> = the version id) and its file row in the unit of work of the caller, which saves. A version that already has its
-    /// document stores nothing and answers <see cref="StoredStatementPdf.None"/>. The caller removes the file again with <see cref="DiscardStoredPdfAsync"/> when
-    /// its save fails.
-    /// </summary>
     Task<StoredStatementPdf> StorePublishedPdfAsync(
         OwnerStatementVersion version,
         IReadOnlyList<OwnerLedgerEntry> entries,
         string? userId,
         CancellationToken ct = default);
 
-    /// <summary>Removes the file a failed save left in the bucket (nothing for <see cref="StoredStatementPdf.None"/>); never throws for a file that is already gone.</summary>
     Task DiscardStoredPdfAsync(StoredStatementPdf stored, CancellationToken ct = default);
 
-    /// <summary>
-    /// The stored PDF of a published version for a person of the owner portal: the download is written first (the audit of the owner documents), then the file is
-    /// handed out; <c>null</c> when the version has no stored file or the agency withdrew it. The caller checks that the person reaches the version.
-    /// </summary>
     Task<OwnerFileContent?> OpenPublishedPdfAsync(Guid orgId, Guid versionId, Guid ownerUserId, CancellationToken ct = default);
 
     /// <summary>
@@ -71,47 +54,30 @@ public interface IOwnerStatementDocuments
     /// </summary>
     Task TellOwnerPublishedAsync(OwnerStatementVersion version, CancellationToken ct = default);
 
-    /// <summary>
-    /// The PDF of an issued invoice of the property manager to an owner (E13/F01/US02/T02, a document with the purpose owner invoice that E14 makes from a statement),
-    /// made from the document and the issuer as they were at the issue, in <paramref name="language"/> (Italian by default); <c>null</c> when the document is not an
-    /// issued owner invoice of <paramref name="orgId"/>. The caller checks that the person reaches the owner the invoice is made out to.
-    /// </summary>
     Task<OwnerStatementFile?> GetOwnerInvoicePdfAsync(Guid orgId, Guid documentId, string? language = null, CancellationToken ct = default);
 }
 
-/// <summary>A file of a statement: its bytes, the name it is offered under and its content type.</summary>
 public sealed record OwnerStatementFile(byte[] Content, string FileName, string ContentType);
 
-/// <summary>The file <see cref="IOwnerStatementDocuments.StorePublishedPdfAsync"/> put in the bucket, so a failed save can remove it again.</summary>
-/// <param name="StorageKey">The key in the private bucket; <c>null</c> when nothing was stored.</param>
 public sealed record StoredStatementPdf(string? StorageKey)
 {
-    /// <summary>Nothing was stored.</summary>
     public static StoredStatementPdf None { get; } = new((string?)null);
 }
 
-/// <summary>The part of the statement a line belongs to, in the order of the file (E13/F01/US02/T01).</summary>
 public enum OwnerStatementSection
 {
-    /// <summary>«Soggiorni»: the revenue of the stays, the gross without the tourist tax.</summary>
     Stays = 1,
 
-    /// <summary>«Commissioni dei canali»: what the portals kept.</summary>
     ChannelFees = 2,
 
-    /// <summary>«Ritenuta»: the withholding kept from a payout (only when present).</summary>
     Withholding = 3,
 
-    /// <summary>«Provvigione del PM»: the commission of the property manager under the mandate.</summary>
     Commission = 4,
 
-    /// <summary>«Riaddebiti e spese»: the flat fees of the mandate, the card fees passed through, the charges and the expenses.</summary>
     Recharges = 5,
 
-    /// <summary>«Rettifiche»: the manual corrections (only when present).</summary>
     Corrections = 6,
 
-    /// <summary>The payments between the agency and the owner, shown in the «Netto» part.</summary>
     Payments = 7,
 }
 
@@ -165,16 +131,12 @@ public sealed record OwnerStatementLine(
     /// </summary>
     public bool AgencyAccountChargedWithoutRecharge { get; init; }
 
-    /// <summary>
-    /// True for a line for information only (<see cref="OwnerLedgerBalance.Counts"/>): the statement shows it, and no total of a part, of the period or of the net counts it.
-    /// </summary>
     public bool Informational => !OwnerLedgerBalance.Counts(Type);
 
     /// <summary>The immutable ledger evidence behind this line, including its management FX rate (not an IVA exchange rate).</summary>
     public OwnerStatementLedgerEvidence? LedgerEvidence { get; init; }
 }
 
-/// <summary>Original money, dates and source references stored by the ledger, preserved in the reconciliation appendix of the CSV.</summary>
 public sealed record OwnerStatementLedgerEvidence(
     OwnerLedgerSourceType SourceType,
     Guid? SourceId,
@@ -235,11 +197,6 @@ public sealed record OwnerStatementTotals(
     decimal OpeningBalance,
     decimal ClosingBalance)
 {
-    /// <summary>
-    /// The totals a version stores, with the withholding as what its closing balance leaves over: a version has no column of its own for it, and every other type of ledger
-    /// line that counts in the balance is in one of its columns, so the closing balance is the opening balance plus every column plus the withholding. A line for information
-    /// only is in no column and not in the closing balance (<see cref="OwnerLedgerBalance"/>), so it leaves the withholding as it is.
-    /// </summary>
     public static OwnerStatementTotals Of(OwnerStatementVersion version)
     {
         ArgumentNullException.ThrowIfNull(version);
@@ -261,17 +218,14 @@ public sealed record OwnerStatementTotals(
     }
 }
 
-/// <summary>What a statement says (see <see cref="IOwnerStatementDocuments.GetContentAsync"/>).</summary>
 public sealed record OwnerStatementContent
 {
     public required Guid VersionId { get; init; }
 
     public required Guid OwnerId { get; init; }
 
-    /// <summary>The name of the agency.</summary>
     public required string AgencyName { get; init; }
 
-    /// <summary>The name the agency keeps for the owner (never a fiscal id or an address).</summary>
     public required string OwnerName { get; init; }
 
     public required int Year { get; init; }
@@ -282,50 +236,37 @@ public sealed record OwnerStatementContent
 
     public required OwnerStatementVersionStatus Status { get; init; }
 
-    /// <summary>The currency of the statement (the settlement currency of the owner).</summary>
     public required string Currency { get; init; }
 
-    /// <summary>The language of the labels: <c>it</c> or <c>en</c>.</summary>
     public required string Language { get; init; }
 
     public DateTime? PublishedAt { get; init; }
 
-    /// <summary>The SHA-256 of the lines the version was cut from.</summary>
     public required string EntriesSha256 { get; init; }
 
-    /// <summary>The totals, the ones the version stores (checked against its lines).</summary>
     public required OwnerStatementTotals Totals { get; init; }
 
-    /// <summary>The lines in the order of the file: by part, then by day.</summary>
     public required IReadOnlyList<OwnerStatementLine> Lines { get; init; }
 
-    /// <summary>The number of the invoice of the property manager to the owner for this statement, when one is linked and issued (E14).</summary>
     public string? OwnerInvoiceNumber { get; init; }
 
-    /// <summary>The day that invoice was issued.</summary>
     public DateOnly? OwnerInvoiceDate { get; init; }
 
-    /// <summary>The tourist tax collected by the agency for the stays of the statement, for information only.</summary>
     public required IReadOnlyList<OwnerStatementTouristTax> TouristTax { get; init; }
 
-    /// <summary>The lines of one part.</summary>
     public IReadOnlyList<OwnerStatementLine> Of(OwnerStatementSection section) => [.. Lines.Where(line => line.Section == section)];
 }
 
-/// <summary>The stable codes of the files of the owner statements, with the keys of their messages in <c>SharedResources</c>.</summary>
 public static class OwnerStatementFileErrors
 {
-    /// <summary>404: the version is published but no PDF was stored with it (published before the files existed), or the agency withdrew it.</summary>
     public const string PdfNotAvailable = "owner_statement_pdf_not_available";
 
     public const string PdfNotAvailableMessageKey = "OwnerStatementPdfNotAvailable";
 
-    /// <summary>404: the invoice is not one of this owner's, or has no file.</summary>
     public const string InvoiceNotFound = "owner_portal_invoice_not_found";
 
     public const string InvoiceNotFoundMessageKey = "OwnerPortalInvoiceNotFound";
 
-    /// <summary>409: the document is the PDF of a published statement (its id is the id of the version): it keeps the file that was published and never gets another version.</summary>
     public const string FileImmutable = "owner_statement_file_immutable";
 
     public const string FileImmutableMessageKey = "OwnerStatementFileImmutable";

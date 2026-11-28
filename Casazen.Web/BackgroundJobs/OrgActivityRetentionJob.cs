@@ -13,7 +13,6 @@ public class OrgActivityRetentionJob(IOrgActivityRetentionService retention)
 {
     public const string RecurringJobId = "org-activity-retention";
 
-    /// <summary>Every night at 03:40 UTC (after the SEO event retention at 03:30).</summary>
     public const string Cron = "40 3 * * *";
 
     [DisableConcurrentExecution(JobLockTimeouts.DefaultSeconds)]

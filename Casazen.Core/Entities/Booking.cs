@@ -10,13 +10,8 @@ namespace Casazen.Core.Entities;
 [Table("Bookings")]
 public class Booking : ITenantOwned
 {
-    /// <summary>Longest <see cref="OctorateReservationId"/>: the column is varchar(50) (E02/F02/US01/T01, ADR-033-R1).</summary>
     public const int OctorateReservationIdMaxLength = 50;
 
-    /// <summary>
-    /// Name of the unique index on (<see cref="OrgId"/>, <see cref="OctorateReservationId"/>), filtered to the rows that have an
-    /// Octorate id: a reservation is one booking in an org, whoever imports it and however many times.
-    /// </summary>
     public const string OctorateReservationIndexName = "UIX_Bookings_OrgId_OctorateReservationId";
 
     [Key]
@@ -27,7 +22,6 @@ public class Booking : ITenantOwned
     public Guid PropertyId { get; set; }
     public virtual Property Property { get; set; } = null!;
 
-    /// <summary>Tenant key (AC2). Inherited from the booking's property; never client-supplied.</summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
@@ -55,22 +49,10 @@ public class Booking : ITenantOwned
     /// </summary>
     public DateTime? ConfirmedAt { get; set; }
 
-    /// <summary>
-    /// When the booking was cancelled (UTC), by the host, the guest or the system. Null while it is not cancelled, and for every
-    /// booking cancelled before SR-05a (no backfill, SR-D17: the timeline shows the cancellation without a time).
-    /// </summary>
     public DateTime? CancelledAt { get; set; }
 
-    /// <summary>
-    /// When the host checked the stay out (UTC). Null until then, and for every stay checked out before SR-05a (no backfill,
-    /// SR-D17: the timeline shows the check-out without a time).
-    /// </summary>
     public DateTime? CheckedOutAt { get; set; }
 
-    /// <summary>
-    /// When the host marked the stay as a no-show (UTC, NF-45): a confirmed booking whose guest never arrived. The status stays
-    /// <see cref="BookingStatus.Confirmed"/>; a late arrival clears it. Null for every other stay.
-    /// </summary>
     public DateTime? NoShowAt { get; set; }
 
     public int NumberOfGuests { get; set; }
@@ -81,24 +63,11 @@ public class Booking : ITenantOwned
     [Required]
     public BookingSource Source { get; set; } = BookingSource.Direct;
 
-    /// <summary>
-    /// Reference of the booking on its channel. For an OTA stay created from an iCal block (CO-21) it is the block's UID
-    /// (<see cref="CalendarBlock.ExternalUid"/>), which with <see cref="ICalFeedId"/> finds the block again after a sync.
-    /// </summary>
     [MaxLength(500)]
     public string ExternalId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Import feed of the iCal block the host turned into this stay (CO-21, decision D7); null for every other booking.
-    /// A plain reference, not a foreign key: it stays when the host disconnects the calendar, so the stay keeps showing
-    /// that it came from iCal.
-    /// </summary>
     public Guid? ICalFeedId { get; set; }
 
-    /// <summary>
-    /// Label of that feed when the stay was created (e.g. "Booking.com - camera 2"), shown next to the source; for a booking imported from the
-    /// channel manager from a portal that has no <see cref="BookingSource"/> of its own (<see cref="BookingSource.OtherChannel"/>), the name Octorate gives it.
-    /// </summary>
     [MaxLength(PropertyICalFeed.LabelMaxLength)]
     public string? ChannelLabel { get; set; }
 
@@ -112,11 +81,9 @@ public class Booking : ITenantOwned
     [MaxLength(BookingAttribution.MaxSourceLength)]
     public string? AttributionSource { get; set; }
 
-    /// <summary>The <c>medium</c> of the link the guest booked from (e.g. <c>link</c>); a lower-case token like <see cref="AttributionSource"/>, <c>null</c> when it had none.</summary>
     [MaxLength(BookingAttribution.MaxMediumLength)]
     public string? AttributionMedium { get; set; }
 
-    /// <summary>The <c>campaign</c> label of the link the guest booked from (e.g. <c>estate-2026</c>); a lower-case token like <see cref="AttributionSource"/>, <c>null</c> when it had none.</summary>
     [MaxLength(BookingAttribution.MaxCampaignLength)]
     public string? AttributionCampaign { get; set; }
 
@@ -124,13 +91,8 @@ public class Booking : ITenantOwned
     [MaxLength(BookingAttribution.MaxReferrerHostLength)]
     public string? AttributionReferrerHost { get; set; }
 
-    /// <summary>
-    /// OTA stay from iCal "da verificare" (CO-21): why a sync of its feed asks the host to check the reservation on the
-    /// channel. Null when nothing is to check or the host marked it verified. The stay itself is never changed by a sync.
-    /// </summary>
     public OtaStayReviewReason? OtaReviewReason { get; set; }
 
-    /// <summary>When the sync raised <see cref="OtaReviewReason"/> (UTC).</summary>
     public DateTime? OtaReviewRaisedAt { get; set; }
 
     /// <summary>
@@ -160,7 +122,6 @@ public class Booking : ITenantOwned
     [Precision(10, 2)]
     public decimal? OtaNetAmount { get; set; }
 
-    /// <summary>What the guest paid (<c>totalPaid</c> of the reservation); <c>null</c> when Octorate does not say. Read-only after the import.</summary>
     [Precision(10, 2)]
     public decimal? OtaPaidAmount { get; set; }
 
@@ -175,22 +136,11 @@ public class Booking : ITenantOwned
     /// </summary>
     public bool? OtaCompanyCollect { get; set; }
 
-    /// <summary>
-    /// Whether the portal of a booking that came from a channel pays the host net of its commission, so the commission is already taken out of the
-    /// payments (<c>commissionIncludedInPayments</c> of the portal catalog, <c>GET /rest/v1/meta/portals</c>, kept by <see cref="MarketplacePortal"/>: it is
-    /// not a member of the reservation). <c>null</c> when the portal is not in the catalog the marketplace caches, and for every booking that does not come
-    /// from a channel. Read-only after the import (ADR-033-R3).
-    /// </summary>
     public bool? OtaCommissionIncludedInPayments { get; set; }
 
-    /// <summary>Lodging (nightly rate x nights) plus <see cref="CleaningFee"/>; tourist tax excluded.</summary>
     [Precision(18, 2)]
     public decimal BasePrice { get; set; }
 
-    /// <summary>
-    /// Cleaning fee included in <see cref="BasePrice"/>, as priced when the booking was made or last repriced (PC-07):
-    /// the lodging of the stay is <c>BasePrice - CleaningFee</c>, whatever the property's fee is today.
-    /// </summary>
     [Precision(18, 2)]
     public decimal CleaningFee { get; set; }
 
@@ -200,32 +150,16 @@ public class Booking : ITenantOwned
     [Precision(18, 2)]
     public decimal TotalPrice { get; set; }
 
-    /// <summary>
-    /// The host entered a total other than the quote's when creating the booking by hand (SR-06a,
-    /// <c>POST /api/bookings/manual</c>): <see cref="TotalPrice"/> is the price they agreed, <see cref="TouristTax"/> stays the
-    /// tax of the quote and <see cref="BasePrice"/> is what is left (<see cref="Services.ManualBookingRules.PriceOf"/>). False
-    /// for every other booking, and again after the host changes the dates or the guests, which prices the stay anew.
-    /// </summary>
     public bool PriceOverridden { get; set; }
 
-    /// <summary>What the host wrote about the price they agreed (at most <see cref="Services.ManualBookingRules.PriceNoteMaxLength"/> characters); null when there is no note or no agreed price.</summary>
     [MaxLength(Services.ManualBookingRules.PriceNoteMaxLength)]
     public string? PriceOverrideNote { get; set; }
 
-    /// <summary>
-    /// Tourist tax amount calculated based on city rates (Italian law)
-    /// </summary>
     [Precision(18, 2)]
     public decimal TouristTaxAmount { get; set; }
 
-    /// <summary>
-    /// Number of adults for tourist tax calculation (children may be exempt)
-    /// </summary>
     public int NumberOfAdults { get; set; }
 
-    /// <summary>
-    /// Number of children (may be exempt from tourist tax based on age)
-    /// </summary>
     public int NumberOfChildren { get; set; }
 
     [MaxLength(1000)]
@@ -248,7 +182,6 @@ public class Booking : ITenantOwned
     /// </summary>
     public string? VehiclePlate { get; set; }
 
-    /// <summary>Payment option selected: Immediate (pay now), OnCancellationDeadline (pay on deadline), OnSite (pay at property).</summary>
     [Required]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;
 
@@ -259,26 +192,17 @@ public class Booking : ITenantOwned
     /// </summary>
     public DateTime? FreeRefundDeadline { get; set; }
 
-    /// <summary>Stripe SetupIntent ID for OnCancellationDeadline payments (to save payment method for future charge).</summary>
     [MaxLength(255)]
     public string? StripeSetupIntentId { get; set; }
 
-    /// <summary>Stripe Payment Method ID (saved card/payment method for off-session charging on deadline).</summary>
     [MaxLength(255)]
     public string? StripePaymentMethodId { get; set; }
 
-    /// <summary>Stripe Customer ID for off-session charges on deadline.</summary>
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
 
-    /// <summary>
-    /// "Paga alla scadenza" (BK-08): off-session charges of the saved payment method attempted by the deadline charge job,
-    /// at most one per Europe/Rome day and <c>DirectBooking:DeferredChargeMaxAttempts</c> in total
-    /// (<see cref="Services.DeferredCharges"/>).
-    /// </summary>
     public int DeferredChargeAttempts { get; set; }
 
-    /// <summary>Europe/Rome day (midnight UTC, date-only convention) of the last deferred charge attempt of the job.</summary>
     public DateTime? DeferredChargeLastAttemptOn { get; set; }
 
     /// <summary>
@@ -290,71 +214,28 @@ public class Booking : ITenantOwned
 
     public DateTime? CheckoutWizardStartedAt { get; set; }
 
-    /// <summary>
-    /// Why the system cancelled the booking, or <see cref="BookingCancellationReason.GuestRequested"/> when the guest did; null when
-    /// the host or an admin cancelled it or it is not cancelled.
-    /// Lets the payment webhook and support tell an expired checkout hold from a real cancellation (BK-21).
-    /// </summary>
     public BookingCancellationReason? CancellationReason { get; set; }
 
-    /// <summary>
-    /// Reason written by the host who cancelled the booking (PC-07, A2-08). Private to the host: never sent to the guest.
-    /// </summary>
     [MaxLength(500)]
     public string? CancellationNote { get; set; }
 
-    /// <summary>
-    /// "Pay at the property" requests only (<see cref="PaymentOption.OnSite"/>, decision D5, BK-06): when the guest
-    /// confirmed the email address through the link of the "request received" email. Until then the request is not
-    /// sent to the host and holds its dates only for <c>DirectBooking:OnSiteEmailVerificationMinutes</c>.
-    /// </summary>
     public DateTime? GuestEmailVerifiedAt { get; set; }
 
-    /// <summary>
-    /// SHA-256 (hex) of the email confirmation token of a "pay at the property" request; the raw token is only in the
-    /// link sent to the guest.
-    /// </summary>
     [MaxLength(64)]
     public string? GuestEmailVerificationTokenHash { get; set; }
 
-    /// <summary>
-    /// "Pay at the property" requests only: until when the pending request holds its dates. First the end of the email
-    /// confirmation window, then, once the email is confirmed, the host's answer deadline
-    /// (<c>DirectBooking:OnSiteApprovalHours</c>). Past it the <c>checkout-hold-expiry</c> job cancels the request.
-    /// </summary>
     public DateTime? RequestExpiresAt { get; set; }
 
-    /// <summary>
-    /// Public checkout only (BK-07): SHA-256 (hex) of the checkout token returned once by <c>POST /api/public/bookings</c>.
-    /// The token lets the guest who made the checkout read its outcome and complete the payment again
-    /// (<c>/book/{orgSlug}/booking/{id}?token=…</c>); the booking id alone does not.
-    /// </summary>
     [MaxLength(64)]
     public string? CheckoutTokenHash { get; set; }
 
-    /// <summary>
-    /// How the guest of a booking the host entered is to pay it (the payment step of the new-booking wizard, NF-74, E08/F01/US01/T05):
-    /// payment link, at the property or bank transfer. <c>null</c> for every other booking and for the host bookings made before it.
-    /// </summary>
     public HostPaymentArrangement? HostPaymentArrangement { get; set; }
 
-    /// <summary>
-    /// When the last payment link of the balance was sent to the guest (UTC, E08/F01/US01/T05). A new link replaces the token in
-    /// <see cref="CheckoutTokenHash"/>, so the previous link stops working. <c>null</c> when no link was ever sent.
-    /// </summary>
     public DateTime? PaymentLinkSentAt { get; set; }
 
-    /// <summary>
-    /// SHA-256 (hex) of the one-time guest self-cancellation token (BK-02, BK-07): the raw token is only in the
-    /// signed link emailed to the guest. Invalidated after use or when a new link is sent.
-    /// </summary>
     [MaxLength(64)]
     public string? GuestCancelTokenHash { get; set; }
 
-    /// <summary>
-    /// UTC expiry of the guest self-cancellation token; null when no token was ever generated.
-    /// Default lifetime: <c>GuestCancellation:TokenExpiryHours</c> (see <see cref="Services.GuestCancellationTokens"/>).
-    /// </summary>
     public DateTime? GuestCancelTokenExpiresAt { get; set; }
 
     /// <summary>
@@ -396,69 +277,32 @@ public enum BookingSource
     Agoda,
     Local,
 
-    /// <summary>
-    /// Entered by the host (web console, phone or walk-in booking), as opposed to <see cref="Direct"/> which is the
-    /// public checkout of the booking site. Created <see cref="BookingStatus.Confirmed"/>, it occupies its dates at
-    /// once and is never touched by the expiry of abandoned checkout holds (PC-01, A2-01). Stored as 8.
-    /// </summary>
     Manual,
 
-    /// <summary>
-    /// A portal of the channel manager that has no value of its own here (E02/F02/US01/T01): the name Octorate gives it is kept in
-    /// <see cref="Booking.ChannelLabel"/>. An OTA like the others for the fiscal rules. Appended after <see cref="Manual"/>: stored as 9.
-    /// </summary>
     OtherChannel = 9,
 }
 
-/// <summary>Reason of a cancellation made by the system (<see cref="Booking.CancellationReason"/>). Stored as an integer.</summary>
 public enum BookingCancellationReason
 {
-    /// <summary>
-    /// Hold of the public checkout not paid within <c>DirectBooking:PendingTtlMinutes</c>: its PaymentIntent or
-    /// SetupIntent was cancelled on Stripe and the dates released (BK-21, A3-13).
-    /// </summary>
     CheckoutHoldExpired = 1,
 
-    /// <summary>
-    /// The guest's payment succeeded when the dates were no longer free (the hold had expired and another booking or an
-    /// iCal block took them): the booking is cancelled and the payment refunded in full automatically (BK-04, A3-04).
-    /// </summary>
     DatesUnavailableAtPayment = 2,
 
-    /// <summary>"Pay at the property" request declined by the host (BK-06, D5).</summary>
     OnSiteRequestDeclined = 3,
 
-    /// <summary>"Pay at the property" request not answered by the host within <c>DirectBooking:OnSiteApprovalHours</c> (BK-06).</summary>
     OnSiteRequestExpired = 4,
 
-    /// <summary>
-    /// "Pay at the property" request whose guest did not confirm the email address within
-    /// <c>DirectBooking:OnSiteEmailVerificationMinutes</c>: never sent to the host (BK-06, A3-06).
-    /// </summary>
     OnSiteEmailNotConfirmed = 5,
 
-    /// <summary>
-    /// "Paga alla scadenza": the deferred charge failed and the guest did not complete the payment within
-    /// <c>DirectBooking:DeferredChargeCancelAfterDays</c> days; nothing was collected, the dates were released (BK-08, A3-14).
-    /// </summary>
     DeferredPaymentNotCompleted = 6,
 
-    /// <summary>
-    /// The guest cancelled the booking themselves, from the guest area or with the signed link the host sent (DB-08a, DB-08h).
-    /// A person's cancellation, but one the host did not make: the timeline tells it apart. Append-only: stored as 7.
-    /// </summary>
     GuestRequested = 7,
 }
 
 public enum PaymentOption
 {
-    /// <summary>Pay immediately via Stripe (default, current flow).</summary>
     Immediate,
 
-    /// <summary>
-    /// Pay on the free refund deadline (<see cref="Booking.FreeRefundDeadline"/>) via Stripe SetupIntent + deferred charge.
-    /// Offered only when that day is after today (<see cref="Services.DirectBookingPaymentRules.IsDeferredPaymentOffered"/>).
-    /// </summary>
     OnCancellationDeadline,
 
     /// <summary>

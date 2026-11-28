@@ -2,7 +2,6 @@ using Casazen.Core.Identity;
 
 namespace Casazen.Core.Services;
 
-/// <summary>Limits of the photo the guest uploads at check-in.</summary>
 public static class CheckInDocumentLimits
 {
     public const int MaxImageBytes = 5 * 1024 * 1024;
@@ -17,29 +16,14 @@ public interface ICheckInDocumentReader
 {
     Task<CheckInDocumentRead> ReadAsync(Stream content, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The prefill of the self-hosted flow (<c>Features:CheckInIdentitySelfHosted</c>, E71/F01/US03/T01, NF-190): the answer of <see cref="ReadAsync"/> and, on top of it, the
-    /// fields read by the zones of the card with the side, the zone and the confidence each comes from, and the fields of the check-in the guest has still to type. In the process only.
-    /// <para>
-    /// <paramref name="lookForPortrait"/>: the face of the document may be looked for, to find the portrait of the card and to turn it. The face of a document is looked for only after the
-    /// current consent of a guest the verification is offered to (not a minor, nor one who refused): the caller says so, and without it the card is read as it lies (the box of the
-    /// card and its MRZ band turn it) and no face detector is asked. The values are the same kind either way.
-    /// </para>
-    /// </summary>
     Task<CheckInZonedRead> ReadZonedAsync(Stream content, bool lookForPortrait, CancellationToken cancellationToken = default);
 }
 
-/// <param name="Read">True when at least one field was taken from the document.</param>
-/// <param name="Reason">
-/// Why nothing was read: <c>unavailable</c> (the local reader could not run), <c>unreadable</c>, <c>not_document</c>,
-/// <c>unsupported_file</c>, <c>too_large</c>. Null when <paramref name="Read"/> is true.
-/// </param>
 public sealed record CheckInDocumentRead(bool Read, string? Reason, CheckInDocumentFields? Fields, string? Side = null)
 {
     public static CheckInDocumentRead Failed(string reason) => new(false, reason, null);
 }
 
-/// <summary>Fields taken from one document. Anything that does not have a plausible shape is left null.</summary>
 public sealed record CheckInDocumentFields(
     string? FirstName,
     string? LastName,
@@ -71,10 +55,8 @@ public sealed record CheckInDocumentFields(
 /// <param name="Missing">The fields of <see cref="CheckInPrefillFields.Asked"/> that neither the reading nor the zones gave, in that order: what the guest must still type.</param>
 public sealed record CheckInZonedRead(CheckInDocumentRead Read, IReadOnlyList<ZonedField> Fields, IReadOnlyList<string> Missing)
 {
-    /// <summary>What was asked and what is still missing, never a value.</summary>
     public override string ToString() => $"CheckInZonedRead {{ Read = {Read.Read}, Fields = {Fields.Count}, Missing = {Missing.Count} }}";
 
-    /// <summary>The answer when nothing could be read by zone: no field, and everything asked is missing.</summary>
     public static CheckInZonedRead Of(CheckInDocumentRead read) => new(read, [], CheckInPrefillFields.MissingFrom(read.Fields, []));
 }
 
@@ -94,15 +76,9 @@ public static class CheckInPrefillFields
     public const string DocumentNumber = "documentNumber";
     public const string IssuePlace = "issuePlace";
 
-    /// <summary>Every field the document can fill and the check-in asks for, in this order.</summary>
     public static IReadOnlyList<string> Asked { get; } =
         [LastName, FirstName, Gender, DateOfBirth, BirthPlace, Citizenship, DocumentKind, DocumentNumber, IssuePlace];
 
-    /// <summary>
-    /// The fields of <see cref="Asked"/> that <paramref name="read"/> (the reading of today) and <paramref name="zoned"/> (the zones) both leave empty: a field is filled when the
-    /// reading holds a value for it or a zone of the card gave the field it comes from (<see cref="ZonedFieldNames"/>). The kind of document and the place of issue have no zone: the
-    /// reading alone fills them.
-    /// </summary>
     public static IReadOnlyList<string> MissingFrom(CheckInDocumentFields? read, IReadOnlyList<ZonedField> zoned)
     {
         ArgumentNullException.ThrowIfNull(zoned);

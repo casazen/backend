@@ -24,7 +24,6 @@ public sealed class ComoMonthlyDeclaration
             && (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn || b.Status == BookingStatus.CheckedOut));
     }
 
-    /// <summary>The confirmed tax uses the booking dates. A changed actual departure requires a corrected tax calculation.</summary>
     public bool CanIncludeDeparture(BookingStatus status, DateTime? actualCheckout, DateTime scheduledCheckout)
     {
         if (status == BookingStatus.CheckedOut && actualCheckout.HasValue &&
@@ -36,7 +35,6 @@ public sealed class ComoMonthlyDeclaration
 
     public void Add(StayTouristTaxView tax, int expectedGuests, bool canReadReasons)
     {
-        // The OTA's collection date is not recorded by the tax calculator. Its statement must determine the month.
         if (tax.Collector == TouristTaxCollector.Channel)
         {
             ChannelStaysToReconcile++;

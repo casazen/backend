@@ -46,12 +46,10 @@ public sealed class OtaBookingCancellationService(
     TimeProvider timeProvider,
     ILogger<OtaBookingCancellationService> logger) : IOtaBookingCancellationService
 {
-    /// <summary>The longest note kept on a cancelled booking (the column holds 500).</summary>
     private const int NoteMaxLength = 500;
 
     public async Task<Booking> CancelAsync(Guid bookingId, string? reason, CancellationToken ct)
     {
-        // The booking as the caller sees it: through the tenant filter, so a booking of another org is not found.
         var seen = await db.Bookings
             .AsNoTracking()
             .Where(b => b.Id == bookingId)
@@ -67,8 +65,6 @@ public sealed class OtaBookingCancellationService(
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, ct, (PostgresAdvisoryLocks.Scope.BookingCancellation, bookingId.ToString("N")));
 
-        // Whatever was read before the lock may be old by now: a click that was first has cancelled the booking, the import has applied the
-        // cancellation of the channel. Read again, under the lock, from what is committed.
         db.ChangeTracker.Clear();
         var booking = await db.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, ct) ?? throw BookingNotFound(bookingId);
         if (booking.Status == BookingStatus.Cancelled)
@@ -87,7 +83,6 @@ public sealed class OtaBookingCancellationService(
         if (!policy.For(booking.Source).CanCancel)
             throw policy.CancelNotAllowed(booking.Source);
 
-        // Octorate first. Nothing below changes the booking until it has confirmed.
         await AskOctorateAsync(booking, ct);
 
         var now = timeProvider.GetUtcNow().UtcDateTime;
@@ -96,7 +91,6 @@ public sealed class OtaBookingCancellationService(
         booking.CancellationNote = Note(reason);
         booking.UpdatedAt = now;
 
-        // A change that came from the channel manager as far as the consumers are concerned: the push of CasaZen's own cancellations skips it.
         await BookingEvents.RecordAsync(recorder, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.Octorate, ct);
         await db.SaveChangesAsync(ct);
         if (transaction is not null)
@@ -138,7 +132,6 @@ public sealed class OtaBookingCancellationService(
             throw Unconfirmed(booking, rule, ex);
         }
 
-        // Not mirrored, a mapping that is write-blocked or still to decide, a room not chosen: a property CasaZen never writes to.
         if (lookup.Target is not { } target)
         {
             logger.LogInformation(
@@ -160,16 +153,11 @@ public sealed class OtaBookingCancellationService(
         }
         catch (ArgumentException ex)
         {
-            // An id Octorate could not take: nothing left CasaZen, nothing was confirmed.
             logger.LogWarning(ex, "Booking {BookingId} of org {OrgId}: the cancellation of its reservation could not be written, not sent", booking.Id, booking.OrgId);
             throw policy.CancelFailed(booking.Source);
         }
     }
 
-    /// <summary>
-    /// The end of a cancellation Octorate did not confirm: no answer, 429 or 5xx is "unreachable" (503), anything else (a refusal, a conflict, the
-    /// reservation not found, refused credentials, an org not connected) is a refusal (422). The booking is as it was in both.
-    /// </summary>
     private Exception Unconfirmed(Booking booking, OtaChannelActionRule rule, OctorateException error)
     {
         var unreachable = error is OctorateServerException or OctorateRateLimitException;

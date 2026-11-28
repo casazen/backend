@@ -4,14 +4,8 @@ using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.DTOs.Orgs;
 
-/// <summary>
-/// The one mapping of the domain settings of an org to their DTOs. The console (<c>OrgDomainController</c>) and the plugin of a connected site
-/// (<c>SiteApiController</c>, S023) both answer through it, so what the plugin reads of the domain is, member by member, what the console reads and the two
-/// cannot drift.
-/// </summary>
 public static class OrgDomainMapper
 {
-    /// <summary>The settings of the domain as <c>GET api/orgs/{orgId}/domain</c> answers them; the explanations are in the language of the request.</summary>
     public static OrgDomainConfigDto ToDto(OrgDomainConfig config, IStringLocalizer<SharedResources> localizer)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -76,7 +70,6 @@ public static class OrgDomainMapper
         };
     }
 
-    /// <summary>The result of a check of the domain as <c>POST api/orgs/{orgId}/domain/verify</c> answers it.</summary>
     public static OrgDomainVerifyResultDto ToDto(DomainVerificationResult verification, IStringLocalizer<SharedResources> localizer)
     {
         ArgumentNullException.ThrowIfNull(verification);
@@ -94,7 +87,6 @@ public static class OrgDomainMapper
         };
     }
 
-    /// <summary>The explanation of a <see cref="DomainIssues"/> code in the language of the request; <c>null</c> without a code or for an unknown one.</summary>
     public static string? Explain(string? detail, IStringLocalizer<SharedResources> localizer)
     {
         ArgumentNullException.ThrowIfNull(localizer);

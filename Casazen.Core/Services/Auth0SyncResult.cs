@@ -29,6 +29,5 @@ public sealed record Auth0SyncResult(Auth0SyncStatus Status, string? ErrorCode =
 
     public static Auth0SyncResult Failed(string errorCode) => new(Auth0SyncStatus.Failed, errorCode);
 
-    /// <summary>First failure wins; <see cref="Synced"/> only when both succeeded.</summary>
     public Auth0SyncResult Combine(Auth0SyncResult other) => Succeeded ? other : this;
 }

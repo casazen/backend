@@ -54,7 +54,6 @@ public sealed class ListingPublishedCalendarHandler(
             return;
         }
 
-        // One process for one publication: found again on a second delivery.
         var processId = ProcessIdOf(domainEvent.Id);
         if (await db.CalendarChangeProcesses.AnyAsync(p => p.Id == processId, ct))
             return;
@@ -85,7 +84,6 @@ public sealed class ListingPublishedCalendarHandler(
         }
         catch (DbUpdateException)
         {
-            // Another delivery of the same event recorded the process first (the key of the process is the same): it is done. Any other failure goes up.
             db.Entry(record.Process).State = EntityState.Detached;
             foreach (var chunk in record.Chunks)
                 db.Entry(chunk).State = EntityState.Detached;
@@ -106,7 +104,6 @@ public sealed class ListingPublishedCalendarHandler(
             Enqueue(processId);
     }
 
-    /// <summary>The id of the process of a publication: made from the id of the event, so the same event always gives the same process.</summary>
     internal static Guid ProcessIdOf(Guid eventId)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes("calendar-publication:" + eventId.ToString("N")));
@@ -121,7 +118,6 @@ public sealed class ListingPublishedCalendarHandler(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The process is saved and due: the recurring job sends it within a minute.
             logger.LogWarning(ex, "Calendar change {ProcessId} could not be enqueued: the recurring job sends it", processId);
         }
     }

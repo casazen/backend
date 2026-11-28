@@ -16,13 +16,7 @@ public interface ILegalDocumentService
     /// </summary>
     LegalDocumentText? GetText(LegalDocumentKind kind, string? language);
 
-    /// <summary>
-    /// Whether the text of the configured version of <paramref name="kind"/> is published, and if not why (missing file,
-    /// missing configuration of the controller's data, malformed text). Names variables, never values: health check and
-    /// startup log (D9).
-    /// </summary>
     LegalDocumentPublication GetPublication(LegalDocumentKind kind);
 
-    /// <summary>The subprocessors the running configuration actually uses (GDPR art. 28).</summary>
     SubprocessorsDocument GetSubprocessors();
 }

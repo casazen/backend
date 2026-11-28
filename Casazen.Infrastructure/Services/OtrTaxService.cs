@@ -8,11 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// Working CSV summary of overnight stays for the Ticino tourism organization (ADR-016).
-/// This is a count of nights, not a verified tax declaration or a submission receipt. The property is in Ticino when the one resolver of the
-/// place of a Swiss property says so (<see cref="IPropertySwissPlaceResolver"/>, E29/F01/US01/T02).
-/// </summary>
 public class OtrTaxService(AppDbContext context, IPropertySwissPlaceResolver? placeResolver = null) : IOtrTaxService
 {
     public async Task<OtrTaxResult> GeneratePeriodReportAsync(
@@ -21,7 +16,6 @@ public class OtrTaxService(AppDbContext context, IPropertySwissPlaceResolver? pl
         DateTime endDate,
         CancellationToken cancellationToken = default)
     {
-        // Validate property exists and is in Ticino
         var property = await context.Properties
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.Id == propertyId, cancellationToken)
@@ -34,7 +28,6 @@ public class OtrTaxService(AppDbContext context, IPropertySwissPlaceResolver? pl
                 "PropertyNotInTicino",
                 propertyId);
 
-        // Get overnight stays for the period
         var stays = await context.Bookings
             .AsNoTracking()
             .Include(b => b.Guest)
@@ -46,7 +39,6 @@ public class OtrTaxService(AppDbContext context, IPropertySwissPlaceResolver? pl
             .ThenBy(b => b.Id)
             .ToListAsync(cancellationToken);
 
-        // A working count of nights: acceptance by the destination portal is a separate verification.
         var csv = GenerateOtrCsv(property, stays, startDate, endDate);
         var reference = $"OTR-{property.Id:N}-{startDate:yyyyMMdd}-{endDate:yyyyMMdd}";
         var fileHash = ComputeSha256Hash(csv);
@@ -58,12 +50,10 @@ public class OtrTaxService(AppDbContext context, IPropertySwissPlaceResolver? pl
     {
         var csv = new StringBuilder();
 
-        // CSV header
         csv.AppendLine("PropertyId,PropertyName,BookingId,GuestName,CheckIn,CheckOut,Nights,NumberOfGuests");
 
         foreach (var stay in stays)
         {
-            // Calculate overlap with the period
             var effectiveCheckIn = stay.CheckInDate < startDate ? startDate : stay.CheckInDate;
             var effectiveCheckOut = stay.CheckOutDate > endDate ? endDate : stay.CheckOutDate;
             var nights = (effectiveCheckOut - effectiveCheckIn).Days;

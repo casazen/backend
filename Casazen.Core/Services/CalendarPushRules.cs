@@ -3,47 +3,31 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>What the process Octorate runs for a bulk call says about it (<see cref="CalendarPushRules.VerdictOf"/>).</summary>
 public enum CalendarProcessVerdict
 {
-    /// <summary>Not finished, or an answer that does not say it is: the chunk stays accepted and nothing is claimed.</summary>
     Pending = 0,
 
-    /// <summary>Every date of the process was processed.</summary>
     Confirmed = 1,
 
-    /// <summary>The process reports an error.</summary>
     Error = 2,
 }
 
-/// <summary>
-/// The rules of the push of a calendar change that need no database and no clock (E08/F05/US02/T01, T02, NF-36): how many times a chunk is tried and
-/// when, the state of a process derived from its chunks, how the ids of the processes of the channel manager are kept in the column of a chunk, and what
-/// the answer about a process means. Pure, so the push, the job that follows it, the read of the changes and the tests agree.
-/// </summary>
 public static class CalendarPushRules
 {
-    /// <summary>How many times a chunk is sent before a channel manager that does not answer makes it <c>Failed</c> (<c>octorate_unavailable</c>).</summary>
     public const int MaxAttempts = 5;
 
-    /// <summary>How long a process whose chunks wait for quota is left alone before the next run (a postponement, never a failure).</summary>
     public static TimeSpan QuotaRetryAfter { get; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>How often the state of the processes the channel manager runs is asked while a chunk is accepted and not confirmed.</summary>
     public static TimeSpan ConfirmationEvery { get; } = TimeSpan.FromMinutes(2);
 
-    /// <summary>How long after its acceptance a chunk is followed: past it the chunk stays accepted, worded «accepted by the channel manager», and is not asked again.</summary>
     public static TimeSpan ConfirmationWindow { get; } = TimeSpan.FromMinutes(30);
 
-    /// <summary>How long after a process was confirmed the channel manager is asked once more about it: an error that shows up after the confirmation stays visible.</summary>
     public static TimeSpan ConfirmedRecheckAfter { get; } = TimeSpan.FromMinutes(10);
 
-    /// <summary>Marks a list of process ids that did not fit the column of the chunk: the ids that fit are kept and the list ends with it.</summary>
     public const char TruncatedMarker = '+';
 
     private const char IdSeparator = ',';
 
-    /// <summary>The wait before the next attempt of a chunk that was tried <paramref name="attempts"/> times: 1, 2, 4 and then 8 minutes.</summary>
     public static TimeSpan BackoffAfter(int attempts) => attempts switch
     {
         <= 1 => TimeSpan.FromMinutes(1),
@@ -92,14 +76,12 @@ public static class CalendarPushRules
         if (failed > 0)
             return accepted + confirmed > 0 ? CalendarChangeState.PartiallySent : CalendarChangeState.Failed;
 
-        // Nothing is left to send and nothing failed: all the chunks were skipped, or the channel manager took the rest.
         if (accepted + confirmed == 0)
             return CalendarChangeState.Applied;
 
         return accepted > 0 ? CalendarChangeState.Sent : CalendarChangeState.Confirmed;
     }
 
-    /// <summary>The process has settled: no chunk is still to send or to confirm (the moment <see cref="CalendarChangeProcess.FinishedAt"/> is set).</summary>
     public static bool IsSettled(IEnumerable<CalendarChunkState> chunkStates)
     {
         ArgumentNullException.ThrowIfNull(chunkStates);
@@ -129,7 +111,6 @@ public static class CalendarPushRules
         if (all.Length <= limit)
             return all;
 
-        // The marker takes one character of the column.
         var kept = new List<string>();
         var length = 1;
         foreach (var id in distinct)
@@ -145,7 +126,6 @@ public static class CalendarPushRules
         return string.Join(IdSeparator, kept) + TruncatedMarker;
     }
 
-    /// <summary>The ids kept in a chunk (<see cref="JoinProcessIds"/>) and whether they are all the channel manager gave (no <see cref="TruncatedMarker"/>).</summary>
     public static (IReadOnlyList<string> Ids, bool Complete) ParseProcessIds(string? stored)
     {
         if (string.IsNullOrWhiteSpace(stored))

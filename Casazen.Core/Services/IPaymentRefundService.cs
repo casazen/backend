@@ -19,10 +19,8 @@ public interface IPaymentRefundService
     /// <exception cref="Exceptions.DomainRuleException">Not refundable (state, not paid through Stripe, amount).</exception>
     Task<PaymentRefund> RefundAsync(PaymentRefundRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Refunds of one payment, newest first.</summary>
     Task<IReadOnlyList<PaymentRefund>> GetRefundsAsync(Guid paymentId, CancellationToken cancellationToken = default);
 
-    /// <summary>Amounts of one payment: refunded (confirmed), in progress and still refundable.</summary>
     Task<PaymentRefundSummary> GetSummaryAsync(Guid paymentId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -43,10 +41,6 @@ public interface IPaymentRefundService
         string? connectedAccountId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Reads every refund of the PaymentIntent from Stripe and applies them (<c>charge.refunded</c>, whose charge no
-    /// longer embeds its refunds). Same account rule and return value as <see cref="ApplyStripeRefundsAsync"/>.
-    /// </summary>
     Task<IReadOnlyList<Guid>> SyncPaymentIntentRefundsAsync(
         string paymentIntentId,
         string? connectedAccountId,
@@ -92,8 +86,6 @@ public sealed record PaymentRefundSummary(
     decimal RefundableAmount,
     bool RefundableOnline);
 
-/// <summary>A Stripe refund as reported by a webhook or a list call, without Stripe.net types.</summary>
-/// <param name="Status">Stripe status: <c>pending</c>, <c>requires_action</c>, <c>succeeded</c>, <c>failed</c>, <c>canceled</c>.</param>
 public sealed record StripeRefundSnapshot(
     string RefundId,
     string? PaymentIntentId,

@@ -37,16 +37,12 @@ namespace Casazen.Core.Entities;
 [Table("OrgFiscalIssuerProfiles")]
 public class OrgFiscalIssuerProfile : ITenantOwned
 {
-    /// <summary>Name of the unique index on <see cref="OrgId"/> among the profiles of the organizations (<see cref="PropertyOwnerId"/> <c>null</c>): one for each.</summary>
     public const string OrgIndexName = "UIX_OrgFiscalIssuerProfiles_OrgId";
 
-    /// <summary>Name of the unique index on <see cref="PropertyOwnerId"/> where it is set: one profile for each owner who issues.</summary>
     public const string OwnerIndexName = "UIX_OrgFiscalIssuerProfiles_PropertyOwnerId";
 
-    /// <summary>The longest <see cref="FiscalCode"/>: the 16 characters of the code of a person (a company has 11 digits).</summary>
     public const int FiscalCodeMaxLength = 16;
 
-    /// <summary>The longest <see cref="VatNumber"/> as stored (without spaces; the country prefix of a foreign number included).</summary>
     public const int VatNumberMaxLength = 28;
 
     public const int LegalNameMaxLength = 200;
@@ -57,38 +53,29 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     public const int ProvinceMaxLength = 2;
     public const int CountryCodeMaxLength = 2;
 
-    /// <summary>Longest <see cref="FatturaPaRegimeCode"/>: <c>RF01</c>, <c>RF19</c>.</summary>
     public const int FatturaPaRegimeCodeMaxLength = 4;
 
-    /// <summary>Length of <see cref="IssuerSdiRecipientCode"/>: 7 letters or digits.</summary>
     public const int SdiRecipientCodeMaxLength = 7;
 
     public const int PecMaxLength = 254;
 
-    /// <summary>Length of <see cref="SwissVatNumber"/> as stored: <c>CHE-123.456.789</c>.</summary>
     public const int SwissVatNumberMaxLength = 15;
 
-    /// <summary>The longest IBAN (ISO 13616), checked on input: the encrypted columns have no length.</summary>
     public const int IbanMaxLength = 34;
 
-    /// <summary>The longest series pattern: a series has at most 10 characters (<c>FiscalNumberFormat.SeriesMaxLength</c>).</summary>
     public const int SeriesMaxLength = 10;
 
-    /// <summary>The longest <see cref="StampDutyReference"/>.</summary>
     public const int StampDutyReferenceMaxLength = 60;
 
     public const int UpdatedByUserIdMaxLength = 255;
 
-    /// <summary>The country of an issuer that does not say: Italy.</summary>
     public const string DefaultCountryCode = "IT";
 
-    /// <summary>The series pattern of the invoices of the property manager to the owners when the profile has none: <c>PM</c> and the year.</summary>
     public const string DefaultOwnerInvoiceSeries = "PM{year}";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant key (TN-2): the organization the profile is of (for an owner, the agency of the owner). Unique among the profiles of the organizations.</summary>
     public Guid OrgId { get; set; }
 
     /// <summary>
@@ -97,22 +84,12 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// </summary>
     public Guid? PropertyOwnerId { get; set; }
 
-    /// <summary>
-    /// Who issues the documents: always <see cref="DocumentIssuerMode.CasaZen"/> (decision of 2026-11-14). The retired values are refused by the API and the
-    /// migration <c>AddSoleIssuerModel</c> moved every stored row to CasaZen.
-    /// </summary>
     public DocumentIssuerMode IssuerMode { get; set; } = DocumentIssuerMode.CasaZen;
 
-    /// <summary>The fiscal regime of the issuer; <c>null</c> until it says it. It must be one of its country (<see cref="CountryCode"/>).</summary>
     public DocumentRegime? DocumentRegime { get; set; }
 
-    /// <summary>The legal name of the issuer: the denomination of the company, or «First Last». <b>Encrypted at rest</b> (at most <see cref="LegalNameMaxLength"/>).</summary>
     public string? LegalName { get; set; }
 
-    /// <summary>
-    /// The Italian fiscal code of an owner who issues (16 characters for a person, 11 digits for a company); <c>null</c> for the profile of the organization,
-    /// whose code is on <see cref="Org"/>. <b>Encrypted at rest.</b>
-    /// </summary>
     public string? FiscalCode { get; set; }
 
     /// <summary>
@@ -121,23 +98,17 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// </summary>
     public string? VatNumber { get; set; }
 
-    /// <summary>The street of the structured address. <b>Encrypted at rest</b> (at most <see cref="AddressStreetMaxLength"/>).</summary>
     public string? AddressStreet { get; set; }
 
-    /// <summary>The house number. <b>Encrypted at rest</b> (at most <see cref="AddressCivicMaxLength"/>).</summary>
     public string? AddressCivic { get; set; }
 
-    /// <summary>The postal code. <b>Encrypted at rest</b> (at most <see cref="PostalCodeMaxLength"/>).</summary>
     public string? PostalCode { get; set; }
 
-    /// <summary>The city or comune. <b>Encrypted at rest</b> (at most <see cref="CityMaxLength"/>).</summary>
     public string? City { get; set; }
 
-    /// <summary>The two letters of the Italian province; <c>null</c> for an issuer abroad.</summary>
     [MaxLength(ProvinceMaxLength)]
     public string? Province { get; set; }
 
-    /// <summary>ISO 3166-1 alpha-2 code of the country of the issuer: <c>IT</c> (the default) or <c>CH</c> decide the regimes and the tax rules.</summary>
     [Required, MaxLength(CountryCodeMaxLength)]
     public string CountryCode { get; set; } = DefaultCountryCode;
 
@@ -152,7 +123,6 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [MaxLength(SdiRecipientCodeMaxLength)]
     public string? IssuerSdiRecipientCode { get; set; }
 
-    /// <summary>The PEC of the issuer, lower case; <c>null</c> when it has none. <b>Encrypted at rest</b> (at most <see cref="PecMaxLength"/>).</summary>
     public string? IssuerPec { get; set; }
 
     /// <summary>
@@ -165,26 +135,18 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [MaxLength(SwissVatNumberMaxLength)]
     public string? SwissVatNumber { get; set; }
 
-    /// <summary>The IBAN the issuer is paid on (mod-97 checked, upper case, no spaces). <b>Encrypted at rest.</b></summary>
     public string? Iban { get; set; }
 
-    /// <summary>The QR-IBAN of a Swiss issuer (an IBAN of CH or LI whose institution id is 30000 to 31999), for the QR-bill. <b>Encrypted at rest.</b></summary>
     public string? QrIban { get; set; }
 
     /// <summary>How the VAT of the stay is applied (⚖ I1): the rate of the rule, or the exemption of art. 10 (Italy).</summary>
     public StayVatTreatment StayVatTreatment { get; set; } = StayVatTreatment.Standard;
 
-    /// <summary>How the final cleaning is taxed (⚖ C2): with the stay, or as a service.</summary>
     public CleaningFeeTreatment CleaningFeeTreatment { get; set; } = CleaningFeeTreatment.FollowsStay;
 
-    /// <summary>
-    /// The series pattern of the documents to the guests (<c>{year}</c> is the year of the issue): at most 10 characters; <c>null</c> = the default pattern,
-    /// the year (<c>FiscalNumberFormat.DefaultPattern</c>).
-    /// </summary>
     [MaxLength(SeriesMaxLength)]
     public string? GuestDocumentSeries { get; set; }
 
-    /// <summary>The series pattern of the invoices to the owners (E14): at most 10 characters; <c>null</c> = <see cref="DefaultOwnerInvoiceSeries"/>.</summary>
     [MaxLength(SeriesMaxLength)]
     public string? OwnerInvoiceSeries { get; set; }
 
@@ -200,10 +162,8 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// </summary>
     public bool RechargePortalCommissions { get; set; } = true;
 
-    /// <summary>The documents to the guests are issued without the confirmation of a person (E12). Off by default.</summary>
     public bool AutoIssueGuestDocuments { get; set; }
 
-    /// <summary>An issued document is sent to the guest by e-mail (E12/F01/US02). Off by default.</summary>
     public bool EmailGuestDocuments { get; set; }
 
     /// <summary>
@@ -239,10 +199,6 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [NotMapped]
     public bool PlatformCollectedTouristTaxChannelsConfirmed => ReadPlatformCollected(PlatformCollectedTouristTaxChannelsJson).ChannelsGiven;
 
-    /// <summary>
-    /// Confirms the channels whose portal collects the tourist tax itself: the list as it is (without duplicates), an empty one included, which is stored
-    /// as <c>[]</c> and says that no portal collects it. The portals the issuer confirmed for one comune (<see cref="PortalTouristTaxComuni"/>) are kept as they are.
-    /// </summary>
     public void ConfirmPlatformCollectedTouristTaxChannels(IEnumerable<BookingSource> channels)
     {
         ArgumentNullException.ThrowIfNull(channels);
@@ -256,10 +212,6 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     [NotMapped]
     public IReadOnlyList<PortalComune> PortalTouristTaxComuni => PortalComuniOf(PlatformCollectedTouristTaxChannelsJson);
 
-    /// <summary>
-    /// Confirms the portals that collect the tourist tax in one comune: the list as it is (without duplicates); an empty one takes every confirmation of a comune away (it never means «every comune»).
-    /// The list for every comune (<see cref="PlatformCollectedTouristTaxChannels"/>) and whether it was confirmed stay as they are.
-    /// </summary>
     public void ConfirmPortalTouristTaxComuni(IEnumerable<PortalComune> comuni)
     {
         ArgumentNullException.ThrowIfNull(comuni);
@@ -281,47 +233,30 @@ public class OrgFiscalIssuerProfile : ITenantOwned
     /// </summary>
     public bool StayIssuedByOwner { get; set; }
 
-    /// <summary>The issuer confirmed the agreement for the electronic conservation of its documents (Italy, a reminder of the wizard).</summary>
     public bool ConservationAgreementConfirmed { get; set; }
 
-    /// <summary>The issuer confirmed how it pays the stamp duty (virtual authorization or physical stamp; Italy, a reminder of the wizard).</summary>
     public bool VirtualStampConfirmed { get; set; }
 
-    /// <summary>
-    /// When the wizard was completed with nothing missing (UTC); <c>null</c> while the profile is a draft. In the billing setup (E11/F01/US01/T04) it is also
-    /// the confirmation of the step «Emissione» (the automatic issue has no «not chosen» state): set by saving that step while the profile can issue, and cleared
-    /// by the issuer service whenever the profile stops being complete.
-    /// </summary>
     public DateTime? ConfirmedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The person who saved the profile last.</summary>
     [MaxLength(UpdatedByUserIdMaxLength)]
     public string? UpdatedByUserId { get; set; }
 
-    /// <summary>True for the profile of an owner who issues (<see cref="PropertyOwnerId"/> set), false for the profile of the organization.</summary>
     [NotMapped]
     public bool IsOwnerProfile => PropertyOwnerId is not null;
 
-    /// <summary>
-    /// The channels of the stored column: the JSON array of <see cref="BookingSource"/> names (what every issuer has but the ones that confirmed a portal for one comune), or the <c>channels</c>
-    /// member of the object of those; an unreadable value is no channel.
-    /// </summary>
     public static IReadOnlyList<BookingSource> ChannelsOf(string? json) => ReadPlatformCollected(json).Channels;
 
-    /// <summary>The portals confirmed for one comune in the stored column; none for the plain array and for an unreadable value.</summary>
     public static IReadOnlyList<PortalComune> PortalComuniOf(string? json) => ReadPlatformCollected(json).Comuni;
 
-    /// <summary>True for the ISTAT code of a comune: six ASCII digits.</summary>
     public static bool IsIstatCode(string? code) => code is { Length: 6 } && code.All(char.IsAsciiDigit);
 
-    /// <summary>What the column holds: whether the list for every comune was given (confirmed, an empty one included), that list, and the portals confirmed for one comune.</summary>
     private sealed record PlatformCollectedSetting(bool ChannelsGiven, IReadOnlyList<BookingSource> Channels, IReadOnlyList<PortalComune> Comuni);
 
     private static PlatformCollectedSetting ReadPlatformCollected(string? json)
     {
-        // Nothing stored is nothing confirmed; a blank or an unreadable value is stored, and says no channel (confirmed, as it always was).
         if (json is null)
             return new PlatformCollectedSetting(false, [], []);
 
@@ -380,10 +315,6 @@ public class OrgFiscalIssuerProfile : ITenantOwned
         return comuni;
     }
 
-    /// <summary>
-    /// The column as it is stored: the plain array of channel names when no portal is confirmed for a comune (as it always was), else the object with the <c>comuni</c> member (and the
-    /// <c>channels</c> member when the list for every comune was given). <c>null</c> when there is nothing to store.
-    /// </summary>
     private static string? ComposePlatformCollected(IReadOnlyList<BookingSource>? channels, IReadOnlyList<PortalComune> comuni)
     {
         var names = channels?.Distinct().Order().Select(source => source.ToString()).ToList();
@@ -409,14 +340,12 @@ public class OrgFiscalIssuerProfile : ITenantOwned
 /// </summary>
 public static class OrgFiscalIssuerProfileQueries
 {
-    /// <summary>The profile of the organization <paramref name="orgId"/> itself: its <c>OrgId</c> and no owner.</summary>
     public static IQueryable<OrgFiscalIssuerProfile> OfOrganization(this IQueryable<OrgFiscalIssuerProfile> profiles, Guid orgId)
     {
         ArgumentNullException.ThrowIfNull(profiles);
         return profiles.Where(profile => profile.OrgId == orgId && profile.PropertyOwnerId == null);
     }
 
-    /// <summary>The profiles of organizations only (no owner's), of every org the query reaches.</summary>
     public static IQueryable<OrgFiscalIssuerProfile> OfOrganizations(this IQueryable<OrgFiscalIssuerProfile> profiles)
     {
         ArgumentNullException.ThrowIfNull(profiles);

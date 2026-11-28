@@ -64,8 +64,6 @@ public class SupplierShowcaseContentService(
         var row = await Contents(supplierOrgId).FirstOrDefaultAsync(cancellationToken);
         EnsureVersion(row, version, supplierOrgId);
 
-        // The images the upload stored (SP-13b), read under the lock: the cleanup takes the same lock, so it cannot remove one between this check
-        // and the save. Not read at all while neither the draft nor the change mentions the folder of the showcase images.
         var uploaded = MentionsShowcaseImages(row?.DraftJson) || MentionsShowcaseImages(patch.ToJsonString())
             ? await UploadedImageKeysAsync(supplierOrgId, cancellationToken)
             : EmptyKeys;
@@ -97,7 +95,6 @@ public class SupplierShowcaseContentService(
         if (version is { } expected)
             EnsureVersion(row, expected, supplierOrgId);
 
-        // Nothing saved yet: nothing to throw away.
         if (row is null)
             return await ToViewAsync(supplierOrgId, null, facts, cancellationToken);
 
@@ -121,7 +118,6 @@ public class SupplierShowcaseContentService(
     {
         await using var transaction = await LockAsync(supplierOrgId, cancellationToken);
 
-        // Judged after the lock, on the facts as they are now.
         var facts = await LoadFactsAsync(supplierOrgId, cancellationToken);
         var row = await Contents(supplierOrgId).FirstOrDefaultAsync(cancellationToken);
         if (version is { } expected)
@@ -130,7 +126,6 @@ public class SupplierShowcaseContentService(
         if (facts.Status != SupplierStatus.Active)
             throw ShowcaseContentErrors.NotActive();
 
-        // What the customers will read: the rows left empty dropped, the half-filled ones refused, only the services that are active now.
         var document = ShowcaseContentRules.ForPublication(ShowcaseContentRules.Read(row?.DraftJson), facts.ActiveSlugs);
         var readiness = ShowcaseReadiness.Evaluate(document, ReadinessFactsOf(facts, document));
         if (!readiness.CanPublish)
@@ -147,7 +142,6 @@ public class SupplierShowcaseContentService(
         var json = ShowcaseContentRules.Write(document);
         row ??= Add(supplierOrgId, now);
 
-        // The version published before is kept for "Annulla"; the draft becomes what is published (it was cleaned of its empty rows).
         row.PreviousPublishedJson = row.PublishedJson;
         row.PreviousPublishedAt = row.PublishedAt;
         row.PublishedJson = json;
@@ -178,7 +172,6 @@ public class SupplierShowcaseContentService(
 
         var facts = await LoadFactsAsync(supplierOrgId, cancellationToken);
 
-        // Back to the version before (none, for the first publication: the showcase is a draft again); the draft stays as it is.
         await agenda.SetOnlineBookingEnabledAsync(
             supplierOrgId,
             ShowcaseBookings.SwitchValue(
@@ -262,7 +255,6 @@ public class SupplierShowcaseContentService(
     {
         await using var transaction = await LockAsync(supplierOrgId, cancellationToken);
 
-        // A supplier that never used the editor has never had its bookings opened by it: nothing to bring in line.
         var row = await Contents(supplierOrgId).AsNoTracking().FirstOrDefaultAsync(cancellationToken);
         if (row is null)
             return;
@@ -304,7 +296,6 @@ public class SupplierShowcaseContentService(
         if (row is null)
             return EmptyKeys;
 
-        // The keys have a random name and no character a JSON string would write differently: they appear in the text exactly as they are.
         var documents = new[] { row.DraftJson, row.PublishedJson, row.PreviousPublishedJson };
         return keys
             .Where(key => documents.Any(json => json is not null && json.Contains(key, StringComparison.Ordinal)))
@@ -323,18 +314,11 @@ public class SupplierShowcaseContentService(
             : new ShowcasePublication(true, row.Published, row.PausedAt is not null, row.PublishedAt, row.SavedAt);
     }
 
-    /// <summary>
-    /// The content of <paramref name="orgId"/>. <b>The only way</b> this service reads or changes a row: the table is not
-    /// tenant-filtered, so the supplier org is always an explicit predicate.
-    /// </summary>
     private IQueryable<SupplierShowcaseContent> Contents(Guid orgId) => ContentsOf(db, orgId);
 
-    /// <inheritdoc cref="Contents"/>
-    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<SupplierShowcaseContent> ContentsOf(AppDbContext db, Guid orgId) =>
         db.SupplierShowcaseContents.Where(c => c.OrgId == orgId);
 
-    /// <summary>A new row of <paramref name="orgId"/>, added to the context.</summary>
     private SupplierShowcaseContent Add(Guid orgId, DateTime now)
     {
         var row = new SupplierShowcaseContent { OrgId = orgId, CreatedAt = now };
@@ -342,7 +326,6 @@ public class SupplierShowcaseContentService(
         return row;
     }
 
-    /// <summary>The view of a row; the empty one (version 0, nothing saved) for a supplier that has none.</summary>
     private async Task<ShowcaseContentView> ToViewAsync(
         Guid orgId,
         SupplierShowcaseContent? row,
@@ -375,9 +358,6 @@ public class SupplierShowcaseContentService(
             bookings);
     }
 
-    // ─── What the readiness and the bookings are judged on ───────────────────────
-
-    /// <summary>The facts about the supplier the rules need, read once for a request.</summary>
     private sealed class Facts
     {
         public SupplierStatus? Status { get; init; }
@@ -444,7 +424,6 @@ public class SupplierShowcaseContentService(
 
     private static ShowcaseReadinessFacts ReadinessFactsOf(Facts facts, ShowcaseContentDocument document)
     {
-        // The services shown: the ones of the order that are active, or every active one when the order is empty.
         var shown = document.ServiceOrder.Count > 0
             ? document.ServiceOrder.Count(facts.ActiveSlugs.Contains)
             : facts.ActiveSlugs.Count;
@@ -453,12 +432,6 @@ public class SupplierShowcaseContentService(
         return new ShowcaseReadinessFacts(shown, facts.HasZones, facts.HoursConfigured, verified);
     }
 
-    // ─── Rules, locks, saving ────────────────────────────────────────────────────
-
-    /// <summary>
-    /// What the rules need that is not in the content: the supplier's active services (a service paused or deleted is not shown) and
-    /// whether an image is an object of the supplier's own folder of the public storage.
-    /// </summary>
     private ShowcaseContentContext ContextOf(Guid orgId, Facts facts, IReadOnlySet<string> uploaded) =>
         new(url => IsOwnImage(orgId, url, uploaded), facts.ActiveSlugs);
 
@@ -482,7 +455,6 @@ public class SupplierShowcaseContentService(
     private static bool MentionsShowcaseImages(string? json) =>
         json is not null && json.Contains("/showcase/", StringComparison.Ordinal);
 
-    /// <summary>The keys of the images the supplier uploaded for its showcase (the rows of <c>SupplierShowcaseMedia</c> of this org, and no other).</summary>
     private async Task<IReadOnlySet<string>> UploadedImageKeysAsync(Guid orgId, CancellationToken cancellationToken) =>
         (await db.SupplierShowcaseMedia
             .AsNoTracking()
@@ -501,7 +473,6 @@ public class SupplierShowcaseContentService(
         throw ShowcaseContentErrors.Conflict();
     }
 
-    /// <summary>Anything but a publication ends the possibility of undoing the last one.</summary>
     private static void ClearUndo(SupplierShowcaseContent row)
     {
         row.UndoUntil = null;

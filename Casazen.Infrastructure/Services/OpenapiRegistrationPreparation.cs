@@ -13,7 +13,6 @@ using UglyToad.PdfPig;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>The supplemental data stays encrypted on the lease; file fields reference only tenant-owned private attachments.</summary>
 public sealed class OpenapiRegistrationPreparation(AppDbContext db, IFileStorage storage,
     IOptions<OpenapiOptions> options, IApeComplianceService apeCompliance) : IOpenapiRegistrationPreparation
 {
@@ -28,7 +27,6 @@ public sealed class OpenapiRegistrationPreparation(AppDbContext db, IFileStorage
     {
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, ct,
             (PostgresAdvisoryLocks.Scope.OpenapiLeaseRegistrationCheckout, leaseId.ToString("N")));
-        // Share the lease row lock used by provider submission: an in-flight filing freezes its supplement.
         if (db.Database.IsNpgsql())
             await db.Database.SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "LeaseContracts" WHERE "Id" = {leaseId} FOR UPDATE""").ToListAsync(ct);
         var lease = await LoadAsync(leaseId, ct);
@@ -37,7 +35,6 @@ public sealed class OpenapiRegistrationPreparation(AppDbContext db, IFileStorage
             throw new DomainConflictException("openapi_registration_conflict", "OpenapiRegistrationConflict");
         if (data.Values is null || data.Documents is null || data.Values.Count > 61 || data.Documents.Count > 6)
             throw new DomainRuleException("openapi_registration_invalid", "OpenapiRegistrationInvalid");
-        // Invalid/incomplete values can be saved as a draft, but never raw URLs, file contents or unknown keys.
         var schema = OpenapiRegistrationSchema.Current;
         if (data.Values.Any(v => !schema.Fields.Any(f => f.Name == v.Key && f.Type != "file") || v.Value is null || v.Value.Length > 500)
             || data.Documents.Any(v => !schema.Fields.Any(f => f.Name == v.Key && f.Type == "file" && f.Name != "contractFile")))
@@ -84,7 +81,6 @@ public sealed class OpenapiRegistrationPreparation(AppDbContext db, IFileStorage
     public async Task<IReadOnlyDictionary<string, string>> BuildSearchAsync(LeaseContract lease,
         ReadOnlyMemory<byte> signedContract, CancellationToken ct = default)
     {
-        // Called after reservation too, when the lease is RegistrationPending. Validate the captured supplement and all files again.
         var data = await DataAsync(lease, ct);
         var result = await ResultAsync(lease, data, ct);
         if (result.Issues.Count > 0 || signedContract.IsEmpty)
@@ -145,7 +141,7 @@ public sealed class OpenapiRegistrationPreparation(AppDbContext db, IFileStorage
                     using var pdf = PdfDocument.Open(buffer.ToArray());
                     saved.Values["contractPages"] = pdf.NumberOfPages.ToString(CultureInfo.InvariantCulture);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException) { /* The holder can enter the page count. */ }
+                catch (Exception ex) when (ex is not OperationCanceledException) { }
             }
         }
         return saved;

@@ -20,35 +20,23 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public static class ComplianceArchiveDocuments
 {
-    /// <summary>What a row says when the outcome is held only by Octorate and CasaZen has no proof.</summary>
     public const string CheckInOctorate = "Da verificare nel Cassetto Compliance";
 
-    /// <summary>The source of a row held only by Octorate.</summary>
     public const string OctorateSource = "Octorate";
 
-    /// <summary>What the report says about itself: it is CasaZen's own summary, not an act of an authority.</summary>
     public const string NotIssuedByAnAuthority =
         "Documento generato da CasaZen dalle prove archiviate e dai dati dell'organizzazione. Non è emesso, certificato né verificato da "
         + "alcuna autorità e non sostituisce le ricevute ufficiali.";
 
-    /// <summary>The name of the coverage report inside the ZIP of the proofs (with the traffic light on).</summary>
     public const string CoverageFileName = "rapporto-copertura.csv";
 
     private const string Dash = "-";
 
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
-    // ---------------------------------------------------------------- index.csv of the export
-
-    /// <summary>The header of <c>index.csv</c>.</summary>
     public static readonly IReadOnlyList<string> IndexHeader =
         ["Tipo", "Immobile", "Giorno o periodo", "Origine", "Ricevuta il (UTC)", "Conservata fino al (UTC)", "File"];
 
-    /// <summary>
-    /// One row of <c>index.csv</c>: the kind, the property, the day or the month, where the proof comes from, when CasaZen received it, until
-    /// when it keeps it, and the name of the file in the ZIP (<paramref name="fileName"/> is <c>null</c> when the file could not be read, then
-    /// the cell says so).
-    /// </summary>
     public static IReadOnlyList<object?> IndexRow(ComplianceArchiveEntry entry, string? fileName)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -65,13 +53,9 @@ public static class ComplianceArchiveDocuments
         ];
     }
 
-    // ---------------------------------------------------------------- coverage report
-
-    /// <summary>The header of the CSV of the report.</summary>
     public static readonly IReadOnlyList<string> ReportHeader =
         ["Obbligo", "Immobile", "Soggiorno", "Arrivo", "Periodo", "Esito", "Origine", "Prova archiviata il (UTC)", "Scadenza", "Cosa fare"];
 
-    /// <summary>The CSV of the report: one row per obligation, the incomplete ones included.</summary>
     public static byte[] Csv(ComplianceCoverageReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -94,7 +78,6 @@ public static class ComplianceArchiveDocuments
         return CsvWriter.Write(rows, CsvWriter.NoLimit);
     }
 
-    /// <summary>The PDF content of the report: the period, the verdict, the counts, the table of the obligations and the notes.</summary>
     public static PdfDocumentContent Pdf(ComplianceCoverageReport report, string scopeLabel)
     {
         ArgumentNullException.ThrowIfNull(report);
@@ -157,17 +140,12 @@ public static class ComplianceArchiveDocuments
         return new PdfDocumentContent("Rapporto di copertura degli adempimenti", blocks);
     }
 
-    /// <summary>The name of the file of a report (<c>rapporto-adempimenti-2026-01-01_2026-03-31.pdf</c>).</summary>
     public static string ReportFileName(ComplianceReportQuery query, ComplianceReportFormat format) =>
         $"rapporto-adempimenti-{IsoDate(query.From)}_{IsoDate(query.To)}{(format == ComplianceReportFormat.Pdf ? ".pdf" : ".csv")}";
 
-    /// <summary>The name of the ZIP of the proofs of a period.</summary>
     public static string ExportFileName(ComplianceArchiveExportQuery query) =>
         $"prove-adempimenti-{IsoDate(query.From)}_{IsoDate(query.To)}.zip";
 
-    // ---------------------------------------------------------------- words
-
-    /// <summary>What an obligation is, in Italian.</summary>
     public static string ItemLabel(ComplianceItemKind kind) => kind switch
     {
         ComplianceItemKind.Alloggiati => "Comunicazione Alloggiati Web",
@@ -176,7 +154,6 @@ public static class ComplianceArchiveDocuments
         _ => kind.ToString(),
     };
 
-    /// <summary>What a kind of proof is, in Italian.</summary>
     public static string KindLabel(ManualProofKind kind) => kind switch
     {
         ManualProofKind.AlloggiatiReceipt => "Ricevuta Alloggiati Web",
@@ -186,7 +163,6 @@ public static class ComplianceArchiveDocuments
         _ => kind.ToString(),
     };
 
-    /// <summary>Where a proof comes from, in Italian.</summary>
     public static string SourceLabel(string? source) => source switch
     {
         ComplianceEvidenceSources.ManualUpload => "Caricata dall'host",
@@ -219,7 +195,6 @@ public static class ComplianceArchiveDocuments
             ? $"Soggiorno {row.BookingCode}" + (row.Day is { } day ? $", arrivo {ItalianDate(day)}" : string.Empty)
             : row.Period is not null ? $"Mese {row.Period}" : Dash;
 
-    /// <summary>What the host does to close a row, in Italian; empty when nothing is left to do.</summary>
     public static string ActionLabel(ComplianceCockpitAction? action) => action switch
     {
         ComplianceCockpitAction.SendAlloggiati => "Inviare la comunicazione",
@@ -235,7 +210,6 @@ public static class ComplianceArchiveDocuments
 
     private static string ItalianDate(DateOnly date) => date.ToString("dd/MM/yyyy", Italian);
 
-    /// <summary>An instant in UTC, as the index and the report write it: <c>2026-03-14T09:30:00Z</c>.</summary>
     private static string IsoInstant(DateTime utc) =>
         DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 }

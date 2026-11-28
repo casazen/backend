@@ -16,13 +16,11 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class SeoContentPrompt
 {
-    /// <summary>Version of the pages without a regional section: every tourist tax page, the guides outside Lombardy.</summary>
     public const string Version = "seo-it-2026-09-v1";
 
     /// <summary>Version of the guides of the Lombardy comuni, which add the regional section (CIR, Ross1000).</summary>
     public const string LombardyGuideVersion = "seo-it-2026-10-lom-v1";
 
-    /// <summary>CasaZen code of Lombardy (<see cref="ItalianRegions"/>), the only region whose rules are verified.</summary>
     private const string LombardyRegionCode = "LOM";
 
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
@@ -101,7 +99,6 @@ public static class SeoContentPrompt
                 "https://www.provincia.lecco.it/servizio/strutture-ricettive-rilascio-credenziali-turismo-5-e-codice-identificativo/"),
         };
 
-    /// <summary>Version of the prompt of a page: what <see cref="Build"/> writes for it and what the revision stores.</summary>
     public static string VersionFor(ComuneInfo comune, SeoPageType pageType) =>
         HasLombardySection(comune, pageType) ? LombardyGuideVersion : Version;
 
@@ -144,7 +141,6 @@ public static class SeoContentPrompt
                       "e non affermare di aver consultato fonti diverse da queste.");
         sb.AppendLine("6. Non dare consulenza legale o fiscale personalizzata e non promettere risultati: ricorda che le regole possono " +
                       "cambiare e vanno verificate sulle fonti ufficiali.");
-        // One more section for the Lombardy guides: the same depth per section needs more words.
         sb.AppendLine(lombardy ? "7. Lunghezza: tra 400 e 750 parole." : "7. Lunghezza: tra 300 e 600 parole.");
         sb.AppendLine();
         sb.AppendLine("DATI");

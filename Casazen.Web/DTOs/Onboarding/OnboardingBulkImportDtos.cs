@@ -2,11 +2,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Onboarding;
 
-/// <summary>
-/// The answer of <c>POST api/onboarding/bulk/import</c> (E10/F02/US01/T02): the same shape for the check (<c>dryRun</c> true, nothing written) and
-/// for the import (only the valid rows written). <c>unknownColumns</c> are the header cells the import does not know, once each. Codes only, and
-/// <b>never the lock code</b>: a row says only <c>lockCodeProvided</c>.
-/// </summary>
 public sealed class BulkImportResultDto
 {
     public bool DryRun { get; set; }
@@ -44,7 +39,6 @@ public sealed class BulkImportResultDto
     };
 }
 
-/// <summary>How many rows the file has, how many are valid, how many are not and how many changed something (<c>applied</c>: a valid row that repeats what the property holds, or has only its key, is not).</summary>
 public sealed class BulkImportSummaryDto
 {
     public int Rows { get; set; }
@@ -79,7 +73,6 @@ public sealed class BulkImportRowDto
     public bool Applied { get; set; }
 }
 
-/// <summary>An error of a row: the column (<c>propertyId</c>, <c>cinCode</c>, <c>comuneIstatCode</c>, <c>regionCode</c>, <c>alloggiatiRoomNumbers</c>, <c>lockCode</c>) and the code.</summary>
 public sealed class BulkImportRowErrorDto
 {
     public string Column { get; set; } = string.Empty;

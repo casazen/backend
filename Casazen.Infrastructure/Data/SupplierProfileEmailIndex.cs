@@ -11,11 +11,9 @@ internal static class SupplierProfileEmailIndex
 {
     public const string Name = "UIX_SupplierProfiles_NormalizedEmail";
 
-    /// <summary>The value the index compares: trimmed, lower case. Empty for a blank email, which is not unique.</summary>
     public static string Normalize(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
-    /// <summary>True when <paramref name="exception"/> (or an inner one) is the unique violation of this index.</summary>
     public static bool IsViolation(Exception? exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)

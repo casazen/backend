@@ -24,22 +24,16 @@ public sealed record ChannelManagerGuestFact(
     int Attempts,
     DateTime? LastAttemptAt);
 
-/// <summary>Where the guests of a stay stand on the channel manager (derived from their links, never stored).</summary>
 public enum ChannelManagerWriteState
 {
-    /// <summary>The channel manager is not the sender of the property (or the connector is off): nothing is entrusted to it.</summary>
     NotApplicable = 0,
 
-    /// <summary>No guest is registered, or none was written yet.</summary>
     NothingWritten = 1,
 
-    /// <summary>Some guests are written or being written, none failed, and not every one is on the channel manager for good yet.</summary>
     InProgress = 2,
 
-    /// <summary>Every registered guest is on the channel manager, written for good: the stay is entrusted to it.</summary>
     Entrusted = 3,
 
-    /// <summary>At least one guest could not be written: see the error of its position.</summary>
     Failed = 4,
 }
 
@@ -64,7 +58,6 @@ public static class AlloggiatiStayActions
 /// </summary>
 public static class AlloggiatiStatusRules
 {
-    /// <summary>Same country rule as TouristTaxComune: legacy empty values and IT, with whitespace/case normalized.</summary>
     public static readonly Expression<Func<Booking, bool>> ItalianProperties =
         b => b.Property.Country == null || b.Property.Country.Trim() == "" || b.Property.Country.Trim().ToUpper() == "IT";
 
@@ -98,21 +91,14 @@ public static class AlloggiatiStatusRules
         reports.FirstOrDefault(r => r.GuestId == guestId)
         ?? reports.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
 
-    /// <summary>Sent with a receipt, or declared sent by the host.</summary>
     public static bool IsSent(AlloggiatiWebStatus status) =>
         status is AlloggiatiWebStatus.Inviato or AlloggiatiWebStatus.InviatoManualmente;
 
-    /// <summary>
-    /// Error or rejection, or a guest the channel manager could not take: the host must act. The state of a failed write to the channel manager
-    /// (<see cref="AlloggiatiWebStatus.ChannelManagerWriteFailed"/>) is one, so the cockpit shows it as a failure to resolve.
-    /// </summary>
     public static bool IsFailure(AlloggiatiWebStatus status) =>
         status is AlloggiatiWebStatus.Errore or AlloggiatiWebStatus.Rifiutato or AlloggiatiWebStatus.ChannelManagerWriteFailed;
 
-    /// <summary>Nothing is due: the stay is a no-show (<see cref="Effective"/> derives it, no report holds it).</summary>
     public static bool IsNotDue(AlloggiatiWebStatus status) => status == AlloggiatiWebStatus.NotDue;
 
-    /// <summary>The guests are entrusted to the channel manager (<see cref="AlloggiatiWebStatus.EntrustedToChannelManager"/>): yellow, never sent, never green.</summary>
     public static bool IsEntrusted(AlloggiatiWebStatus status) => status == AlloggiatiWebStatus.EntrustedToChannelManager;
 
     /// <summary>

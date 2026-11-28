@@ -17,7 +17,6 @@ public interface IDocumentTexts
     string Get(string key, string language, params object[] args);
 }
 
-/// <summary>The two languages of the generated documents and how their numbers and dates are written.</summary>
 public static class DocumentLanguages
 {
     public const string Italian = "it";
@@ -26,19 +25,14 @@ public static class DocumentLanguages
     private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
     private static readonly CultureInfo EnglishCulture = CultureInfo.GetCultureInfo("en-GB");
 
-    /// <summary><c>en</c> for any English tag (<c>en</c>, <c>en-GB</c>...), <c>it</c> for everything else.</summary>
     public static string Normalize(string? language) =>
         language is { Length: >= 2 } && language.StartsWith(English, StringComparison.OrdinalIgnoreCase) ? English : Italian;
 
-    /// <summary>The culture the amounts of a document in <paramref name="language"/> are written in.</summary>
     public static CultureInfo CultureOf(string? language) => Normalize(language) == English ? EnglishCulture : ItalianCulture;
 
-    /// <summary>The language of the request in progress (the UI culture set by the request localization), normalized.</summary>
     public static string Current => Normalize(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName);
 
-    /// <summary>An amount to two places with the thousands separator of the language; the currency is written by the caller, from the data.</summary>
     public static string Money(decimal amount, string? language) => amount.ToString("N2", CultureOf(language));
 
-    /// <summary>A calendar day as <c>dd/MM/yyyy</c>.</summary>
     public static string Day(DateOnly day) => day.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 }

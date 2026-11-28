@@ -33,7 +33,6 @@ public sealed record FiscalDocumentSdiDto(
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(texts);
 
-        // A rejected document always says why (the generic words carry the raw code); a document still «to send» says why only when the channel refused it.
         var says = state.Status == FiscalDocumentSdiStatuses.Rejected || (state.Status == FiscalDocumentSdiStatuses.ToSend && state.ErrorCode is not null);
         return new FiscalDocumentSdiDto(
             state.DocumentId,

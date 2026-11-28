@@ -8,16 +8,9 @@ public record OnboardingConsentsInput(bool TosAccepted, string TosVersion, bool 
 /// </summary>
 public record OnboardingActivationStatus(bool RoleChosen, bool OrgProvisioned, bool ConsentsAccepted, bool PropertyCreated, bool SitePublished, bool FirstBookingTaken, bool Activated, string? PublicBookingUrl)
 {
-    /// <summary>The checklist the host sees, in the order to do it (<see cref="ActivationChecklist"/>).</summary>
     public IReadOnlyList<ActivationChecklistStep> Steps { get; init; } = [];
 }
 
-/// <summary>
-/// One step of the activation checklist. <see cref="State"/> is an <see cref="ActivationStepStates"/> value;
-/// <see cref="Reason"/> (an <see cref="ActivationStepReasons"/> value) says why a step is not done; <see cref="Done"/> /
-/// <see cref="Total"/> count the properties concerned for the steps that count them. All stable codes: the client
-/// translates them.
-/// </summary>
 public record ActivationChecklistStep(string Key, string State, string? Reason = null, int? Done = null, int? Total = null);
 
 public enum ConsentValidationErrorType { Incomplete, StaleVersion }

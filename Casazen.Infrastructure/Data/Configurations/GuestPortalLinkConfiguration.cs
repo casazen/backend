@@ -12,10 +12,8 @@ namespace Casazen.Infrastructure.Data.Configurations;
 /// </summary>
 internal sealed class GuestPortalLinkConfiguration : IEntityTypeConfiguration<GuestPortalLink>
 {
-    /// <summary>Name of the unique index of the tokens.</summary>
     public const string TokenIndexName = "UIX_GuestPortalLinks_Token";
 
-    /// <summary>Name of the partial unique index of the one active link of a booking.</summary>
     public const string ActiveBookingIndexName = "UIX_GuestPortalLinks_BookingId_Active";
 
     public void Configure(EntityTypeBuilder<GuestPortalLink> entity)

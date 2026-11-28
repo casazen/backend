@@ -1,9 +1,5 @@
 namespace Casazen.Infrastructure.Identity;
 
-// E70/F01/US02/T01 (NF-193, NF-194, ADR-013-R18): the decision policy of the self-hosted identity verification, as its file spells it. These records hold NO number
-// and NO default of their own: every threshold, limit and rule is read from the versioned file (Casazen.Web/IdentityPolicies/identity-policy-*.json), which the
-// IdentityPolicyProvider loads once, validates and pins by its canonical SHA-256. The names are the names of the members of the file, in camel case.
-
 /// <summary>
 /// The decision policy: every threshold and aggregation rule of the self-hosted verification, versioned and frozen by hash. A qualified file is never edited
 /// (see <see cref="IdentityPolicyProvider"/>); a new calibration is a new file with its own version and hash.
@@ -27,13 +23,6 @@ public sealed record IdentityDecisionPolicy(
     IdentityMatchPolicy Match,
     IdentityClosurePolicy Closure);
 
-/// <summary>The rules of the document step.</summary>
-/// <param name="MaxRecapturesPerSide">How many times a side of the document may be captured again after a targeted guidance.</param>
-/// <param name="IdentifyingFields">
-/// The fields whose conflict between the two sides (or with the MRZ) sends the verification to a person (NF-190): names in the vocabulary of the fields of the
-/// format files, for example <c>surname</c>.
-/// </param>
-/// <param name="PerceptualDuplicateMaxDistance">The largest distance between the perceptual hashes of two pictures for them to be the same side photographed twice (<c>document_side_duplicate</c>).</param>
 public sealed record IdentityDocumentPolicy(int MaxRecapturesPerSide, IReadOnlyList<string> IdentifyingFields, int PerceptualDuplicateMaxDistance);
 
 /// <summary>The rules of the presence of the guest: the challenge, the sequence of frames, its continuity, the pose of the head and the liveness.</summary>
@@ -97,10 +86,6 @@ public sealed record IdentityContinuityPolicy(double MaxCenterJump, double MaxSi
 /// <param name="NeutralMaxDegrees">The most the head may be away from the front for the neutral pose.</param>
 public sealed record IdentityPosePolicy(double TurnMinYawDegrees, double LookMinPitchDegrees, double NeutralMaxDegrees);
 
-/// <summary>How the anti-spoofing model judges the frames the server chose (NF-192, NF-193).</summary>
-/// <param name="Frames">How many frames it runs on.</param>
-/// <param name="MinScore">The least score of the real-face class (0 to 1), in the scale of the model.</param>
-/// <param name="Rule">How the scores of the frames are combined, a code of <see cref="IdentityLivenessRules"/>.</param>
 public sealed record IdentityLivenessPolicy(int Frames, double MinScore, string Rule);
 
 /// <summary>
@@ -127,23 +112,18 @@ public sealed record IdentityMatchPolicy(
 /// <param name="GuidedRetries">How many guided retries a correctable defect gets before the verification goes to a person (0 or 1).</param>
 public sealed record IdentityClosurePolicy(int GuidedRetries);
 
-/// <summary>The aggregation rules of <see cref="IdentityMatchPolicy.Aggregation"/>.</summary>
 public static class IdentityAggregationRules
 {
     public const string Median = "median";
     public const string Min = "min";
     public const string Mean = "mean";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [Median, Min, Mean];
 }
 
-/// <summary>The rules of <see cref="IdentityLivenessPolicy.Rule"/>.</summary>
 public static class IdentityLivenessRules
 {
-    /// <summary>Every frame the server chose must reach the minimum score.</summary>
     public const string AllFrames = "all";
 
-    /// <summary>Every code, in this order.</summary>
     public static IReadOnlyList<string> All { get; } = [AllFrames];
 }

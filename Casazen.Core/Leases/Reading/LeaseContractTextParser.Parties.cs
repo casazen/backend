@@ -14,7 +14,6 @@ public static partial class LeaseContractTextParser
     // label ("Sig.", "Cognome e Nome:") that make a name; after it, "(di seguito Locatore)" says the role. The name is put in order
     // (first name, surname) with the help of the code, whose first six letters are the surname and the name.
 
-    /// <summary>Where a person is introduced: the name before the fiscal code, and where the introduction starts.</summary>
     private sealed record Intro(FoundFiscalCode Code, int Start, List<string> NameWords, PartyRole? LabelRole);
 
     private const string RolePattern =
@@ -23,7 +22,6 @@ public static partial class LeaseContractTextParser
     private const string UpperLetter = @"A-Z\u00c0-\u00d6\u00d8-\u00de";
     private const string AnyLetter = @"A-Za-z\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u00ff";
 
-    // An honorific ("Sig.", "Sig.ra", "Sigg.ri", "Signora", "Dott.ssa", "Avv.") or a label that comes before a name; the role words are labels too.
     [GeneratedRegex(
         @"\b(?:(?<hon>sig(?:\.(?:ra|na|ri)?|g\.(?:ri)?|nor[ae]?|nori|ra\b|na\b)(?:\s*/\s*sig\.?(?:ra|na)?)?|dott(?:\.|ssa\b|oressa\b|ore\b)|dr\.|avv(?:\.|ocato\b)|ing\.|ingegnere\b|geom(?:\.|etra\b)|prof(?:\.|essor[ea]?\b)|arch\.|architetto\b|rag\.|ragioniere\b)"
         + @"|(?<lab>cognome\s+e\s+nome|nome\s+e\s+cognome|nominativo|denominazione|generalit[\u00e0a]|(?<role>" + RolePattern + @")))\s*[:\-]?\s*",
@@ -31,7 +29,6 @@ public static partial class LeaseContractTextParser
         Timeout)]
     private static partial Regex NameAnchor();
 
-    // One word of a name: capitalized (or all capitals), or a particle that is followed by one.
     [GeneratedRegex(
         @"\G[ :""\-]*(?<w>[" + UpperLetter + @"][" + AnyLetter + @"'\-]{1,29}|(?:de|di|da|del|della|dello|dei|degli|delle|dal|dalla|dai|la|lo|le|van|von|der|den)(?=\s+[" + UpperLetter + @"])|d'(?=[" + UpperLetter + @"])|dell'(?=[" + UpperLetter + @"]))(?<end>[,;]?)",
         RegexOptions.CultureInvariant,
@@ -73,7 +70,6 @@ public static partial class LeaseContractTextParser
             ended = match.Groups["end"].Length > 0;
         }
 
-        // A particle at the end belongs to what follows, not to the name.
         while (words.Count > 0 && Particles.Contains(words[^1]))
             words.RemoveAt(words.Count - 1);
 
@@ -99,7 +95,6 @@ public static partial class LeaseContractTextParser
             return new Intro(code, anchorStart, words, labelRole);
         }
 
-        // No name before the code: the person is the code alone, and the window to look in starts at the code.
         return new Intro(code, code.Index, [], null);
     }
 
@@ -112,17 +107,12 @@ public static partial class LeaseContractTextParser
                 : PartyRole.Landlord;
     }
 
-    // ---- the role --------------------------------------------------------------------------------------------------------
-
-    // "(di seguito, il Locatore)", "denominato \"Conduttore\"", "nel seguito Conduttrice", "in qualita di locatore": after the code.
-    // The words between the formula and the role can name both parties ("per brevità, denominati congiuntamente i").
     [GeneratedRegex(
         @"\b(?:di\s+seguito|nel\s+seguito|d'ora\s+in\s+poi|d'ora\s+innanzi|in\s+seguito|qui\s+di\s+seguito|denominat[oaie]|detto|detta|chiamat[oa]|in\s+qualit[\u00e0a]\s+di|quale|come)\b[^()]{0,80}?\b(?<role>" + RolePattern + @")\b",
         Options,
         Timeout)]
     private static partial Regex RoleDefinition();
 
-    // The role named right before the introduction: "il Locatore Sig. Mario Rossi", "LOCATORE Cognome e Nome: ...".
     [GeneratedRegex(@"\b(?<role>" + RolePattern + @")\W{0,8}$", Options, Timeout)]
     private static partial Regex RoleBefore();
 
@@ -164,8 +154,6 @@ public static partial class LeaseContractTextParser
         return new RoleEvidence(null, 0, false);
     }
 
-    // ---- name, residence, citizenship ------------------------------------------------------------------------------------
-
     private static string Title(string word)
     {
         var builder = new StringBuilder(word.Length);
@@ -182,11 +170,6 @@ public static partial class LeaseContractTextParser
     private static string JoinName(IEnumerable<string> words) =>
         string.Join(' ', words.Select(w => w.Length > 1 && w == w.ToUpperInvariant() ? Title(w) : w));
 
-    /// <summary>
-    /// Puts the words of a name in order — first name, surname — by trying every split and both orders against the first six letters of the
-    /// fiscal code. Both letters groups agreeing is certain; one is likely (a married woman keeps her maiden name in the code); neither
-    /// leaves the order to the writing (surname first when the line is all capitals) and the name is not taken.
-    /// </summary>
     private static (string? First, string? Last, int Confidence) AssignName(List<string> words, string fiscalCode)
     {
         if (RealWords(words) < 2)
@@ -224,22 +207,18 @@ public static partial class LeaseContractTextParser
         return (chosen.First, chosen.Last, confidence);
     }
 
-    // "residente in Milano (MI), Via Roma n. 1", "Residente in: MONZA (MB), ...", "con sede legale in ...".
     [GeneratedRegex(@"\b(?:residente|domiciliat[oa]|con\s+sede(?:\s+legale)?|sede\s+legale|residenza)\s*(?:in\b|a\b|presso\b)?\s*[:\-]?\s*(?:in\s+)?", Options, Timeout)]
     private static partial Regex ResidenceLabel();
 
-    // Where a residence ends: the next thing the introduction says, or the next section of the contract.
     [GeneratedRegex(
         @",?\s*(?:\bc\.?\s?f\b|\bcod(?:ice|\.)?\s*fisc|\bp\.?\s?iva\b|\bpartita\s+iva\b|\bnat[oa]\b|\btelefono\b|\btel\b|\be-?mail\b|\bpec\b|\bdocumento\b|\bidentificat|\bmunit[oa]\b|\bdi\s+seguito\b|\bd'ora\b|\bin\s+qualit|\bcognome\b|\bcodice\b|\bcittadinanza\b|\bimmobile\b|\boggetto\b|\bpremess[aeoi]\b|\bsi\s+conviene\b|\bart(?:\.|icolo)|\b(?:locator[ei]|locatrice|conduttor[ei]|conduttrice)\b)|\(\s*(?:di\s+seguito|d'ora)|;",
         Options,
         Timeout)]
     private static partial Regex ResidenceEnd();
 
-    // What a cut leaves behind at the end: ", e il" (before "il Conduttore"), ". Il" (before "Il Locatore").
     [GeneratedRegex(@"[\s,;.:\-]+(?:e|ed|il|la|lo)$", Options, Timeout)]
     private static partial Regex TrailingConnector();
 
-    /// <summary>The text up to the first full stop that ends a sentence (not the one of an initial, "G. Garibaldi").</summary>
     private static string CutAtSentenceEnd(string text, out bool cut)
     {
         foreach (Match match in SentenceEnd().Matches(text))
@@ -268,7 +247,6 @@ public static partial class LeaseContractTextParser
         var from = start + label.Index + label.Length;
         var limit = Math.Min(end, from + 150);
         var ended = false;
-        // A fiscal code written after the residence ends it, wherever the label for it is missing.
         if (codeIndex > from && codeIndex < limit)
         {
             limit = codeIndex;
@@ -290,7 +268,6 @@ public static partial class LeaseContractTextParser
         for (var i = 0; i < 3; i++)
             text = TrailingConnector().Replace(text, string.Empty).Trim(' ', ',', ';', '.', ':', '-', '"');
 
-        // An address is a few words: a residence that nothing ended, or that runs on, is the contract's next sentences and not an address.
         if (text.Length < 4 || text.Length > Math.Min(Party.ResidenceMaxLength, 120) || !text.Any(char.IsLetter))
             return (null, 0);
 
@@ -314,11 +291,6 @@ public static partial class LeaseContractTextParser
         return (null, 0);
     }
 
-    // The four characters at positions 12-15 of an Italian fiscal code identify the place of birth. Italian comuni use
-    // a cadastral code (for example H501 for Rome); foreign states use a code beginning with Z. When the contract also
-    // states that the person was born in that introduction, an Italian place is enough to prefill Italian citizenship as
-    // a value for the user to check. A foreign birthplace is deliberately not turned into citizenship: birthplace and
-    // citizenship need not coincide, and the Z code alone cannot prove the person's nationality.
     [GeneratedRegex(@"\bnat[oa]\s+(?:a|in)\b", Options, Timeout)]
     private static partial Regex BirthPlaceLabel();
 
@@ -334,8 +306,6 @@ public static partial class LeaseContractTextParser
         return ("IT", AcceptedConfidence);
     }
 
-    // ---- all together ----------------------------------------------------------------------------------------------------
-
     /// <summary>
     /// How many characters may lie between the fiscal code of a person with no role of its own and the introduction of the next person, whose
     /// «di seguito congiuntamente conduttore» then says the role for both: the identity document of the first (a passport or an identity
@@ -343,20 +313,15 @@ public static partial class LeaseContractTextParser
     /// </summary>
     private const int SharedRoleReach = 200;
 
-    /// <summary>How far after a fiscal code the role formula may stand: a passport or an identity card sits between the code and «di seguito».</summary>
     private const int RoleWindow = 800;
 
-    /// <summary>Residence and citizenship stay in the introduction itself, not in the articles that follow the last person.</summary>
     private const int DetailWindow = 260;
 
-    /// <summary>How far a following person may be and still be the same side of the contract («e il Sig. …» after a conduttore).</summary>
     private const int ContinuationReach = 500;
 
-    // "e il", "ed la", "nonché il" at the end of what separates two people: the next one continues the same side.
     [GeneratedRegex(@"\b(?:e|ed|nonch[eé]|unitamente(?:\s+a)?|altres[iì])(?:\s+(?:il|la|lo|i|gli|le))?\s*$", Options, Timeout)]
     private static partial Regex JoinedToThePrevious();
 
-    // A new side of the contract, or someone who signs but does not rent: not another tenant or landlord.
     [GeneratedRegex(@"\b(?:dall'altra\s+parte|d'altra\s+parte|fideiussor\w*|garant[ei]|testimon[ei])\b", Options, Timeout)]
     private static partial Regex NotACoParty();
 
@@ -385,7 +350,6 @@ public static partial class LeaseContractTextParser
             previousEnd = code.Index + code.Length;
         }
 
-        // The role may follow an identity document. The address and the citizenship stay in the introduction, before the next person.
         var detailEnds = new int[intros.Count];
         var roleEnds = new int[intros.Count];
         for (var i = 0; i < intros.Count; i++)
@@ -400,8 +364,6 @@ public static partial class LeaseContractTextParser
         for (var i = 0; i < intros.Count; i++)
             roles[i] = ResolveRole(flat, intros[i], roleEnds[i]);
 
-        // "Mario Rossi (...) e Anna Rossi (...), di seguito congiuntamente Locatori": the first has no role of its own, the next says it for both.
-        // What lies between the two is the first one's identity document (number, issuer, dates), which can run to a hundred characters or more.
         for (var i = 0; i + 1 < intros.Count; i++)
         {
             if (roles[i].Role is not null || roles[i + 1].Role is not { } shared || !roles[i + 1].Plural)
@@ -413,8 +375,6 @@ public static partial class LeaseContractTextParser
                 roles[i] = new RoleEvidence(shared, 85, true);
         }
 
-        // "di seguito Conduttrice, e il Sig. Paolo Bianchi, C.F. …": the second person has no formula of their own.
-        // They are the same side when the text joins them, and not when a new side or a guarantor is named.
         for (var i = 0; i + 1 < intros.Count; i++)
         {
             if (roles[i].Role is not { } role || roles[i + 1].Role is not null)

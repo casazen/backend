@@ -25,14 +25,9 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IOwnerReconciliationService
 {
-    /// <summary>The reconciliation of the month. 422 <c>owner_period_invalid</c>.</summary>
     Task<OwnerReconciliation> GetAsync(Guid orgId, int year, int month, CancellationToken ct = default);
 }
 
-/// <summary>The reconciliation of a month.</summary>
-/// <param name="Channels">One row for each channel and currency with a stay posted in the month, by channel then currency.</param>
-/// <param name="Statements">One row for each statement currency of the month, by currency.</param>
-/// <param name="Differences">Every difference, by stay, entry or statement, with its reason: the channels' payouts, the stays missing from the ledger, the ledger against the published statements.</param>
 public sealed record OwnerReconciliation(
     int Year,
     int Month,
@@ -40,19 +35,10 @@ public sealed record OwnerReconciliation(
     IReadOnlyList<StatementReconciliationRow> Statements,
     IReadOnlyList<ReconciliationDifference> Differences);
 
-/// <summary>
-/// The commission the portals kept, split by where the figure comes from, so the agency sees how much of it rests on a rule (⚖ R2) and not on the portal (all positive, in the
-/// currency of the row).
-/// </summary>
-/// <param name="FromPortal">The commission the reservation brought (<c>payload</c>); also the lines posted before the rules existed.</param>
-/// <param name="FromRule">A rule of the agency for the channel in force on the check-out (<c>channel-rule:{id}</c>).</param>
-/// <param name="FromDefault">The default of the channel the configuration gives (<c>channel-default</c>).</param>
 public sealed record ChannelCommissionSplit(decimal FromPortal, decimal FromRule, decimal FromDefault)
 {
-    /// <summary>Every commission of the row.</summary>
     public decimal Total => FromPortal + FromRule + FromDefault;
 
-    /// <summary>What rests on a rule of the agency or on the default, not on the portal's own figure.</summary>
     public decimal OnRule => FromRule + FromDefault;
 }
 
@@ -102,16 +88,12 @@ public sealed record StatementReconciliationRow(
     decimal PublishedTotal,
     decimal Difference);
 
-/// <summary>What a difference is named by.</summary>
 public enum ReconciliationDifferenceKind
 {
-    /// <summary>A stay (a booking): the lines of the ledger that come from it are in <see cref="ReconciliationDifference.Id"/>'s difference together.</summary>
     Stay = 1,
 
-    /// <summary>A line of the ledger that comes from no booking (a charge, a correction, a payment to the owner, an owner invoice).</summary>
     Entry = 2,
 
-    /// <summary>A published statement whose total is not the one of its lines.</summary>
     Statement = 3,
 }
 
@@ -140,7 +122,6 @@ public sealed record ReconciliationDifference(
     BookingSource? Channel = null,
     Guid? OwnerId = null);
 
-/// <summary>The stable codes of the reasons of a difference (E13/F01/US03/T02).</summary>
 public static class OwnerReconciliationReasons
 {
     /// <summary>
@@ -149,32 +130,19 @@ public static class OwnerReconciliationReasons
     /// </summary>
     public const string PayoutSourceUnavailable = "payout_source_unavailable";
 
-    /// <summary>The payout recorded for a stay is not the one expected.</summary>
     public const string PayoutDiffers = "payout_differs";
 
-    /// <summary>
-    /// An active stay of the month that was not paid in CasaZen (a portal, the agency's own site, one entered by hand), with a gross to post, has no revenue line in the ledger: it
-    /// is not posted yet, or something keeps it out (the readiness says what). <c>Expected</c> is its gross, <c>Recorded</c> 0.
-    /// </summary>
     public const string StayNotPosted = "stay_not_posted";
 
-    /// <summary>The owner has no published statement for the month: its ledger lines are in none. <c>Expected</c> is the amount of the lines, <c>Recorded</c> 0.</summary>
     public const string StatementNotPublished = "statement_not_published";
 
-    /// <summary>A line was posted after the cut-off of the published statement of its owner: the statement does not hold it. <c>Expected</c> is its amount, <c>Recorded</c> 0.</summary>
     public const string PostedAfterPublication = "posted_after_publication";
 
-    /// <summary>The total of a published statement is not the total of the lines it was cut from: <c>Expected</c> is the total of those lines, <c>Recorded</c> the one of the statement.</summary>
     public const string StatementTotalDiffers = "statement_total_differs";
 }
 
-/// <summary>The rules of the reconciliation that need no database (E13/F01/US03/T02).</summary>
 public static class OwnerReconciliationRules
 {
-    /// <summary>
-    /// Where the commission of a ledger line comes from, by its rule version (<see cref="ChannelFeeSources"/>): a rule of the agency (<c>channel-rule:{id}</c>), the configured
-    /// default (<c>channel-default</c>), else the portal's own figure (<c>payload</c>, and the lines of before the rules existed, which could only come from the reservation).
-    /// </summary>
     public static ChannelCommissionSource SourceOf(string? ruleVersion)
     {
         if (ruleVersion is not null && ruleVersion.StartsWith(ChannelFeeSources.RulePrefix, StringComparison.Ordinal))
@@ -190,15 +158,11 @@ public static class OwnerReconciliationRules
     public static bool CollectedByPortal(bool? companyCollect) => companyCollect != false;
 }
 
-/// <summary>Where the commission of a portal comes from (<see cref="OwnerReconciliationRules.SourceOf"/>).</summary>
 public enum ChannelCommissionSource
 {
-    /// <summary>The reservation of the portal.</summary>
     Portal = 1,
 
-    /// <summary>A rule of the agency.</summary>
     Rule = 2,
 
-    /// <summary>The configured default of the channel.</summary>
     Default = 3,
 }

@@ -28,28 +28,18 @@ namespace Casazen.Infrastructure.Octorate;
 /// </remarks>
 internal static class OctorateReservationRequests
 {
-    /// <summary>Configuration key of the channel of the direct bookings (<c>Octorate__DirectChannelId</c>; 270 in the sandbox). No default in code.</summary>
     public const string DirectChannelIdKey = "Octorate:DirectChannelId";
 
-    /// <summary>Configuration section of the <c>paymentMode</c> of each way CasaZen collects (<c>Octorate__PaymentModes__{Stripe,CashOnArrival,BankTransfer}</c>).</summary>
     public const string PaymentModesSection = "Octorate:PaymentModes";
 
-    /// <summary>The longest <c>refer</c> Octorate takes (OpenAPI: 25).</summary>
     public const int MaxReferenceLength = 25;
 
-    /// <summary>The longest <c>transaction</c> CasaZen sends (the column that keeps it is 100 characters).</summary>
     public const int MaxTransactionLength = Payment.OctorateTransactionIdMaxLength;
 
-    /// <summary>The <c>description</c> of the payments CasaZen records: where they come from, nothing about the guest.</summary>
     public const string PaymentDescription = "CasaZen";
 
-    /// <summary>The longest <c>paymentMode</c> accepted from configuration (Octorate's names are short words such as <c>BANKTRANSFER</c>).</summary>
     private const int MaxPaymentModeLength = 30;
 
-    /// <summary>
-    /// The channel of the direct bookings from configuration: a positive whole number; <c>null</c> when the key is missing, empty or not a
-    /// number (then nothing is created: CasaZen never picks a channel by itself).
-    /// </summary>
     public static int? DirectChannelIdOf(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -57,10 +47,6 @@ internal static class OctorateReservationRequests
         return int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id > 0 ? id : null;
     }
 
-    /// <summary>
-    /// The <c>paymentMode</c> configured for a way of collecting (<c>Stripe</c>, <c>CashOnArrival</c>, <c>BankTransfer</c>), upper case;
-    /// <c>null</c> when it is not configured or is not a word of capital letters and underscores.
-    /// </summary>
     public static string? PaymentModeOf(IConfiguration configuration, string collectedBy)
     {
         ArgumentNullException.ThrowIfNull(configuration);
@@ -69,8 +55,6 @@ internal static class OctorateReservationRequests
         return text is { Length: > 0 and <= MaxPaymentModeLength } && text.All(c => c is (>= 'A' and <= 'Z') or '_') ? text : null;
     }
 
-    /// <summary>The body of <c>POST /rest/v1/reservation/{acc}</c> for <paramref name="request"/> on <paramref name="target"/>.</summary>
-    /// <exception cref="ArgumentException">A request Octorate could not take: no reference, a stay of no night, no guest, a negative price.</exception>
     public static string CreateBody(OctorateBookingTarget target, OctorateReservationCreate request, int channelId, DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -115,14 +99,12 @@ internal static class OctorateReservationRequests
             ["guests"] = new JsonArray(booker),
         };
 
-        // The PMS room of the unit, only when the target knows it: any other pmsProduct answers 500 on the sandbox.
         if (!string.IsNullOrWhiteSpace(target.PmsProductId))
             body["pmsProduct"] = IdValue(target.PmsProductId);
 
         return body.ToJsonString();
     }
 
-    /// <summary>The longest note CasaZen sends as <c>privateNotes</c> (the notes of a booking are at most 1000 characters).</summary>
     public const int MaxNotesLength = 1000;
 
     /// <summary>
@@ -153,7 +135,6 @@ internal static class OctorateReservationRequests
             ["roomGross"] = Money(update.RoomGross),
         };
 
-        // The PMS room of the unit, only when the target knows it: any other pmsProduct answers 500 on the sandbox.
         if (!string.IsNullOrWhiteSpace(target.PmsProductId))
             body["pmsProduct"] = IdValue(target.PmsProductId);
 
@@ -164,7 +145,6 @@ internal static class OctorateReservationRequests
         return body.ToJsonString();
     }
 
-    /// <summary>The <c>status</c> of a cancelled reservation, as Octorate spells it.</summary>
     public const string CancelledStatus = "CANCELLED";
 
     /// <summary>
@@ -191,8 +171,6 @@ internal static class OctorateReservationRequests
         return body.ToJsonString();
     }
 
-    /// <summary>The body of <c>POST /rest/v1/reservation/{acc}/{id}/payment</c>: income, never a card charge (D9).</summary>
-    /// <exception cref="ArgumentException">No transaction, a mode that is not a word, an amount that is not above zero.</exception>
     public static string PaymentBody(OctoratePaymentRegistration payment)
     {
         ArgumentNullException.ThrowIfNull(payment);
@@ -243,20 +221,16 @@ internal static class OctorateReservationRequests
         return paid - taxPaid;
     }
 
-    /// <summary>An amount to the cent (half away from zero, as every amount of CasaZen).</summary>
     public static decimal Money(decimal amount) => decimal.Round(amount, 2, MidpointRounding.AwayFromZero);
 
-    /// <summary>A UTC instant in the form of the reservations (<c>2026-12-09T23:00:00+00:00[UTC]</c>).</summary>
     public static string Instant(DateTime utc) =>
         AsUtc(utc).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture) + "+00:00[UTC]";
 
-    /// <summary>A UTC instant in the form the payment of the sandbox was accepted with (<c>2026-11-04T20:35:14Z</c>).</summary>
     public static string PaymentInstant(DateTime utc) =>
         AsUtc(utc).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
     private static string Day(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>An id of Octorate as the number the OpenAPI declares; an id that is not a number goes as text (and Octorate refuses it).</summary>
     private static JsonNode IdValue(string id)
     {
         var text = id.Trim();

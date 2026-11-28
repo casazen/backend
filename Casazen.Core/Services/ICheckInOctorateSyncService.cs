@@ -47,33 +47,24 @@ public interface ICheckInOctorateSyncService
     /// </summary>
     Task<OctorateStayStateResult> SetStayStateAsync(Guid bookingId, OctorateStayState state, CancellationToken cancellationToken);
 
-    /// <summary>Read-only: where the guests and the three states of the stay stand on Octorate, with the arrival read back. No Octorate call.</summary>
     Task<OctorateCheckInView> GetStatusAsync(Guid bookingId, CancellationToken cancellationToken);
 }
 
-/// <summary>The outcome of <see cref="ICheckInOctorateSyncService.SendGuestsAsync"/>.</summary>
 public enum OctorateCheckInSendState
 {
-    /// <summary>The booking is not mirrored on Octorate (see the reason): nothing written, no row.</summary>
     NotMirrored = 0,
 
-    /// <summary>The sender of the property does not send through Octorate, or the stay owes no communication (see the reason): nothing written.</summary>
     NotApplicable = 1,
 
-    /// <summary>Every guest is already on Octorate as it is now.</summary>
     NothingToSend = 2,
 
-    /// <summary>Every change was accepted.</summary>
     Sent = 3,
 
-    /// <summary>Some guests were accepted, some failed (their links say why).</summary>
     PartlyFailed = 4,
 
-    /// <summary>Every change failed.</summary>
     Failed = 5,
 }
 
-/// <summary>What happened to one guest.</summary>
 public enum OctorateGuestSendOutcome
 {
     Created = 0,
@@ -105,7 +96,6 @@ public sealed record OctorateCheckInSendResult(
     IReadOnlyList<OctorateGuestSendResult> Guests,
     bool CorrectionAfterSend);
 
-/// <summary>The outcome of <see cref="ICheckInOctorateSyncService.SetStayStateAsync"/>.</summary>
 public enum OctorateStayStateOutcome
 {
     NotMirrored = 0,
@@ -113,10 +103,6 @@ public enum OctorateStayStateOutcome
     Sent = 2,
     Failed = 3,
 
-    /// <summary>
-    /// The stay is no longer in the state the push is about (a <see cref="OctorateStayState.NoShow"/> that is retried after a late arrival cleared
-    /// the mark): nothing was called and the open row of the push was closed.
-    /// </summary>
     NotApplicable = 4,
 
     /// <summary>
@@ -126,7 +112,6 @@ public enum OctorateStayStateOutcome
     WaitingForGuests = 5,
 }
 
-/// <summary>A push of a state of the stay: the outcome and, when it failed, why.</summary>
 public sealed record OctorateStayStateResult(OctorateStayStateOutcome Outcome, string? ErrorCode);
 
 /// <summary>Where the check-in of a stay stands on Octorate (read-only, the wizard of E03/F01/US01/T04 shows it).</summary>
@@ -157,7 +142,6 @@ public sealed record OctorateGuestLinkView(
     string? ErrorFields = null,
     DateTime? LastAttemptAt = null);
 
-/// <summary>One state of the stay; <paramref name="Status"/> null when it was never pushed.</summary>
 public sealed record OctorateStayStateView(
     OctorateStayState State,
     OctorateSyncStatus? Status,

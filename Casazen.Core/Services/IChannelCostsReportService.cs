@@ -2,12 +2,6 @@ using Casazen.Core.Authorization;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The channel costs report of the host (NF-98, E07/F03/US02/T02): gross, commission and net for each channel, and the processing fees of the direct stays, with
-/// how each channel settles its commission. Money, so the web layer reads it only for a caller with <c>payment.read</c>, and it shows only what the caller's
-/// <see cref="HostScope"/> reaches, in SQL. By accrual, like the revenue of the Home: the stays are exactly the ones of <c>bookings-by-channel</c> (the confirmed
-/// stays with a night in the period) and the gross is the Home's revenue of them.
-/// </summary>
 public interface IChannelCostsReportService
 {
     /// <summary>

@@ -61,28 +61,20 @@ public sealed class MessageReplyService(
     TimeProvider? timeProvider = null,
     IEnumerable<IThreadReplyObserver>? replyObservers = null) : IMessageReplyService
 {
-    /// <summary>Stable code of the 409 of a conversation whose listing has no decided mapping.</summary>
     public const string MappingNotConfirmedCode = "mapping_not_confirmed";
 
-    /// <summary>Stable code of the 409 of a read of the contact that the channel manager does not release.</summary>
     public const string ContactInfoUnavailableCode = "contact_info_unavailable";
 
-    /// <summary>Stable code of the 409 of a booking with no way to write to its guest.</summary>
     public const string NoContactChannelCode = "no_contact_channel";
 
-    /// <summary>The code of a message that could not be handed to the queue of the e-mails (the state is <see cref="OtaMessageDeliveryState.Error"/>).</summary>
     public const string EmailNotQueuedCode = "email_not_queued";
 
-    /// <summary>The code of a message the channel manager accepted and then reports as failed (<c>ERROR</c> in its own answer).</summary>
     public const string ChannelReportedErrorCode = "octorate_message_error";
 
-    /// <summary>A row in <see cref="OtaMessageDeliveryState.Created"/> with no id older than this was never sent by a call that is still running.</summary>
     public static readonly TimeSpan StaleSendWindow = TimeSpan.FromMinutes(2);
 
-    /// <summary>How long the key of an e-mail to a guest is remembered.</summary>
     public static readonly TimeSpan EmailKeyMemory = TimeSpan.FromHours(1);
 
-    /// <summary>Taken for a moment to find or make the gate of a key of an e-mail (never across an await).</summary>
     private static readonly object EmailGatesLock = new();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -100,7 +92,6 @@ public sealed class MessageReplyService(
         ArgumentNullException.ThrowIfNull(scope);
         CheckAuthor(origin, ruleCode);
 
-        // The key of a review is not a conversation: nothing is ever written to it through the reply of a conversation (E05/F06/US01/T03).
         if (key.IsReview)
             throw ThreadNotFound();
 
@@ -142,7 +133,6 @@ public sealed class MessageReplyService(
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // What does not depend on the booking is refused before the channel manager is asked anything (the options of an e-mail read the reservation).
         if (GuestMessageRules.NormalizeText(text) is not { Length: <= GuestMessageRules.TextMaxLength })
             throw new DomainRuleException(MessageChannelRules.TextInvalidCode, "GuestMessageTextInvalid");
 
@@ -162,10 +152,6 @@ public sealed class MessageReplyService(
         }
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // A conversation with the guest of a direct booking
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private async Task<MessageReplyResult> ReplyDirectAsync(
         HostScope scope,
         MessageThreadKey key,
@@ -175,7 +161,6 @@ public sealed class MessageReplyService(
         MessageOrigin origin,
         CancellationToken ct)
     {
-        // The booking is within the reach of the scope, or the conversation is not there: only then is the existing service asked, unchanged.
         var reachable = await db.Bookings
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId && b.Id == key.Id)
@@ -184,7 +169,6 @@ public sealed class MessageReplyService(
         if (!reachable)
             throw ThreadNotFound();
 
-        // A message nobody wrote (a routine's) answers nobody on a direct thread either: the guest's question stays unread and waiting, as on the channels (the origin is stored on the message).
         var automatic = origin == MessageOrigin.Automation;
         var sent = automatic
             ? await guestMessages.ReplyAsAutomationAsync(key.Id, text, idempotencyKey, ct)
@@ -203,10 +187,6 @@ public sealed class MessageReplyService(
         return new MessageReplyResult(MessageContactChannel.Direct, key, message, OtaMessageDeliveryState.Sent, sent.Replayed, null);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // A conversation of a channel
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private async Task<MessageReplyResult> ReplyOtaAsync(
         HostScope scope,
         MessageThreadKey key,
@@ -217,8 +197,6 @@ public sealed class MessageReplyService(
         string? ruleCode,
         CancellationToken ct)
     {
-        // The conversation as the caller sees it: the org of the scope, and the properties it reaches (a conversation with no property is only in the
-        // scope of whoever reaches every property). Anything else is a 404.
         var thread = await db.OtaMessageThreads
             .AsNoTracking()
             .Where(t => t.OrgId == scope.OrgId && t.Id == key.Id)
@@ -228,11 +206,9 @@ public sealed class MessageReplyService(
             .FirstOrDefaultAsync(ct)
             ?? throw ThreadNotFound();
 
-        // The guest of an erased conversation is gone: nothing is written to it.
         if (thread.Anonymized)
             throw ThreadClosed();
 
-        // OCT-04: nothing is written to a channel for a property whose listing was not decided, and nothing is sent when the connector is off.
         if (thread.PropertyId is not { } propertyId || await channelMapping.IsWriteBlockedAsync(propertyId, ct))
             throw MappingNotConfirmed();
 
@@ -250,7 +226,6 @@ public sealed class MessageReplyService(
         var idempotency = GuestMessageRules.NormalizeIdempotencyKey(idempotencyKey)
             ?? throw new DomainRuleException("idempotency_key_invalid", "IdempotencyKeyInvalid");
 
-        // The row is written before the call, under the lock of the conversation; a second send with the same key finds it and sends nothing.
         var (row, replayed) = await WriteBeforeSendingAsync(thread, clean!, idempotency, userId, origin, ruleCode, ct);
         if (replayed)
         {
@@ -266,7 +241,6 @@ public sealed class MessageReplyService(
         }
         catch (OctorateServerException ex)
         {
-            // No answer, a 5xx, or an answer that cannot be read: the message may have left. It is not sent again here (OCT-10, OCT-13).
             logger.LogWarning(
                 "OTA message {MessageId} of thread {ThreadId} (org {OrgId}): the outcome of the send is not known ({Code}); it waits for a person",
                 row.Id, thread.Id, thread.OrgId, ex.Code);
@@ -275,7 +249,6 @@ public sealed class MessageReplyService(
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // The caller left while the message was on its way: just as unknown.
             await StoreOutcomeAsync(thread, row, null, OtaMessageDeliveryState.ManualVerify, CancellationToken.None);
             throw;
         }
@@ -288,14 +261,11 @@ public sealed class MessageReplyService(
         }
         catch (OctorateChatNotReadException)
         {
-            // The thread could not be read, so the message was never built nor posted: the row is taken away again, the same key can be sent again, and
-            // the 502 reaches the caller. (A 5xx, a timeout or an unreadable answer of the POST itself is the outcome nobody knows: ManualVerify above.)
             await DiscardAsync(row);
             throw;
         }
         catch (OctorateException ex)
         {
-            // A typed refusal: a message the channel manager did not take. The state says so, with the code.
             logger.LogWarning(
                 "OTA message {MessageId} of thread {ThreadId} (org {OrgId}) was not sent: {Code} (HTTP {Status})",
                 row.Id, thread.Id, thread.OrgId, ex.Code, ex.OctorateStatusCode);
@@ -304,7 +274,6 @@ public sealed class MessageReplyService(
         }
         catch (ArgumentException)
         {
-            // An id Octorate could not take (the checks of the client): nothing left CasaZen.
             logger.LogWarning(
                 "OTA message {MessageId} of thread {ThreadId} (org {OrgId}) was not sent: the ids of the conversation are not valid",
                 row.Id, thread.Id, thread.OrgId);
@@ -320,10 +289,6 @@ public sealed class MessageReplyService(
         return ResultOf(key, row, replayed: false, errorCode: row.DeliveryState == OtaMessageDeliveryState.Error ? ChannelReportedErrorCode : null);
     }
 
-    /// <summary>
-    /// Tells every <see cref="IThreadReplyObserver"/> that a person answered the conversation: only for a message that went out or that the channel manager holds (a refused one, or one
-    /// whose outcome is not known, is not an answer yet) and that a person wrote or approved (an automatic send of the assistant has no user). An observer that fails is logged.
-    /// </summary>
     private async Task TellReplyObserversAsync(Guid orgId, MessageThreadKey key, OtaMessageDeliveryState state, string? userId)
     {
         if (string.IsNullOrWhiteSpace(userId)
@@ -428,8 +393,6 @@ public sealed class MessageReplyService(
         {
             var now = Now();
 
-            // An automatic message (the check-in link, E23/F01/US01/T01) answers nobody: it marks no message of the guest as read and does not make the conversation
-            // «answered», so a question of the guest still waits for its answer in «Da rispondere». It is still the latest message.
             var answers = row.Origin != MessageOrigin.Automation;
             if (answers)
             {
@@ -440,7 +403,6 @@ public sealed class MessageReplyService(
                     message.ReadAt = now;
             }
 
-            // A conversation that was erased in the meantime has nothing left to count.
             if (await db.OtaMessageThreads.FirstOrDefaultAsync(t => t.OrgId == thread.OrgId && t.Id == thread.Id, ct) is { } conversation)
             {
                 if (answers)
@@ -462,7 +424,6 @@ public sealed class MessageReplyService(
             await transaction.CommitAsync(ct);
     }
 
-    /// <summary>Takes the row of a send that did not happen away again (a 429): the same key can be sent later.</summary>
     private async Task DiscardAsync(OtaMessage row)
     {
         db.OtaMessages.Remove(row);
@@ -472,7 +433,6 @@ public sealed class MessageReplyService(
     private static MessageReplyResult ResultOf(MessageThreadKey key, OtaMessage row, bool replayed, string? errorCode) =>
         new(MessageContactChannel.Ota, key, HubMessageOf(row), row.DeliveryState, replayed, errorCode);
 
-    /// <summary>The message as the hub shows an outbound message of a channel: no name of the sender, never read, no file.</summary>
     private static MessageHubMessage HubMessageOf(OtaMessage row) => new(
         row.Id,
         row.Direction,
@@ -484,10 +444,6 @@ public sealed class MessageReplyService(
         null,
         row.Direction == OtaMessageDirection.Outbound ? row.DeliveryState : null,
         null);
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // Which channel reaches the guest of a booking
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private async Task<Choice> ChooseAsync(HostScope scope, Guid bookingId, CancellationToken ct)
     {
@@ -524,7 +480,6 @@ public sealed class MessageReplyService(
             };
         }
 
-        // A stay entered by the host or taken from an iCal feed has no conversation anywhere.
         return new Choice(booking.Id, None(MessageContactOptions.NoConversationReason, false, false));
     }
 
@@ -533,7 +488,6 @@ public sealed class MessageReplyService(
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return new Choice(booking.Id, None(MessageContactOptions.NotConnectedReason, false, false));
 
-        // The conversation of the booking, at the property of the booking (a conversation moved to another house by a new mapping is not its own).
         var thread = await db.OtaMessageThreads
             .AsNoTracking()
             .Where(t => t.OrgId == booking.OrgId && t.BookingId == booking.Id && t.PropertyId == booking.PropertyId && t.AnonymizedAt == null)
@@ -543,22 +497,17 @@ public sealed class MessageReplyService(
             .FirstOrDefaultAsync(ct);
         if (thread is not null)
         {
-            // OCT-04: a conversation of a listing nobody decided is not chosen.
             return thread.PropertyId is not { } propertyId || await channelMapping.IsWriteBlockedAsync(propertyId, ct)
                 ? new Choice(booking.Id, None(MessageContactOptions.MappingNotConfirmedReason, false, false))
                 : new Choice(booking.Id, new MessageContactOptions(MessageContactChannel.Ota, MessageThreadKey.ForOta(thread.Id), null, false, false));
         }
 
-        // A channel that has a chat but no conversation yet: the guest has not written, and the channel does not let the host start one.
         if (booking.OtaChat)
             return new Choice(booking.Id, None(MessageContactOptions.NoConversationReason, false, false));
 
-        // The e-mail is a first contact about a stay that exists: a booking that is pending or cancelled, or a no-show, gets none, and the contact of its guest is
-        // not even read. The statuses are the ones of a stay that owes a police communication, the single definition of an active stay (AlloggiatiStatusRules).
         if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) || booking.NoShow)
             return new Choice(booking.Id, None(MessageContactOptions.NoConversationReason, false, false));
 
-        // A channel with no chat: the only way is an e-mail, if the channel manager holds the guest's address (a flag; the address is not asked for).
         if (await targets.AccommodationOfAsync(booking.PropertyId, ct) is not { } accommodation)
             return new Choice(booking.Id, None(MessageContactOptions.MappingNotConfirmedReason, false, false));
 
@@ -581,10 +530,6 @@ public sealed class MessageReplyService(
     private static MessageContactOptions None(string reason, bool emailAvailable, bool phoneAvailable) =>
         new(MessageContactChannel.None, null, reason, emailAvailable, phoneAvailable);
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The e-mail to the guest of a booking of a channel with no chat
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private async Task<MessageReplyResult> SendByEmailAsync(
         HostScope scope,
         Choice choice,
@@ -601,13 +546,10 @@ public sealed class MessageReplyService(
         var idempotency = GuestMessageRules.NormalizeIdempotencyKey(idempotencyKey)
             ?? throw new DomainRuleException("idempotency_key_invalid", "IdempotencyKeyInvalid");
 
-        // The same key is the same e-mail: nothing is read from the channel manager and nothing is queued twice.
         var memory = new EmailSendKey(scope.OrgId, bookingId, idempotency);
         if (cache.TryGetValue(memory, out _))
             return EmailAlreadySent();
 
-        // One request at a time for one key, taken BEFORE the contact is read. A double click is two requests at once: the second waits for the first and
-        // then finds the key remembered (it answers «replayed»), or, when the first failed and remembered nothing, it sends the e-mail itself.
         var gate = EmailGateOf(memory);
         await gate.WaitAsync(ct);
         try
@@ -625,7 +567,6 @@ public sealed class MessageReplyService(
     private static MessageReplyResult EmailAlreadySent() =>
         new(MessageContactChannel.Email, null, null, OtaMessageDeliveryState.Sent, true, null);
 
-    /// <summary>The gate of the key of an e-mail: one for each key, made once under a lock and kept in memory as long as the key is.</summary>
     private SemaphoreSlim EmailGateOf(EmailSendKey key)
     {
         var gateKey = new EmailGateKey(key);
@@ -640,7 +581,6 @@ public sealed class MessageReplyService(
         }
     }
 
-    /// <summary>Reads the contact of the booking, records the read, writes the e-mail and hands it to the queue; the key is remembered only if the queue took it.</summary>
     private async Task<MessageReplyResult> ReadAndQueueEmailAsync(
         HostScope scope,
         Choice choice,
@@ -660,7 +600,6 @@ public sealed class MessageReplyService(
         }
         catch (Exception ex) when (ex is OctorateSensitiveDataNotAllowedException or OctorateNotFoundException or OctorateRequestRejectedException)
         {
-            // Nothing was released: no line in the activity log, no e-mail, and the answer says the contact cannot be read.
             logger.LogWarning(
                 "The contact of booking {BookingId} (org {OrgId}) was not released by the channel manager ({Code})",
                 bookingId, scope.OrgId, ((OctorateException)ex).Code);
@@ -675,7 +614,6 @@ public sealed class MessageReplyService(
             (OrgActivityDetailKeys.Purpose, ContactReadPurposes.MessageToGuest)));
         await db.SaveChangesAsync(ct);
 
-        // An answer that was not understood, or with no usable address, is not a guest with no contact: say the contact cannot be read.
         var address = contact.Recognized ? contact.Email?.Trim() : null;
         if (string.IsNullOrEmpty(address)
             || !MailAddress.TryCreate(address, out var parsed)
@@ -703,8 +641,6 @@ public sealed class MessageReplyService(
             clean,
             string.IsNullOrWhiteSpace(facts.ContactEmail) ? null : facts.ContactEmail.Trim());
 
-        // The address goes to the queue and nowhere else: not in the answer, not in a log, not in a row of ours. The job of the queue holds it, with the text,
-        // for the life of the job (Hangfire keeps a delivered job 24 hours by default).
         if (!emailQueue.Enqueue(address, content, EmailTemplates.Names.HostGuestMessage))
         {
             logger.LogWarning("The e-mail to the guest of booking {BookingId} (org {OrgId}) could not be queued", bookingId, scope.OrgId);
@@ -716,7 +652,6 @@ public sealed class MessageReplyService(
         return new MessageReplyResult(MessageContactChannel.Email, null, null, OtaMessageDeliveryState.Sent, false, null);
     }
 
-    /// <summary>Italian for a guest of Italy or of no known country, English for everyone else: the e-mail has no other language to go by.</summary>
     internal static System.Globalization.CultureInfo EmailCultureOf(string? country)
     {
         var normalized = country?.Trim().ToUpperInvariant();
@@ -724,8 +659,6 @@ public sealed class MessageReplyService(
             ? EmailTemplates.DefaultCulture
             : System.Globalization.CultureInfo.GetCultureInfo("en");
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private static void CheckAuthor(MessageOrigin origin, string? ruleCode)
     {
@@ -756,7 +689,6 @@ public sealed class MessageReplyService(
 
     private static DomainConflictException ContactInfoUnavailable() => new(ContactInfoUnavailableCode, "MessageContactInfoUnavailable");
 
-    /// <summary>The 409 of a booking with nobody to write to: the reason the options gave, as the code the client already knows when there is one.</summary>
     private static DomainConflictException NoChannel(string? reason) => reason switch
     {
         MessageContactOptions.MappingNotConfirmedReason => MappingNotConfirmed(),
@@ -788,11 +720,9 @@ public sealed class MessageReplyService(
         bool HasPhone,
         bool NoShow)
     {
-        /// <summary>The channel of the booking is one of the four that have a chat (the others are written to by e-mail).</summary>
         public bool OtaChat => OtaChannelMapper.Of(Source) is not null;
     }
 
-    /// <summary>What <see cref="ChooseAsync"/> found: the options for the caller, and for an e-mail the accommodation and the <c>refer</c> the read of the contact needs.</summary>
     private sealed record Choice(Guid BookingId, MessageContactOptions Options, string? AccommodationId = null, string? Refer = null);
 
     private sealed record EmailFacts(
@@ -806,6 +736,5 @@ public sealed class MessageReplyService(
 
     private readonly record struct EmailSendKey(Guid OrgId, Guid BookingId, string Key);
 
-    /// <summary>The key under which the gate of an e-mail is kept in memory.</summary>
     private readonly record struct EmailGateKey(EmailSendKey Send);
 }

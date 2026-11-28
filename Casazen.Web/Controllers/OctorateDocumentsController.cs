@@ -56,7 +56,6 @@ public class OctorateDocumentsController(
         if (document is null || !await CanReadAsync(document.BookingId, scope, ct))
             return this.ApiProblem(StatusCodes.Status404NotFound, OctorateDocumentErrors.DocumentNotFound, "FiscalDocumentNotFound");
 
-        // The accommodation the import read the document from; for a document imported before it was stored, the one of its booking's property.
         var accommodation = !string.IsNullOrWhiteSpace(document.OctorateAccommodationId)
             ? document.OctorateAccommodationId
             : document.BookingId is { } bookingId ? await AccommodationOfAsync(orgId.Value, bookingId, ct) : null;
@@ -78,7 +77,6 @@ public class OctorateDocumentsController(
         }
     }
 
-    /// <summary>The booking of the document, authorized like the payments of a booking; a document without a booking only for the whole org.</summary>
     private async Task<bool> CanReadAsync(Guid? bookingId, HostScope scope, CancellationToken ct)
     {
         if (bookingId is not { } id)
@@ -88,7 +86,6 @@ public class OctorateDocumentsController(
         return booking is not null && await authorizationService.IsAuthorizedAsync(User, booking, PaymentOperations.Read);
     }
 
-    /// <summary>The accommodation of the booking's property on Octorate (its confirmed mapping); <c>null</c> when there is none.</summary>
     private Task<string?> AccommodationOfAsync(Guid orgId, Guid bookingId, CancellationToken ct) =>
         db.Bookings
             .AsNoTracking()

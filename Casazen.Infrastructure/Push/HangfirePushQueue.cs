@@ -15,16 +15,10 @@ public sealed class QueuedPush
 
     public Guid AudienceId { get; set; }
 
-    /// <summary>The user of a <see cref="PushAudienceKind.User"/> audience; <c>null</c> for the others (and for a job queued before it existed).</summary>
     public string? AudienceUserId { get; set; }
 
-    /// <summary>
-    /// The context of the permission the hosts of a <see cref="PushAudienceKind.PropertyHosts"/> audience must also hold (<see cref="PushAudience.RequiredPermission"/>): <c>short-rent</c>
-    /// for the alerts of the notification of the guests to the police. <c>null</c> for every other push, and for a job queued before it existed (no narrowing).
-    /// </summary>
     public string? AudiencePermissionContext { get; set; }
 
-    /// <summary>The permission itself (<c>alloggiati.submit</c>); <c>null</c> with <see cref="AudiencePermissionContext"/>.</summary>
     public string? AudiencePermissionKey { get; set; }
 
     public string Title { get; set; } = string.Empty;
@@ -39,10 +33,8 @@ public sealed class QueuedPush
 
     public Guid? ServiceRequestId { get; set; }
 
-    /// <summary>The item of the approval queue the push is about (<c>data.approvalItemId</c>); <c>null</c> for the others (and for a job queued before it existed).</summary>
     public Guid? ApprovalItemId { get; set; }
 
-    /// <summary>The category of notification the app registered (<c>categoryId</c>); <c>null</c> for the others (and for a job queued before it existed).</summary>
     public string? CategoryId { get; set; }
 
     public PushAudience ToAudience() => new(
@@ -87,8 +79,6 @@ public sealed class HangfirePushQueue(
             if (deliveryKey.Length > 200)
                 throw new ArgumentException("A delivery key has at most 200 characters.", nameof(deliveryKey));
 
-            // The app has no screen of the platform staff, nor of the domain of an org (E40/F01/US02/T01), so there is no tap to open: they are
-            // told by the bell and its live update (InAppNotificationPushDecorator), never on a phone.
             if (audience.Kind is PushAudienceKind.PlatformStaff or PushAudienceKind.OrgAdmins)
             {
                 logger.LogInformation(
@@ -99,7 +89,6 @@ public sealed class HangfirePushQueue(
                 return false;
             }
 
-            // MO-03 (A6-19): a tap must open a screen that exists in the app.
             if (!PushRoutes.IsAppRoute(payload.Route))
                 throw new ArgumentException($"Push route '{payload.Route}' is not a screen of the app.", nameof(payload));
 

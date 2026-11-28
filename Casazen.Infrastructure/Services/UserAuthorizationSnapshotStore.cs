@@ -41,13 +41,10 @@ public sealed record UserAuthorizationSnapshot(
     public static UserAuthorizationSnapshot Missing { get; } =
         new(Exists: false, IsActive: true, Role: UserRole.None, SupplierOrgId: null, Memberships: []);
 
-    /// <summary>True when the user is a member of an org that was deactivated (<see cref="OrgMemberStatus.Deactivated"/>).</summary>
     public bool IsOrgMemberDeactivated => OrgMember is { Status: OrgMemberStatus.Deactivated };
 
-    /// <summary>Key of an accepted consent in <see cref="AcceptedConsents"/>.</summary>
     public static string ConsentKey(ConsentType type, string version) => $"{type}:{version}";
 
-    /// <summary>True when the user accepted <paramref name="type"/> at <paramref name="version"/> for the current org.</summary>
     public bool HasAccepted(ConsentType type, string version) =>
         AcceptedConsents?.Contains(ConsentKey(type, version)) == true;
 }
@@ -145,8 +142,6 @@ public sealed class UserAuthorizationSnapshotStore(
                 u.IsActive,
                 u.Role,
                 u.SupplierOrgId,
-                // PL-05 (A1-40): only a Host org counts as the user's org for the host gate. A legacy OrgId that points
-                // to a supplier org (pre-PL-05 supplier-only accounts) is no host org: its consents never open host contexts.
                 OrgId = u.OrgId != null && u.Org!.OrgType == OrgType.Host ? u.OrgId : null,
                 u.OnboardingCompletedAt,
             })
@@ -173,12 +168,8 @@ public sealed class UserAuthorizationSnapshotStore(
             .Select(m => new OrgMemberSnapshot(m.OrgId, m.Role, m.Status, m.PropertyScope, null, null, m.MarketingGranted))
             .FirstOrDefaultAsync(cancellationToken);
 
-        // AM-03: the properties of a member «Solo alcuni». Only a collaborator can be restricted (HostScopeResolver), so only
-        // its grants are read; IgnoreQueryFilters for the same reason as above, scoped to this user and its org explicitly.
         if (orgMember is { Role: OrgRole.Collaborator, PropertyScope: PropertyScope.Selected })
         {
-            // AM-02c: the grants of a property of a mode the member does not work in stay in the table and are not reached
-            // (OrgRoleCatalog.SingleModeOf: the member has the membership of exactly one rental context).
             var grantedMode = OrgRoleCatalog.SingleModeOf(memberships.Select(m => m.ContextKey));
 
             var grants = db.PropertyMemberAccesses
@@ -192,8 +183,6 @@ public sealed class UserAuthorizationSnapshotStore(
             orgMember = orgMember with { GrantedPropertyIds = granted.ToHashSet(), GrantedMode = grantedMode };
         }
 
-        // A deactivated member reaches nothing, whatever its memberships say: this closes the cached read while the
-        // request tenant (member_inactive) already refuses the call itself.
         var access = orgMember is { Status: OrgMemberStatus.Deactivated }
             ? []
             : memberships

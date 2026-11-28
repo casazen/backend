@@ -15,16 +15,11 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class TaxReportingExports
 {
-    /// <summary>The name of the sheet of the recipients of the Certificazione Unica: «CU» in both languages, so it is not a text to translate.</summary>
     public const string CuRecordsSheetName = "CU";
 
-    /// <summary>The name of the sheet of the data of the 770: «770» in both languages.</summary>
     public const string Tax770SheetName = "770";
 
-    /// <summary>The most rows of a table of these exports: a year of an agency is far below it, and a file is never cut at the 10 000 rows of the other reports.</summary>
     public const int MaxRows = 200_000;
-
-    // ---------------------------------------------------------------- the Certificazione Unica
 
     /// <summary>
     /// The two tables of the Certificazione Unica data of a year: the recipients (who it is made out to, the base and the withholding in euro, the tax code, how the record was made and what is
@@ -144,26 +139,18 @@ public static class TaxReportingExports
         return [recipients, stays];
     }
 
-    /// <summary>The CSV of the Certificazione Unica data: the recipients, then the stays (<see cref="CsvWriter"/>: decimal comma, <c>;</c>, a day as <c>dd/MM/yyyy</c>).</summary>
     public static byte[] CuCsv(int year, IReadOnlyList<CuRecord> records, IDocumentTexts texts, string language) =>
         CsvWriter.Write(CuTables(year, records, texts, language), MaxRows);
 
-    /// <summary>The Excel file of the Certificazione Unica data: a sheet for the recipients (<see cref="CuRecordsSheetName"/>) and one for the stays.</summary>
     public static byte[] CuXlsx(int year, IReadOnlyList<CuRecord> records, IDocumentTexts texts, string language)
     {
         var tables = CuTables(year, records, texts, language);
         return XlsxWriter.Write([new ReportSheet(CuRecordsSheetName, tables[0]), new ReportSheet(texts.Get("CuExportSheetStays", language), tables[1])], MaxRows);
     }
 
-    /// <summary>The name of the file of the Certificazione Unica data of a year: <c>cu-2026.csv</c>.</summary>
     public static string CuFileName(int year, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"cu-{year:0000}.{extension}");
 
-    /// <summary>
-    /// The draft «prospetto CU» of a recipient as a PDF: who it is made out to, the year, the stays with the base and the withholding in euro, the totals, the tax code and the rule, the
-    /// co-owners it adds up and what is missing, with the state of the annual data. It says on every page that it is a draft and not the Certificazione Unica: the agency or its accountant
-    /// prepares and files that (nothing is filed by CasaZen).
-    /// </summary>
     public static PdfDocumentContent CuProspect(int year, CuRecord record, TaxFilingState state, string orgName, IDocumentTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(record);
@@ -222,11 +209,8 @@ public static class TaxReportingExports
         };
     }
 
-    /// <summary>The name of the file of the draft CU of an owner: <c>prospetto-cu-2026-3f2a….pdf</c> (the id of the owner, never its name).</summary>
     public static string CuProspectFileName(int year, Guid ownerId) =>
         string.Create(CultureInfo.InvariantCulture, $"prospetto-cu-{year:0000}-{ownerId:N}.pdf");
-
-    // ---------------------------------------------------------------- the 770
 
     /// <summary>
     /// The table of the data of the 770: for each month and tax code the withholding made (and the base), the F24 it was paid with (its amount, due date, day paid, filing state and references)
@@ -275,19 +259,14 @@ public static class TaxReportingExports
         return table;
     }
 
-    /// <summary>The CSV of the data of the 770.</summary>
     public static byte[] Tax770Csv(Withholding770Data data, IDocumentTexts texts, string language) =>
         CsvWriter.Write(Tax770Table(data, texts, language), MaxRows);
 
-    /// <summary>The Excel file of the data of the 770: one sheet, <see cref="Tax770SheetName"/>.</summary>
     public static byte[] Tax770Xlsx(Withholding770Data data, IDocumentTexts texts, string language) =>
         XlsxWriter.Write([new ReportSheet(Tax770SheetName, Tax770Table(data, texts, language))], MaxRows);
 
-    /// <summary>The name of the file of the data of the 770 of a year: <c>770-2026.csv</c>.</summary>
     public static string Tax770FileName(int year, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"770-{year:0000}.{extension}");
-
-    // ---------------------------------------------------------------- the communication of the short-let contracts
 
     /// <summary>
     /// The table of the communication of the contracts: for each contract the lessor (name, fiscal code, address), the property (address, comune, cadastral data and CIN when stored), the duration
@@ -360,19 +339,14 @@ public static class TaxReportingExports
         return table;
     }
 
-    /// <summary>The CSV of the communication of the contracts.</summary>
     public static byte[] ContractsCsv(ContractsCommunication data, IDocumentTexts texts, string language) =>
         CsvWriter.Write(ContractsTable(data, texts, language), MaxRows);
 
-    /// <summary>The Excel file of the communication of the contracts: one sheet.</summary>
     public static byte[] ContractsXlsx(ContractsCommunication data, IDocumentTexts texts, string language) =>
         XlsxWriter.Write([new ReportSheet(texts.Get("ContractsExportSheet", language), ContractsTable(data, texts, language))], MaxRows);
 
-    /// <summary>The name of the file of the communication of the contracts of a year: <c>comunicazione-locazioni-brevi-2026.csv</c>.</summary>
     public static string ContractsFileName(int year, string extension) =>
         string.Create(CultureInfo.InvariantCulture, $"comunicazione-locazioni-brevi-{year:0000}.{extension}");
-
-    // ---------------------------------------------------------------- the words
 
     private static string? EntityKindText(string? kind, IDocumentTexts texts, string language) => kind switch
     {
@@ -388,7 +362,6 @@ public static class TaxReportingExports
         _ => texts.Get("CuAttributionOwner", language),
     };
 
-    /// <summary>What each co-owner puts into a record: <c>Name: base / withholding</c>, separated by <c>;</c>; <c>null</c> for a record of one owner.</summary>
     private static string? SharesText(IReadOnlyList<CuShare> shares, string language) =>
         shares.Count == 0
             ? null
@@ -413,19 +386,15 @@ public static class TaxReportingExports
         _ => reason,
     };
 
-    /// <summary>The street address of a property, with its apartment when it has one (<c>Via Roma 1, int. 5</c>).</summary>
     private static string? AddressOf(CuProperty? property) =>
         property is null ? null : string.IsNullOrWhiteSpace(property.Unit) ? property.Address : $"{property.Address}, {property.Unit}";
 
-    /// <summary>The postal code and the town of a property (<c>22100 Como</c>).</summary>
     private static string? CityOf(CuProperty? property) =>
         property is null ? null : $"{property.PostalCode} {property.City}".Trim();
 
-    /// <summary>The property as a line of the PDF: its name and its address.</summary>
     private static string PropertyText(CuProperty? property) =>
         property is null ? string.Empty : $"{property.Name}, {AddressOf(property)}, {CityOf(property)}";
 
-    /// <summary>The address of the recipient in one line: the structured address of the registry, else the legal address of the fiscal profile; <c>null</c> when there is none.</summary>
     private static string? AddressText(CuRecipient recipient)
     {
         var street = string.Join(" ", new[] { recipient.Street, recipient.Civic }.Where(part => !string.IsNullOrWhiteSpace(part)));

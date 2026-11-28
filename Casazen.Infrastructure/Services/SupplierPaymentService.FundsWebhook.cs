@@ -23,8 +23,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class SupplierPaymentService
 {
-    // ─── payment_intent.* of a held payment ─────────────────────────────────────────────────────────────────────────
-
     /// <summary>
     /// Applies a <c>payment_intent.*</c> event to a payment held by CasaZen (the payment is locked and read again by the caller): the block
     /// <c>amount_capturable_updated</c>, the charge <c>succeeded</c> and the block that ended <c>canceled</c>. The other events do not concern
@@ -35,7 +33,6 @@ public sealed partial class SupplierPaymentService
         var now = Now();
         if (!string.Equals(payment.StripePaymentIntentId, paymentEvent.PaymentIntentId, StringComparison.Ordinal))
         {
-            // Another PaymentIntent that names this payment: if it was charged, the payer paid twice.
             if (paymentEvent.EventType == "payment_intent.succeeded")
             {
                 logger.LogError(
@@ -66,11 +63,6 @@ public sealed partial class SupplierPaymentService
         };
     }
 
-    /// <summary>
-    /// The card of a host that is paying a held payment was refused (SP-15c-b): the payment is plainly <c>Failed</c> with the code, and payable
-    /// again with the same PaymentIntent. Nothing else: the payer saw the refusal in the Payment Element. A payment that is already charged, or
-    /// not waiting for the payer, is left alone (a late event).
-    /// </summary>
     private ServicePaymentNotice? ApplyHeldPaymentFailed(ServiceRequestPayment payment, ServicePaymentIntentEvent paymentEvent, DateTime now)
     {
         if (payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Processing or ServicePaymentStatus.Failed))
@@ -84,18 +76,12 @@ public sealed partial class SupplierPaymentService
         return null;
     }
 
-    /// <summary>
-    /// The card is blocked. For a payment that exists this is what it already is (it is created <c>Authorized</c> when the e-mail and the
-    /// block are both true), so the event only checks the block against the payment and changes nothing when it matches.
-    /// </summary>
     private ServicePaymentNotice? ApplyBlockEvent(
         ServiceRequestPayment payment,
         HeldChargeObservation observation,
         ServicePaymentIntentEvent paymentEvent,
         DateTime now)
     {
-        // SP-10b-b: the card of an offer the customer accepted was blocked. The payment of such an offer is born waiting for the card; the block is
-        // what it was waiting for, if it is the one that was asked for. Only a private payer's: a host pays at once and never blocks a card.
         if (payment is { Status: ServicePaymentStatus.Requested or ServicePaymentStatus.Failed, PayerKind: ServicePayerKind.Private })
             return ApplyOfferBlockEvent(payment, observation, paymentEvent, now);
 
@@ -116,11 +102,6 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentNotice(ServicePaymentNoticeKind.FundsAlert, payment.Id, Detail: code);
     }
 
-    /// <summary>
-    /// The card of the offer a customer accepted on a request on measure is blocked (SP-10b-b). Checked against the payment like every block (the
-    /// platform's own PaymentIntent, the whole total, nothing charged, no fee); then the payment is <c>Authorized</c> and the notice tells the handler of
-    /// the webhook to take the request, once this event is committed. A block that is not what was asked for goes to review and takes nothing.
-    /// </summary>
     private ServicePaymentNotice? ApplyOfferBlockEvent(
         ServiceRequestPayment payment,
         HeldChargeObservation observation,
@@ -172,11 +153,9 @@ public sealed partial class SupplierPaymentService
                 or ServicePaymentStatus.PartiallyRefunded
                 or ServicePaymentStatus.Refunded
                 or ServicePaymentStatus.NeedsReview:
-                // The same success again: nothing to do (a payment that needs a review is settled by an admin).
                 return null;
 
             case ServicePaymentStatus.Canceled:
-                // The block was dropped and yet the card was charged: money CasaZen holds for nothing. The admins decide.
                 logger.LogError(
                     "Held payment {PaymentId} was canceled but PaymentIntent {PaymentIntentId} succeeded (event {EventId}): refund it",
                     payment.Id, paymentEvent.PaymentIntentId, paymentEvent.EventId);
@@ -196,7 +175,6 @@ public sealed partial class SupplierPaymentService
             return new ServicePaymentNotice(ServicePaymentNoticeKind.FundsAlert, payment.Id, Detail: code);
         }
 
-        // The money is not in the future: a clock that runs behind Stripe's does not date a payment after now.
         var chargedAt = paymentEvent.OccurredAt is { } at && at < now ? at : now;
         RecordCaptured(payment, paymentEvent.LatestChargeId, chargedAt);
         payment.UpdatedAt = now;
@@ -206,12 +184,10 @@ public sealed partial class SupplierPaymentService
         return null;
     }
 
-    /// <summary>The block ended without a charge (Stripe let it expire, or somebody canceled it outside CasaZen): the payment is dropped.</summary>
     private ServicePaymentNotice? ApplyBlockEndedEvent(ServiceRequestPayment payment, ServicePaymentIntentEvent paymentEvent, DateTime now)
     {
         if (payment.Status != ServicePaymentStatus.Authorized)
         {
-            // A charged PaymentIntent cannot be canceled: this is a late event about a block CasaZen already settled.
             return null;
         }
 
@@ -224,10 +200,6 @@ public sealed partial class SupplierPaymentService
         return null;
     }
 
-    /// <summary>
-    /// A refund event for a payment held by CasaZen can be recorded once the money was charged. One that reaches CasaZen before the charge it
-    /// follows reads the PaymentIntent from the platform and records the charge first, with the checks of the webhook.
-    /// </summary>
     private async Task<bool> CanRecordHeldRefundsAsync(
         ServiceRequestPayment payment,
         List<ServicePaymentNotice> notices,
@@ -285,8 +257,6 @@ public sealed partial class SupplierPaymentService
         return recordable;
     }
 
-    // ─── transfer.* ─────────────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<ServicePaymentEventResult> ApplyTransferEventAsync(
         ServiceTransferEvent transfer,
         CancellationToken cancellationToken = default)
@@ -319,7 +289,6 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentEventResult(true, notices);
     }
 
-    /// <summary>The payment a transfer belongs to: by the payment id CasaZen wrote in its metadata, else by the transfer id already recorded.</summary>
     private async Task<PaymentRef?> FindPaymentRefByTransferAsync(ServiceTransferEvent transfer, CancellationToken cancellationToken)
     {
         if (transfer.PaymentId is { } paymentId)
@@ -404,10 +373,6 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentNotice(ServicePaymentNoticeKind.Released, payment.Id);
     }
 
-    /// <summary>
-    /// <c>transfer.reversed</c>: somebody took the money back from the supplier (the Stripe Dashboard, or an automatic recovery). CasaZen does
-    /// not pay the supplier again nor refund anyone on its own: it logs an error and tells the admins.
-    /// </summary>
     private ServicePaymentNotice? ApplyTransferReversed(ServiceRequestPayment payment, ServiceTransferEvent transfer)
     {
         if (!string.Equals(payment.StripeTransferId, transfer.TransferId, StringComparison.Ordinal))
@@ -418,8 +383,6 @@ public sealed partial class SupplierPaymentService
             transfer.TransferId, payment.Id, transfer.EventId);
         return new ServicePaymentNotice(ServicePaymentNoticeKind.FundsAlert, payment.Id, Detail: "transfer_reversed");
     }
-
-    // ─── charge.dispute.* ───────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<ServicePaymentEventResult> ApplyDisputeChangedAsync(
         ServiceDisputeEvent dispute,
@@ -449,10 +412,6 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentEventResult(true, notices);
     }
 
-    /// <summary>
-    /// Records the card dispute on the payment (its id, Stripe's status and when), for the admin console. The admins are told when money is
-    /// withdrawn or the dispute is lost; after the release that loss is CasaZen's (VT-D22) and nothing is recovered automatically.
-    /// </summary>
     private void RecordCardDispute(ServiceRequestPayment payment, ServiceDisputeEvent dispute, List<ServicePaymentNotice> notices)
     {
         var now = Now();

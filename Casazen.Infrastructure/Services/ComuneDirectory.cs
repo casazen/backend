@@ -119,8 +119,6 @@ public class ComuneDirectory(AppDbContext db) : IComuneDirectory
 
         foreach (var token in tokens)
         {
-            // A code is exact (any status: an old code of a comune that no longer exists still says which one it was);
-            // a name only when it is unique among the active comuni.
             if (ComuneRules.IsIstatCode(token))
             {
                 var byIstat = candidates.FirstOrDefault(c => c.IstatCode == token);

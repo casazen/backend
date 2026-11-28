@@ -8,11 +8,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <remarks>
-/// Uploading or deleting a document re-evaluates the compliance status of the property (CO-06): an active property whose
-/// required document is deleted is suspended from the booking site, a suspended one is reactivated by the upload that
-/// completes its requirements.
-/// </remarks>
 public class PropertyDocumentService(
     IPropertyDocumentRepository documentRepository,
     IImageStorageService storageService,
@@ -37,8 +32,6 @@ public class PropertyDocumentService(
         ApeUploadCheck? apeCheck = null;
         if (documentType == DocumentType.Ape)
         {
-            // Legacy APE clients also persist a PDF. Other legacy APIs keep their existing file contract;
-            // the shared multi-page frontend sends a single assembled PDF for every document type.
             file = await PhotoDocumentPdf.NormalizeAsync(file);
             if (!storageService.ValidateDocument(file))
                 throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
@@ -60,7 +53,6 @@ public class PropertyDocumentService(
                 UploadedBy = uploadedBy,
                 UploadedAt = DateTime.UtcNow
             };
-            // The code and the class read on the APE (or its code from the register): the contract states them, nobody has to type them.
             if (apeCheck is not null)
                 ApplyReadIdentification(document, apeCheck);
 
@@ -118,8 +110,6 @@ public class PropertyDocumentService(
         if (document.DocumentType != DocumentType.Ape)
             throw new DomainRuleException("document_not_ape", "DocumentNotApe");
 
-        // Shape only (no invented pattern on the code, whose format is not documented): a non-empty code within the
-        // column, a short class of letters, digits or "+" (A4...G, older A+).
         var normalizedCode = code?.Trim();
         var normalizedClass = energyClass?.Trim().ToUpperInvariant();
         if (string.IsNullOrEmpty(normalizedCode) || normalizedCode.Length > ApeDocumentLimits.CodeMaxLength
@@ -146,7 +136,6 @@ public class PropertyDocumentService(
             ?? throw new NotFoundException($"File of document {document.Id} not found") { Code = "document_file_missing", MessageKey = "NotFound" };
         var check = await apeCompliance.ReadStoredApeAsync(content, await RegistryContextAsync(document.PropertyId));
 
-        // Only what is still empty: a code or a class the landlord typed is never replaced by a reading.
         var code = document.ApeCode;
         var energyClass = document.ApeEnergyClass;
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(energyClass))
@@ -162,17 +151,12 @@ public class PropertyDocumentService(
         return new PropertyDocumentUpload(document, check);
     }
 
-    /// <summary>The comune and the region of the property: where the register of the APE is asked for a code the file does not show.</summary>
     private async Task<ApeRegistryContext?> RegistryContextAsync(Guid propertyId)
     {
         var property = await propertyRepository.GetByIdAsync(propertyId);
         return property is null ? null : new ApeRegistryContext(property.City, property.RegionCode);
     }
 
-    /// <summary>
-    /// Sets the code and the class a reading found, with the shape the hand entry has (LT-10); <paramref name="keep"/> are values
-    /// already there, which stay.
-    /// </summary>
     private static void ApplyReadIdentification(PropertyDocument document, ApeUploadCheck check, (string? Code, string? EnergyClass) keep = default)
     {
         var code = check.CertificateCode?.Trim();

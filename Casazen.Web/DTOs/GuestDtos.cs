@@ -3,9 +3,6 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>
-/// Guest row of <c>GET /api/guests</c> (TN-1): only what the list shows, never documents or consent data.
-/// </summary>
 public sealed class GuestSummaryDto
 {
     public Guid Id { get; init; }
@@ -41,7 +38,6 @@ public sealed class GuestDto
     public string Nationality { get; init; } = string.Empty;
     public Gender? Gender { get; init; }
     public GuestDocumentType? DocumentType { get; init; }
-    /// <summary>Document number masked as <c>*****</c> plus the last 3 characters; null when there is none.</summary>
     public string? DocumentNumberMasked { get; init; }
     public DateTime? DocumentIssueDate { get; init; }
     public DateTime? DocumentExpiryDate { get; init; }
@@ -122,10 +118,6 @@ public static class GuestDtoMapper
     };
 }
 
-/// <summary>
-/// Full document number of a guest, from the explicit and audited <c>GET /api/guests/{id}/document-number</c> (CO-14):
-/// every other guest answer carries it masked.
-/// </summary>
 public sealed class GuestDocumentNumberDto
 {
     public Guid GuestId { get; init; }

@@ -58,7 +58,6 @@ public sealed class OutsideChangeService(
                         && (s.Status == ChannelPublishStatus.Accepted || s.Status == ChannelPublishStatus.Published))
             .ToListAsync(ct);
 
-        // What the read can tell about a row: one with a baseline is compared with it, and a published one is confirmed by it (below).
         var compared = rows.Where(row => ListingChannelBaseline.Parse(row.ContentHashesJson).HasBaseline).ToList();
         var published = rows.Where(row => row.Status == ChannelPublishStatus.Published).ToList();
         if (compared.Count == 0 && published.Count == 0)
@@ -72,9 +71,6 @@ public sealed class OutsideChangeService(
         using (orgScope.Use(orgId))
             current = await reader.ReadAsync(listing.Value.Accommodation, product, ct);
 
-        // The channel manager answered for the listing: that is the confirmation of a published channel (a published row has no process left to
-        // read, so nothing else ever refreshes it; without this every healthy channel would go «silent» after 24 hours). An accepted row is
-        // confirmed only by the process of its push (ListingStatusService), so an answer CasaZen does not understand still confirms nothing.
         var now = Now();
         foreach (var row in published)
             row.LastSyncedAt = now;
@@ -140,7 +136,6 @@ public sealed class OutsideChangeService(
 
         if (choice == OutsideChangeChoice.Keep)
         {
-            // CasaZen's version goes over the change; the push stores the new baseline, clears the change and closes the «To do».
             await push.PublishAsync(propertyId, [row.ChannelCode], overwrite: true, userId, ct, roles);
             return;
         }
@@ -183,10 +178,6 @@ public sealed class OutsideChangeService(
         logger.LogInformation("Listing of property {PropertyId}, channel {ChannelCode}: the descriptions of the channel manager were taken", property.Id, row.ChannelCode);
     }
 
-    /// <summary>
-    /// The descriptions of the channel manager become the texts of the listing: Italian into the columns, the other languages and the directions into
-    /// the site profile. Everything is checked before anything is written, so a text that does not fit changes nothing.
-    /// </summary>
     private async Task AdoptAsync(Property property, OctorateDescriptions held, CancellationToken ct)
     {
         var italianDescription = held.Description.GetValueOrDefault("IT");
@@ -222,7 +213,6 @@ public sealed class OutsideChangeService(
             translations[italian] = translations.GetValueOrDefault(italian) is { } known ? known with { Transport = held.Directions } : new ListingTextsInput(Transport: held.Directions);
         }
 
-        // The house rules sent to the channel already hold the note on the rules; adopted back, the note would be said twice.
         await profiles.SaveAsync(property.Id, ToInput(view, translations, dropRulesNote: italianRules is not null), ct);
 
         if (italianDescription is not null)
@@ -261,7 +251,6 @@ public sealed class OutsideChangeService(
             ? null
             : new LocalizedTextInput(text.It, text.En, text.Others?.ToDictionary(entry => entry.Key, entry => (string?)entry.Value, StringComparer.Ordinal));
 
-    /// <summary>The accommodation and the room of the confirmed mapping of the property.</summary>
     private async Task<(string Accommodation, string? Product)?> MappingAsync(Guid orgId, Guid propertyId, CancellationToken ct)
     {
         var row = await db.OctorateListingMappings

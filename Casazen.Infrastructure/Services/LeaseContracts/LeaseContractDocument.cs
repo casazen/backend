@@ -7,12 +7,6 @@ using Casazen.Core.Leases;
 
 namespace Casazen.Infrastructure.Services.LeaseContracts;
 
-/// <summary>
-/// Builds the text of a lease contract from a template and the lease data (LT-03, A7-03). The clause texts come only
-/// from the template file; this class adds the computed data, and in the preview the BOZZA markers and the
-/// "missing" markers. The contract is an Italian document: its labels are Italian. The PDF is laid out by
-/// <see cref="IPdfDocumentRenderer"/> (LT-09): A4, wrapped, paginated, no length limit.
-/// </summary>
 internal static class LeaseContractDocument
 {
     public const string DraftMarker = "BOZZA - template non approvato";
@@ -20,10 +14,8 @@ internal static class LeaseContractDocument
     public const string MissingClauseMarker = "[TESTO DELLA CLAUSOLA NON FORNITO]";
     public const string MissingTitleMarker = "[TITOLO DEL CONTRATTO NON FORNITO]";
 
-    /// <summary>Watermark of every page of the preview of a template that is not approved.</summary>
     public const string DraftWatermark = "BOZZA";
 
-    /// <summary>Watermark of every page of the preview of an approved template: still not the document to sign.</summary>
     public const string ApprovedPreviewWatermark = "ANTEPRIMA";
 
     private static readonly NumberFormatInfo ItalianNumbers = new()
@@ -70,11 +62,6 @@ internal static class LeaseContractDocument
     internal static readonly string NoDocumentationNeeded =
         $"nessuno, trattandosi di un contratto di durata non superiore a {LeaseContractTerms.TransitorioDocumentationAfterDays} giorni";
 
-    /// <summary>
-    /// Value of every placeholder for <paramref name="lease"/>; null when the lease has no such data. Cadastral data come
-    /// from the property (sheet, parcel, category and income; subaltern when present), the APE identification from the
-    /// latest APE document of the property that has it (code and energy class, LT-10), the security deposit from the lease.
-    /// </summary>
     public static IReadOnlyDictionary<string, string?> ResolveData(LeaseContract lease)
     {
         var term = LeaseTerm.Between(lease.StartDate, lease.EndDate);
@@ -126,7 +113,6 @@ internal static class LeaseContractDocument
         };
     }
 
-    /// <summary>Placeholders used by the template that have no value for this lease.</summary>
     public static IReadOnlyList<string> MissingData(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data) =>
         state.Sections
             .SelectMany(s => s.Placeholders)
@@ -134,10 +120,6 @@ internal static class LeaseContractDocument
             .Where(p => string.IsNullOrWhiteSpace(data.GetValueOrDefault(p)))
             .ToList();
 
-    /// <summary>
-    /// The final contract: the approved title, then only the sections of the approved template (heading and text, line
-    /// breaks kept), with every placeholder filled.
-    /// </summary>
     public static PdfDocumentContent BuildFinalDocument(LeaseContractTemplateState state, IReadOnlyDictionary<string, string?> data)
     {
         var blocks = new List<PdfBlock>();
@@ -260,7 +242,6 @@ internal static class LeaseContractDocument
 
     private static string? FormatParties(IEnumerable<Party>? parties, PartyRole role)
     {
-        // Every party of the role, in the order entered (LT-14: co-owners, co-tenants).
         var matching = parties?.Where(p => p.Role == role).OrderBy(p => p.Position).ToList() ?? [];
         if (matching.Count == 0)
             return null;
@@ -272,8 +253,6 @@ internal static class LeaseContractDocument
         }));
     }
 
-    // One missing value must block the whole placeholder, including when only a co-owner/co-tenant is incomplete.
-    // Keep the name beside each value so multiple parties cannot be confused.
     private static string? FormatPartyValues(IEnumerable<Party>? parties, PartyRole role, Func<Party, string?> select)
     {
         var matching = parties?.Where(p => p.Role == role).OrderBy(p => p.Position).ToList() ?? [];
@@ -292,7 +271,6 @@ internal static class LeaseContractDocument
         return locality.Length == 0 ? property.Address.Trim() : $"{property.Address.Trim()}, {locality}";
     }
 
-    /// <summary>"Foglio 12, particella 345, subalterno 6, categoria A/2, rendita catastale euro 512,30"; null when incomplete.</summary>
     private static string? FormatCadastralData(Property? property)
     {
         if (property is null || !property.HasCadastralData)
@@ -310,11 +288,6 @@ internal static class LeaseContractDocument
         return string.Join(", ", parts);
     }
 
-    /// <summary>
-    /// Code and energy class of the latest APE document of the property that has them (a later one without them does not take its
-    /// place: the review of the draft asks for one that has them, <c>ape_identification_missing</c>, and this is the same rule); null
-    /// when no APE document has them (the contract then waits for them).
-    /// </summary>
     private static string? FormatApe(Property? property)
     {
         var ape = property?.PropertyDocuments?
@@ -328,14 +301,9 @@ internal static class LeaseContractDocument
 
     private static string FormatAmount(decimal amount) => amount.ToString("N2", ItalianNumbers);
 
-    /// <summary>The deposit in monthly rents as a person writes it: "2", "1,5", "0,83" (two decimals at most).</summary>
     private static string FormatMonthlyRents(decimal rents) =>
         decimal.Round(rents, 2, MidpointRounding.AwayFromZero).ToString("0.##", ItalianNumbers);
 
-    /// <summary>
-    /// A text the landlord typed, as it goes into a sentence of the contract: on one line, without the full stop that would meet the comma
-    /// or the full stop the sentence already has; null when there is none.
-    /// </summary>
     private static string? FormatFreeText(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))

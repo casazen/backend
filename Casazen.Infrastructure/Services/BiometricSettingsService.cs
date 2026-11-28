@@ -53,10 +53,8 @@ public sealed class BiometricSettingsService(
         var escalate = Normalize(update.EscalateThreshold ?? current.EscalateThreshold);
         var attempts = update.MaxAttempts ?? current.MaxAttempts;
 
-        // Bounds first: nothing is saved, nothing is logged, when the values are out of them.
         Validate(accept, escalate, attempts);
 
-        // The values in force again: nothing changes, so no calibration is lost and no line is written.
         if (enabled == current.Enabled && accept == current.AcceptThreshold && escalate == current.EscalateThreshold && attempts == current.MaxAttempts)
             return current;
 
@@ -97,7 +95,6 @@ public sealed class BiometricSettingsService(
         var row = await FindAsync(orgId, tracked: true, cancellationToken);
         if (row is null)
         {
-            // An organization that never saved its settings is on today's defaults: the calibration says they are the right ones, so they get a row.
             row = new BiometricSettings
             {
                 OrgId = orgId,
@@ -119,7 +116,6 @@ public sealed class BiometricSettingsService(
         return ViewOf(row);
     }
 
-    /// <summary>The oldest row of the org (one is what is written), or null. The tenant filter is lifted by name: the org is in the query.</summary>
     private async Task<BiometricSettings?> FindAsync(Guid orgId, bool tracked, CancellationToken cancellationToken)
     {
         var query = db.BiometricSettings.IgnoreQueryFilters().Where(s => s.OrgId == orgId);
@@ -129,7 +125,6 @@ public sealed class BiometricSettingsService(
         return await query.OrderBy(s => s.CreatedAt).ThenBy(s => s.Id).FirstOrDefaultAsync(cancellationToken);
     }
 
-    /// <summary>The plan of the org, null when the org does not exist.</summary>
     private async Task<PlanTier?> TierAsync(Guid orgId, CancellationToken cancellationToken) =>
         await db.Orgs
             .AsNoTracking()
@@ -156,7 +151,6 @@ public sealed class BiometricSettingsService(
         row.CalibratedAt,
         IsDefault: false);
 
-    /// <summary>The value as the column keeps it: the decimals of <c>decimal(5,4)</c>, so what is checked is what is stored.</summary>
     private static decimal Normalize(decimal value) => Math.Round(value, BiometricSettingsRules.Decimals, MidpointRounding.AwayFromZero);
 
     private static void Validate(decimal accept, decimal escalate, int attempts)

@@ -7,7 +7,6 @@ using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.DTOs;
 
-/// <summary>Body of <c>POST /api/public/bookings/quote</c>: the stay to price before booking (BK-03).</summary>
 public class DirectBookingQuoteRequest : IValidatableObject
 {
     [Required]
@@ -25,14 +24,12 @@ public class DirectBookingQuoteRequest : IValidatableObject
     [Range(0, 100)]
     public int NumberOfChildren { get; set; }
 
-    /// <summary>Age of each minor at check-in (0-17), one per child; asked when the tourist tax depends on it.</summary>
     public List<int>? ChildrenAges { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         ChildrenAgesValidation.Validate(validationContext, ChildrenAges, NumberOfChildren);
 }
 
-/// <summary>Price of the stay: the same numbers <c>POST /api/public/bookings</c> records and charges.</summary>
 public class DirectBookingQuoteResponse
 {
     public IReadOnlyList<DirectCheckoutExtraOffer> ExtraOffers { get; set; } = [];
@@ -49,32 +46,22 @@ public class DirectBookingQuoteResponse
     /// </summary>
     public decimal LodgingTotal { get; set; }
 
-    /// <summary>
-    /// What the length-of-stay discount of the property takes off the nights, in euros (NF-35); <c>0</c> when no tier applies. It is never
-    /// taken off the cleaning fee or the tourist tax. <c>basePrice = lodgingTotal - lengthOfStayDiscount + cleaningFee</c>.
-    /// </summary>
     public decimal LengthOfStayDiscount { get; set; }
 
-    /// <summary>The percentage of the tier that applies (for example <c>10</c>); <c>null</c> when none does.</summary>
     public decimal? LengthOfStayDiscountPercent { get; set; }
 
-    /// <summary>The fewest nights of the tier that applies; <c>null</c> when none does.</summary>
     public int? LengthOfStayDiscountMinNights { get; set; }
 
     public decimal CleaningFee { get; set; }
 
-    /// <summary>Lodging after the length-of-stay discount + cleaning.</summary>
     public decimal BasePrice { get; set; }
 
     public TouristTaxQuoteDto TouristTax { get; set; } = new();
 
-    /// <summary>Base price + tourist tax when calculated (the tax is charged with the rest of the total).</summary>
     public decimal TotalPrice { get; set; }
 
-    /// <summary>ISO 4217 code of the property (EUR or CHF, <see cref="StayCurrency"/>): every amount here is in it, and the checkout charges in it.</summary>
     public string Currency { get; set; } = StayCurrency.Default;
 
-    /// <summary>What the checkout may offer and promise for this stay (A3-16).</summary>
     public DirectBookingPaymentOptionsDto PaymentOptions { get; set; } = new();
 
     /// <summary>
@@ -88,13 +75,6 @@ public class DirectBookingQuoteResponse
     /// </summary>
     public IReadOnlyList<QuoteLineDto> Lines { get; set; } = [];
 
-    /// <summary>
-    /// What cancelling costs for this stay (DB-03b), on the cancellation policy of the stay (the catalog policy with the host's changes for a
-    /// stay under 28 nights): <c>fullRefundUntil</c> and <c>partialRefundUntil</c> are the last whole days (Europe/Rome, <c>yyyy-MM-dd</c>,
-    /// included) with the full and the partial refund, <c>partialRefundPercent</c> the share of the partial one. A window the policy does not
-    /// have, or that is already over, is <c>null</c>. <c>selfServiceAvailable</c>: the guest can cancel from the guest area (DB-08a); a
-    /// page shows the dates only when it is <c>true</c>. The same day as <c>paymentOptions.freeCancellationUntil</c> for the full refund.
-    /// </summary>
     public StayCancellation? Cancellation { get; set; }
 
     public static DirectBookingQuoteResponse From(DirectBookingQuote quote) => new()
@@ -120,22 +100,14 @@ public class DirectBookingQuoteResponse
     };
 }
 
-/// <summary>
-/// One line of the price breakdown of a quote (DB-03). Amounts are in cents (of the <c>Currency</c> of the quote), whole
-/// numbers, so the frontend adds integers and formats once.
-/// </summary>
 public class QuoteLineDto
 {
-    /// <summary><c>Nights</c>, <c>WeekendNights</c>, <c>LengthOfStayDiscount</c>, <c>CleaningFee</c>, <c>TouristTax</c> or <c>Total</c>.</summary>
     public QuoteLineKind Kind { get; set; }
 
-    /// <summary>Nights of a night line, 1 for the cleaning fee; null for the discount, the tourist tax and the total.</summary>
     public int? Quantity { get; set; }
 
-    /// <summary>Price of one night (night lines) or the fee (cleaning); null for the discount, the tourist tax and the total.</summary>
     public long? UnitAmountCents { get; set; }
 
-    /// <summary>Amount of the line (negative for the length-of-stay discount); for <c>Total</c>, the total to pay.</summary>
     public long AmountCents { get; set; }
 
     public static QuoteLineDto From(QuoteLine line) => new()
@@ -147,13 +119,10 @@ public class QuoteLineDto
     };
 }
 
-/// <summary>Payment options of a stay (BK-07, A3-16): the checkout shows only what applies.</summary>
 public class DirectBookingPaymentOptionsDto
 {
-    /// <summary>"Paga alla scadenza" can be chosen: the charge day is after today in Europe/Rome.</summary>
     public bool DeferredPaymentAvailable { get; set; }
 
-    /// <summary>Day the saved card is charged (Europe/Rome date); null when the deferred payment is not available.</summary>
     public DateOnly? DeferredChargeDate { get; set; }
 
     /// <summary>
@@ -171,21 +140,14 @@ public class DirectBookingPaymentOptionsDto
     };
 }
 
-/// <summary>Tourist tax part of a quote.</summary>
 public class TouristTaxQuoteDto
 {
-    /// <summary>
-    /// <c>Calculated</c> (amount known), <c>RateUnavailable</c> / <c>CategoryRequired</c> (CasaZen cannot compute it:
-    /// not included in the total), <c>ChildAgesRequired</c> (ask the ages of the minors).
-    /// </summary>
     public TouristTaxQuoteStatus Status { get; set; }
 
-    /// <summary>Tax of the stay in euros, only when <see cref="Status"/> is <c>Calculated</c>.</summary>
     public decimal? Amount { get; set; }
 
     public int TaxableNights { get; set; }
 
-    /// <summary>True when the amount depends on the age of the minors.</summary>
     public bool AgeRulesApply { get; set; }
 
     public IReadOnlyList<string> Categories { get; set; } = [];
@@ -200,7 +162,6 @@ public class TouristTaxQuoteDto
     };
 }
 
-/// <summary>Ages of the minors of a stay: one per child, each 0-17 (message key <c>TouristTaxChildAgesInvalid</c>).</summary>
 public static class ChildrenAgesValidation
 {
     public static IEnumerable<ValidationResult> Validate(

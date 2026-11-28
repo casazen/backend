@@ -45,13 +45,11 @@ public sealed class SignupAttributionRequestDto
     [RegularExpression(SignupAttributionRules.ComunePattern, ErrorMessage = SignupAttributionRules.InvalidCharactersKey)]
     public string? Comune { get; set; }
 
-    /// <summary>Path of the first page of the visit, without query string (e.g. <c>/p/affitti-brevi/lombardia/como</c>).</summary>
     [Display(Name = "landingPath")]
     [StringLength(SignupAttributionRules.MaxLandingPathLength, ErrorMessage = SignupAttributionRules.TooLongKey)]
     [RegularExpression(SignupAttributionRules.LandingPathPattern, ErrorMessage = SignupAttributionRules.InvalidCharactersKey)]
     public string? LandingPath { get; set; }
 
-    /// <summary>Host of the referring site (e.g. <c>www.google.com</c>), never the full URL.</summary>
     [Display(Name = "referrerHost")]
     [StringLength(SignupAttributionRules.MaxReferrerHostLength, ErrorMessage = SignupAttributionRules.TooLongKey)]
     [RegularExpression(SignupAttributionRules.ReferrerHostPattern, ErrorMessage = SignupAttributionRules.InvalidCharactersKey)]
@@ -61,17 +59,11 @@ public sealed class SignupAttributionRequestDto
         new(UtmSource, UtmMedium, UtmCampaign, UtmTerm, UtmContent, Comune, LandingPath, ReferrerHost);
 }
 
-/// <summary>Answer of <c>POST /api/users/me/signup-attribution</c>.</summary>
 public sealed class SignupAttributionResultDto
 {
-    /// <summary>
-    /// <c>true</c> when this call stored the attribution, <c>false</c> when the org already had one (the first one is
-    /// kept). Either way the client can forget the values it kept.
-    /// </summary>
     public bool Recorded { get; set; }
 }
 
-/// <summary>An attribution in the admin report (<c>GET /api/admin/signup-attributions</c>).</summary>
 public sealed class SignupAttributionAdminDto
 {
     public Guid OrgId { get; set; }
@@ -82,7 +74,6 @@ public sealed class SignupAttributionAdminDto
     public string? UtmTerm { get; set; }
     public string? UtmContent { get; set; }
 
-    /// <summary>ISTAT code of the comune.</summary>
     public string? ComuneCode { get; set; }
 
     public string? ComuneName { get; set; }

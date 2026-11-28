@@ -20,7 +20,6 @@ public record AdminStats(
     int OtaFailed,
     int OtaNeverSynced);
 
-/// <summary>Single property row in the CIN compliance report.</summary>
 public record CinComplianceItem(
     Guid PropertyId,
     string PropertyName,
@@ -32,7 +31,6 @@ public record CinComplianceItem(
 
 public record OtaSyncItem(Guid Id, string PropertyName, string Platform, DateTime? LastSyncAt);
 
-/// <summary>Hangfire recurring-job status row.</summary>
 public record JobStatus(
     string JobName,
     string CronExpression,

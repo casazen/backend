@@ -40,13 +40,11 @@ public sealed class ServiceRequestAssistService(
         ArgumentNullException.ThrowIfNull(property);
         ArgumentNullException.ThrowIfNull(text);
 
-        // The known property address can include building identifiers outside the generic street pattern.
         if (!string.IsNullOrWhiteSpace(property.Address))
             text = text.Replace(property.Address.Trim(), " ", StringComparison.OrdinalIgnoreCase);
         var cleaned = ServiceRequestAssistPrompt.CleanText(text);
         if (cleaned.Length < ServiceRequestAssistLimits.MinTextLength)
         {
-            // What was typed is contact data or an address and little else: nothing to ask the AI.
             return ServiceRequestAssist.Without(ServiceRequestAssistReasons.NotUnderstood);
         }
 
@@ -100,7 +98,6 @@ public sealed class ServiceRequestAssistService(
                 return (null, why);
             }
 
-            // The texts are the model's, written from the host's words: scrubbed once more, then kept as they are.
             var accepted = checkedAnswer with
             {
                 Summary = Clean(checkedAnswer.Summary, ServiceRequestAssistLimits.MaxSummaryLength),
@@ -119,7 +116,6 @@ public sealed class ServiceRequestAssistService(
         }
         catch (Exception ex)
         {
-            // A timeout of the provider is a TaskCanceledException too: it is the provider that did not answer, not the caller who left.
             logger.LogWarning(ex, "The AI provider failed to read the description of a job");
             return (null, AiSuggestionFallbackReasons.AiUnavailable);
         }
@@ -139,7 +135,6 @@ public sealed class ServiceRequestAssistService(
         return covering.Count > 0 ? (ServiceRequestAssistChannels.CasaZen, covering.Count) : (ServiceRequestAssistChannels.External, 0);
     }
 
-    /// <summary>A text of the answer without contact data and the placeholders the scrubber leaves; <c>null</c> when nothing is left.</summary>
     private static string? Clean(string? text, int limit)
     {
         if (string.IsNullOrWhiteSpace(text))

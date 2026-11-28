@@ -24,7 +24,6 @@ public sealed partial record HangfireStorageSettings(string Schema, TimeSpan Dis
     public const string SchemaKey = "Hangfire:Schema";
     public const string DistributedLockTimeoutKey = "Hangfire:DistributedLockTimeoutMinutes";
 
-    /// <summary>The schema every environment used before FD-11: shared by test and production.</summary>
     public const string SharedLegacySchema = "hangfire";
 
     public const string DerivedSchemaPrefix = "hangfire_";
@@ -39,7 +38,6 @@ public sealed partial record HangfireStorageSettings(string Schema, TimeSpan Dis
 
     private const int MaxIdentifierLength = 63;
 
-    /// <summary>Resolves the settings for this environment; throws <see cref="InvalidOperationException"/> on ambiguous or invalid config.</summary>
     public static HangfireStorageSettings Resolve(IConfiguration configuration, string connectionString, IHostEnvironment environment) =>
         new(
             ResolveSchema(configuration[SchemaKey], connectionString, environment.EnvironmentName),
@@ -115,10 +113,6 @@ public sealed partial record HangfireStorageSettings(string Schema, TimeSpan Dis
         return TimeSpan.FromMinutes(minutes);
     }
 
-    /// <summary>
-    /// First schema of the connection string's search path (<c>SearchPath</c>, or <c>-c search_path=…</c> in
-    /// <c>Options</c>), lowercased like PostgreSQL folds unquoted identifiers; <c>null</c> when none is set.
-    /// </summary>
     public static string? GetSearchPathSchema(string? connectionString)
     {
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -141,7 +135,6 @@ public sealed partial record HangfireStorageSettings(string Schema, TimeSpan Dis
             .FirstOrDefault(s => s.Length > 0 && s != "$user");
     }
 
-    /// <summary>Storage options for <c>UsePostgreSqlStorage</c>.</summary>
     public PostgreSqlStorageOptions CreateStorageOptions() => new()
     {
         SchemaName = Schema,

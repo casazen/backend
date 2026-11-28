@@ -17,65 +17,38 @@ public class SupplierRankingOptions
 {
     public const string SectionName = "SupplierRanking";
 
-    // ─── The score of before ────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The score of a supplier with nothing against it and nothing for it (70).</summary>
     public int BaseScore { get; set; } = 70;
 
-    /// <summary>Points lost for each request the supplier holds or may hold (8), up to <see cref="LoadPenaltyCap"/>.</summary>
     public int LoadPenaltyPerRequest { get; set; } = 8;
 
-    /// <summary>The most the open requests take away (40).</summary>
     public int LoadPenaltyCap { get; set; } = 40;
 
-    /// <summary>Points added for an emergency (15) and for a high urgency (8): they favour who can come at once.</summary>
     public int EmergencyBonus { get; set; } = 15;
 
-    /// <inheritdoc cref="EmergencyBonus"/>
     public int HighUrgencyBonus { get; set; } = 8;
 
-    /// <summary>Points added to a supplier that wrote a bio (5).</summary>
     public int BioBonus { get; set; } = 5;
 
-    // ─── Reliability ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Whether the reliability counts in the score (true). False is the ranking of before, whatever the weights below say.</summary>
     public bool ReliabilityEnabled { get; set; } = true;
 
-    /// <summary>How many days back the events count (90). A supplier with no event in that time starts neutral.</summary>
     public int WindowDays { get; set; } = 90;
 
-    /// <summary>Points for each request answered in time (1), up to <see cref="RepliedInTimeCap"/> (10).</summary>
     public int RepliedInTimePoints { get; set; } = 1;
 
-    /// <inheritdoc cref="RepliedInTimePoints"/>
     public int RepliedInTimeCap { get; set; } = 10;
 
-    /// <summary>Points for each job completed without a dispute (2), up to <see cref="CompletedJobCap"/> (20).</summary>
     public int CompletedJobPoints { get; set; } = 2;
 
-    /// <inheritdoc cref="CompletedJobPoints"/>
     public int CompletedJobCap { get; set; } = 20;
 
-    /// <summary>Points lost when the supplier the host chose does not answer in time (10).</summary>
     public int NoReplyPenalty { get; set; } = 10;
 
-    /// <summary>
-    /// The share of <see cref="NoReplyPenalty"/> that a backup loses for not answering (0.2, that is 2 points): a backup was not the
-    /// supplier the host asked for, and it is the small price of being asked as one among several.
-    /// </summary>
     public double BackupPenaltyShare { get; set; } = 0.2;
 
-    /// <summary>Points lost for each job the payer disputed (12), besides the points of that job.</summary>
     public int DisputePenalty { get; set; } = 12;
 
-    /// <summary>
-    /// The most the penalties take away in all (40): a supplier is never reduced to nothing by a bad month, and the score stays between 1
-    /// and 100 in any case.
-    /// </summary>
     public int MaxTotalPenalty { get; set; } = 40;
 
-    /// <summary>Configuration errors, empty when the section is valid.</summary>
     public IReadOnlyList<string> Validate()
     {
         var failures = new List<string>();
@@ -104,7 +77,6 @@ public class SupplierRankingOptions
     }
 }
 
-/// <summary>Refuses a <c>SupplierRanking</c> section that is not valid at startup, so a typo never changes who is recommended silently.</summary>
 public sealed class SupplierRankingOptionsValidator : IValidateOptions<SupplierRankingOptions>
 {
     public ValidateOptionsResult Validate(string? name, SupplierRankingOptions options)

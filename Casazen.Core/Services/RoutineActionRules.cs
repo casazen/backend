@@ -3,19 +3,12 @@ using Casazen.Core.Models;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// What the configuration of each action of a routine must say (E01/F04/US01, NF-21). Pure: the engine reads the configuration of a saved routine with
-/// it, and the API (E01/F04/US01/T03) refuses with the same rules what the engine would refuse.
-/// </summary>
 public static class RoutineActionRules
 {
-    /// <summary>The longest a Wait lasts, in days (ADR-022-R10): days and hours together.</summary>
     public const int MaxWaitDays = 365;
 
-    /// <summary>The longest text of a <c>CreateActivity</c>: one line, what the host wants to be told, never a guest's words.</summary>
     public const int MaxActivityTextLength = 140;
 
-    /// <summary>The furthest deadline of a <c>CreateActivity</c>, in days from the moment the routine runs.</summary>
     public const int MaxActivityDueInDays = 60;
 
     /// <summary>
@@ -62,11 +55,6 @@ public static class RoutineActionRules
         return true;
     }
 
-    /// <summary>
-    /// Whether the configuration of <paramref name="action"/> is one its type accepts: a <c>Wait</c> with a delay <see cref="WaitDelay"/> reads, a
-    /// <c>CreateActivity</c> that <see cref="TryReadActivity"/> reads; the other types take any object (their own rules arrive with their implementation).
-    /// What the API saves is what the engine can run.
-    /// </summary>
     public static bool IsValidConfig(RoutineAction action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -91,7 +79,6 @@ public static class RoutineActionRules
         _ => true,
     };
 
-    /// <summary>A member that is missing counts 0; one that is there must be a whole number of 0 or more.</summary>
     private static bool TryReadWhole(RoutineAction action, string name, out int value)
     {
         value = 0;

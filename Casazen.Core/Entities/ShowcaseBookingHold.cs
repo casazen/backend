@@ -27,7 +27,6 @@ public class ShowcaseBookingHold
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>The supplier org (<see cref="SupplierProfile.OrgId"/>).</summary>
     [Required]
     public Guid OrgId { get; set; }
 
@@ -37,27 +36,16 @@ public class ShowcaseBookingHold
     /// </summary>
     public Guid ClientRequestId { get; set; }
 
-    /// <summary>First instant of the work (UTC): the slot the customer picked.</summary>
     public DateTime StartUtc { get; set; }
 
-    /// <summary>Instant the work ends (UTC), after <see cref="StartUtc"/>: the start plus the duration of the service.</summary>
     public DateTime EndUtc { get; set; }
 
-    /// <summary>
-    /// The code of the booking (<see cref="Services.BookingCodes"/>, 10 characters), unique for the supplier among its holds and
-    /// requests. The request that is born from the hold keeps it (<see cref="ServiceRequest.PublicCode"/>).
-    /// </summary>
     [Required, MaxLength(Services.BookingCodes.Length)]
     public string PublicCode { get; set; } = string.Empty;
 
-    /// <summary>SHA-256 (lowercase hex) of the token of the e-mail link; the token itself is only in the e-mail.</summary>
     [Required, MaxLength(64)]
     public string TokenHash { get; set; } = string.Empty;
 
-    /// <summary>
-    /// HMAC-SHA256 of the customer's normalized e-mail address (<see cref="ServiceCustomer.EmailHash"/>): it counts the unverified
-    /// bookings of one address. Deleted with the hold.
-    /// </summary>
     [Required, MaxLength(64)]
     public string EmailHash { get; set; } = string.Empty;
 
@@ -68,16 +56,11 @@ public class ShowcaseBookingHold
     /// </summary>
     public string? Payload { get; set; }
 
-    /// <summary>When the hold lapses (UTC): the slot is free again and the link no longer works.</summary>
     public DateTime ExpiresAt { get; set; }
 
-    /// <summary>When the e-mail was checked and the request created; <c>null</c> while the hold waits.</summary>
     public DateTime? ConsumedAt { get; set; }
 
-    /// <summary>The request born from the hold when the e-mail was checked.</summary>
     public Guid? ServiceRequestId { get; set; }
-
-    // ─── The block of the payer's card (SP-15c-a, decision VT-D10): empty for a booking that is not paid inside CasaZen ─────────
 
     /// <summary>
     /// The PaymentIntent on the platform account that blocks the amount on the customer's card (<c>capture_method = manual</c>). A hold
@@ -87,13 +70,11 @@ public class ShowcaseBookingHold
     [MaxLength(255)]
     public string? StripePaymentIntentId { get; set; }
 
-    /// <summary>The amount the PaymentIntent blocks, in cents: the total the customer saw. It becomes the amount of the payment.</summary>
     public int? PaymentAmountCents { get; set; }
 
     /// <summary>When the customer's e-mail was checked, if the request is still waiting for the block; empty otherwise.</summary>
     public DateTime? EmailVerifiedAt { get; set; }
 
-    /// <summary>When Stripe told that the block succeeded (<c>payment_intent.amount_capturable_updated</c>), if the e-mail is still to be checked.</summary>
     public DateTime? PaymentAuthorizedAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -23,11 +23,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IAccountantPackageService
 {
-    /// <summary>
-    /// Writes the package of <paramref name="period"/> to <paramref name="destination"/> (left open). Every query names the org of <paramref name="scope"/>; the
-    /// documents of the guests are those of the properties the scope reaches.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">422 <c>accountant_package_too_large</c>: more files or bytes than the caps allow, before anything is written.</exception>
     Task<AccountantPackageResult> BuildAsync(
         HostScope scope,
         AccountantPackageAccess access,
@@ -36,10 +31,6 @@ public interface IAccountantPackageService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The agency summary of a period (E15/F01/US01/T01): the figures of the agency in one place, for the screen (<c>GET api/accountant-package/agency-summary</c>) and
-/// for the ZIP (<c>riepilogo-agenzia/</c>), the same ones. Each figure comes from the service that already computes it.
-/// </summary>
 public interface IAgencySummaryService
 {
     /// <summary>

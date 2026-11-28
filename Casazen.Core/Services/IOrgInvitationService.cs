@@ -51,20 +51,10 @@ public sealed record OrgInvitationView(
     IReadOnlyList<Guid> PropertyIds,
     DateTime? LastSentAt);
 
-/// <summary>
-/// The invitation after it was created or sent again. <paramref name="EmailQueued"/> is false when the email could not be
-/// queued (provider not configured, queue down): the invitation exists and its link can be copied
-/// (<see cref="IOrgInvitationService.CopyLinkAsync"/>) or sent again.
-/// </summary>
 public sealed record OrgInvitationSent(OrgInvitationView Invitation, bool EmailQueued);
 
-/// <summary>
-/// A fresh link for an invitation (the one the person opens to accept). The link carries the secret token, so the previous
-/// link, the one of the email included, stops working the moment this one is issued.
-/// </summary>
 public sealed record OrgInvitationLink(Guid InvitationId, string Url, DateTime ExpiresAt);
 
-/// <summary>What the person sees before accepting (<see cref="IOrgInvitationService.LookupAsync"/>).</summary>
 public sealed record OrgInvitationPreview(
     string OrgName,
     string Email,
@@ -94,10 +84,6 @@ public sealed record AcceptOrgInvitation(
     OnboardingConsentsInput Consents,
     string? ClientIp);
 
-/// <summary>
-/// The person is now a member. <paramref name="LeftEmptyOrg"/> is true when it had an automatically created, empty and
-/// unbilled org of its own and left it for this one.
-/// </summary>
 public sealed record OrgInvitationAccepted(
     Guid OrgId,
     string OrgName,
@@ -105,54 +91,33 @@ public sealed record OrgInvitationAccepted(
     IReadOnlyList<string> Areas,
     bool LeftEmptyOrg);
 
-/// <summary>Stable codes of the refusals of <see cref="IOrgInvitationService"/>, translated by the clients.</summary>
 public static class OrgInvitationErrors
 {
-    // 410 Gone: the link cannot be used any more.
-
-    /// <summary>The link is not an invitation we know (malformed, unknown, or replaced by a newer link). The only answer of the anonymous lookup.</summary>
     public const string Invalid = "invitation_invalid";
 
     public const string Expired = "invitation_expired";
     public const string Used = "invitation_used";
     public const string Revoked = "invitation_revoked";
 
-    // 403: the signed-in account is not the one the invitation is for.
-
-    /// <summary>The account email is not the invited one.</summary>
     public const string EmailMismatch = "invitation_email_mismatch";
 
-    /// <summary>The account email is not verified (Auth0): anyone could have typed it.</summary>
     public const string EmailNotVerified = "invitation_email_not_verified";
 
-    /// <summary>A platform admin (CasaZen staff) does not join a customer's org.</summary>
     public const string PlatformAdmin = "invitation_platform_admin";
 
-    /// <summary>403: only the owner creates and manages administrators.</summary>
     public const string OwnerRequired = "org_owner_required";
 
-    // 409: the state of the org or of the account does not allow it.
-
-    /// <summary>The account already belongs to an org that is not empty and unbilled (or is a member of another org): no merging.</summary>
     public const string UserHasOrganization = "invitation_user_has_organization";
 
-    /// <summary>There already is a pending invitation for that email in the org.</summary>
     public const string AlreadyPending = "org_invitation_already_pending";
 
-    /// <summary>The invitation is not pending any more (accepted, revoked or expired): it cannot be revoked or its link copied.</summary>
     public const string NotPending = "org_invitation_not_pending";
-
-    // 404
 
     public const string NotFound = "org_invitation_not_found";
     public const string MemberNotFound = "org_member_not_found";
 
-    // 429: the emails of the invitations are capped (AM-02c, decision AM-D15), so the invitation is not a channel of outgoing mail.
-
-    /// <summary>The org already sent <c>OrgTeam:InvitationDailyLimit</c> invitation emails (created or sent again) in the last 24 hours.</summary>
     public const string DailyLimitReached = "invitation_daily_limit_reached";
 
-    /// <summary>The invitation was sent less than <c>OrgTeam:ResendMinutes</c> ago: «reinvia» waits.</summary>
     public const string ResendTooSoon = "invitation_resend_too_soon";
 }
 
@@ -171,56 +136,16 @@ public static class OrgInvitationErrors
 /// </remarks>
 public interface IOrgInvitationService
 {
-    /// <summary>
-    /// Invites a person: validates, takes a seat, stores the invitation and queues the email.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException">
-    /// The role is owner (<see cref="OrgMembershipErrors.OwnerNotAssignable"/>) or no area was chosen
-    /// (<see cref="OrgMembershipErrors.AreaRequired"/>).
-    /// </exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException">
-    /// The inviter is not the owner or an administrator of the org, or it is not the owner and invites an administrator
-    /// (<see cref="OrgInvitationErrors.OwnerRequired"/>).
-    /// </exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
-    /// No free seat (<see cref="OrgSeatErrors.LimitReached"/>), a pending invitation for that email already exists
-    /// (<see cref="OrgInvitationErrors.AlreadyPending"/>) or the email is a member of the org
-    /// (<see cref="OrgMembershipErrors.AlreadyMember"/>).
-    /// </exception>
     Task<OrgInvitationSent> CreateAsync(CreateOrgInvitation request, CancellationToken cancellationToken = default);
 
-    /// <summary>The org's open and expired invitations (the ones that can still be sent again), newest first.</summary>
     Task<IReadOnlyList<OrgInvitationView>> ListAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Sends the invitation again: a new token (the previous link stops working), seven more days from now, the reminder
-    /// armed again. An expired invitation comes back to life and takes a seat again.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.NotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
-    /// Accepted or revoked (<see cref="OrgInvitationErrors.NotPending"/>); no seat for an expired one
-    /// (<see cref="OrgSeatErrors.LimitReached"/>); another pending invitation for the same email
-    /// (<see cref="OrgInvitationErrors.AlreadyPending"/>).
-    /// </exception>
     Task<OrgInvitationSent> ResendAsync(Guid orgId, Guid invitationId, string actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>Withdraws a pending invitation: its link stops working and the seat is free again.</summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.NotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgInvitationErrors.NotPending"/>.</exception>
     Task RevokeAsync(Guid orgId, Guid invitationId, string actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// A fresh link for a pending invitation, to be sent by other means than the email ("copy link"). It rotates the token,
-    /// like sending again, but changes neither the expiry nor the reminder and sends nothing.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><see cref="OrgInvitationErrors.NotFound"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgInvitationErrors.NotPending"/> (also once expired: send it again).</exception>
     Task<OrgInvitationLink> CopyLinkAsync(Guid orgId, Guid invitationId, string actorUserId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// What an invitation link is for, to show before accepting. Anonymous. <c>null</c> for a link that is malformed,
-    /// unknown, expired, used or revoked, <b>without telling which</b>: a stranger learns nothing from it.
-    /// </summary>
     Task<OrgInvitationPreview?> LookupAsync(string? token, CancellationToken cancellationToken = default);
 
     /// <summary>

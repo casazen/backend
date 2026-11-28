@@ -28,14 +28,11 @@ public sealed class PropertyOverviewService(
         if (properties.Count == 0)
             return [];
 
-        // A property in long-term mode has no activation, no site and no occupancy of the booking calendar (PM-01).
         var shortStay = properties.Where(PropertyRentalModeRules.IsShort).ToList();
         var steps = await complianceStatus.GetBlockingStepsManyAsync(shortStay, cancellationToken);
         var withFeed = await PropertiesWithAFeedAsync(shortStay, cancellationToken);
-        // The change of mode that waits for its day, for a property in either mode (AM-13b): one query for the page.
         var scheduled = await ScheduledModeChangesAsync(properties, cancellationToken);
 
-        // The occupancy is told of an activated property only: a pending or paused one has nothing to be occupied by.
         var activeIds = shortStay
             .Where(p => PropertyLifecycle.StatusOf(p) == PropertyLifecycleStatus.Active)
             .Select(p => p.Id)
@@ -70,8 +67,6 @@ public sealed class PropertyOverviewService(
             scheduledModeChange);
     }
 
-    // The change of rental mode each property has waiting for its day (PM-02): at most one open change per property (a partial unique
-    // index), so the answer is one row per property. Applied, cancelled and failed changes are history and stay out.
     private async Task<Dictionary<Guid, PropertyModeChange>> ScheduledModeChangesAsync(
         IReadOnlyList<Property> properties,
         CancellationToken cancellationToken)
@@ -83,8 +78,6 @@ public sealed class PropertyOverviewService(
             .ToDictionaryAsync(c => c.PropertyId, cancellationToken);
     }
 
-    // The properties that have a calendar feed, as the wizard counts it (ComplianceWizardService, the «ical» step): a feed with an
-    // import URL. One query for the page.
     private async Task<HashSet<Guid>> PropertiesWithAFeedAsync(
         IReadOnlyList<Property> properties,
         CancellationToken cancellationToken)
@@ -102,8 +95,6 @@ public sealed class PropertyOverviewService(
             .ToHashSet();
     }
 
-    // Whole percent of the nights available, half away from zero (62.5 is 63, as the Home's percentage reads); nothing when no
-    // night was available.
     private static int? PercentOf(HostDashboardOccupancy nights) =>
         nights.Rate is { } rate ? (int)Math.Round(rate * 100m, MidpointRounding.AwayFromZero) : null;
 

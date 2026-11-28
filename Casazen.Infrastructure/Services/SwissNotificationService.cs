@@ -77,7 +77,6 @@ public sealed class SwissNotificationService(
         DateOnly today,
         CancellationToken cancellationToken = default)
     {
-        // Behind the module's flag: off, nothing is raised. An empty list of properties is nobody, never everybody.
         if (!featureFlags.IsEnabled(FeatureFlags.GuestRegistrationRegimes) || propertyIds is { Count: 0 })
             return [];
 
@@ -91,7 +90,6 @@ public sealed class SwissNotificationService(
         if (swiss.Count == 0)
             return [];
 
-        // The regime and the duty come from the one resolver: the properties the assisted notification covers and whose duty is raised, nothing else.
         var resolutions = await regimes.ResolveManyAsync(swiss, cancellationToken);
         var raised = swiss
             .Where(p => resolutions.TryGetValue(p.Id, out var resolution)
@@ -115,7 +113,6 @@ public sealed class SwissNotificationService(
             .Select(b => new { b.OrgId, b.PropertyId, b.CheckInDate, b.ArrivedAt })
             .ToListAsync(cancellationToken);
 
-        // THE rule of a closed day: a declaration of the property, the day and the code of the regime the property is under now. The cockpit and the alerts read only this list.
         var declared = (await context.SwissNotificationDeclarations
                 .AsNoTracking()
                 .Where(d => ids.Contains(d.PropertyId) && d.RegimeCode != null && d.ArrivalDay >= firstDay && d.ArrivalDay <= today)
@@ -153,7 +150,6 @@ public sealed class SwissNotificationService(
         var (property, resolution) = await LoadCoveredPropertyAsync(propertyId, cancellationToken);
         var regimeCode = resolution.Regime!.Code;
 
-        // A day that has not started cannot be declared: it would close the day of an arrival that has not happened and silence its alerts.
         if (day > _clock.TodayInRomeAsDateOnly())
             throw new DomainRuleException(SwissNotificationErrorCodes.DeclarationDayInFuture, SwissNotificationErrorCodes.DeclarationDayInFutureMessageKey);
 
@@ -169,13 +165,11 @@ public sealed class SwissNotificationService(
             ArrivalDay = day,
             DeclaredByUserId = userId,
 
-            // Whole microseconds, the precision of the column: the answer of this call and the answer of every replay (read back from the database) carry the same instant.
             DeclaredAt = UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime),
             Channel = SwissNotificationChannels.Assisted,
             RegimeCode = regimeCode,
         };
 
-        // Added through the set, never through a collection of a parent: the Guid is preset, and EF would track a child added that way as Modified.
         context.SwissNotificationDeclarations.Add(declaration);
         try
         {
@@ -183,7 +177,6 @@ public sealed class SwissNotificationService(
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
-            // A co-host declared the same day at the same moment and won the unique index: the answer is the declaration that is there, as if the call had come second.
             context.Entry(declaration).State = EntityState.Detached;
             var winner = await FirstDeclarationAsync(property, regimeCode, day, cancellationToken);
             if (winner is null)
@@ -244,10 +237,6 @@ public sealed class SwissNotificationService(
         return true;
     }
 
-    /// <summary>
-    /// The property (through the tenant filter of the context: another org's is not found) and what the one resolver says of it; refuses a property the assisted notification does not
-    /// cover (422 <c>swiss_notification_not_applicable</c>): not Swiss, in Ticino, a canton that only keeps a register, or a place that is not known.
-    /// </summary>
     private async Task<(Property Property, GuestRegistrationResolution Resolution)> LoadCoveredPropertyAsync(Guid propertyId, CancellationToken cancellationToken)
     {
         var property = await context.Properties
@@ -264,7 +253,6 @@ public sealed class SwissNotificationService(
 
     private sealed record StayRead(TicinoStayFacts Facts, DateTime? ArrivedAt);
 
-    /// <summary>The earliest arrival recorded among the stays, <c>null</c> when none is recorded.</summary>
     private static DateTime? FirstArrival(IEnumerable<StayRead> stays)
     {
         var recorded = stays.Where(s => s.ArrivedAt.HasValue).Select(s => s.ArrivedAt!.Value).ToList();
@@ -278,10 +266,6 @@ public sealed class SwissNotificationService(
         return await ReadStaysAsync(property, b => b.CheckInDate >= from && b.CheckInDate < to, cancellationToken);
     }
 
-    /// <summary>
-    /// The stays of <paramref name="property"/> that <paramref name="which"/> selects and that owe a communication (the one definition of
-    /// <see cref="AlloggiatiStatusRules.ActiveBookingStatuses"/>, not a no-show), with their guests; every read names the org of the property.
-    /// </summary>
     private async Task<List<StayRead>> ReadStaysAsync(Property property, Expression<Func<Booking, bool>> which, CancellationToken cancellationToken)
     {
         var bookings = await context.Bookings
@@ -328,10 +312,6 @@ public sealed class SwissNotificationService(
         }).ToList();
     }
 
-    /// <summary>
-    /// A guest of the stay as the plan reads it: the facts of the check-in, the same way the Ticino file reads them (the home is the one the check-in recorded for the guest; for the row linked to
-    /// the booker's record, a part the check-in does not have is taken from that record). The tourist tax exemption of the row is health-related data and is never read here.
-    /// </summary>
     private static TicinoGuestFacts FactsOf(StayGuest guest, Guest? record) => new(
         guest.Position,
         guest.Type,
@@ -356,12 +336,10 @@ public sealed class SwissNotificationService(
 
     private static string? FirstText(string? recorded, string? fallback) => string.IsNullOrWhiteSpace(recorded) ? fallback : recorded;
 
-    /// <summary>The declarations of the notification of <paramref name="regimeCode"/> of <paramref name="property"/> for <paramref name="day"/>; the org of the property is always named.</summary>
     private IQueryable<SwissNotificationDeclaration> DeclarationsOf(Property property, string regimeCode, DateOnly day) =>
         context.SwissNotificationDeclarations
             .Where(d => d.OrgId == property.OrgId && d.PropertyId == property.Id && d.ArrivalDay == day && d.RegimeCode == regimeCode);
 
-    /// <summary>The declaration of <paramref name="day"/> that stands (the first one, tracked), or <c>null</c> when the day is not declared.</summary>
     private Task<SwissNotificationDeclaration?> FirstDeclarationAsync(Property property, string regimeCode, DateOnly day, CancellationToken cancellationToken) =>
         DeclarationsOf(property, regimeCode, day).OrderBy(d => d.DeclaredAt).ThenBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
 
@@ -374,7 +352,6 @@ public sealed class SwissNotificationService(
             await DisplayNameAsync(declaration.DeclaredByUserId, cancellationToken),
             created);
 
-    /// <summary>The first and last name of a user as the team sees them; <c>null</c> when the account no longer exists or has no name.</summary>
     private async Task<string?> DisplayNameAsync(string userId, CancellationToken cancellationToken)
     {
         var user = await context.Users
@@ -386,10 +363,6 @@ public sealed class SwissNotificationService(
         return name.Length == 0 ? null : name;
     }
 
-    /// <summary>
-    /// A unique violation (23505) of the key of the declaration of a regime (<see cref="SwissNotificationDeclaration.NamedRegimeIndexName"/>), whatever the wrapper EF or the provider put
-    /// around it: a co-host declared the same day first.
-    /// </summary>
     private static bool IsUniqueViolation(Exception exception)
     {
         for (var current = exception; current is not null; current = current.InnerException)
@@ -401,6 +374,5 @@ public sealed class SwissNotificationService(
         return false;
     }
 
-    /// <summary>A calendar day as the bookings store it: midnight UTC of that day.</summary>
     private static DateTime StoredDay(DateOnly day) => DateTime.SpecifyKind(day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
 }

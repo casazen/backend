@@ -86,8 +86,6 @@ public sealed class OctorateDocumentImportService(
         {
             foreach (var accommodation in mapped.GroupBy(m => m.AccommodationId))
             {
-                // Each accommodation is read from its own last import (with the overlap), or from the explicit date a caller gave for all of them: a structure
-                // whose read failed keeps its date, so the others succeeding never move it (a failing structure is read again from where it stopped).
                 var from = (since ?? await LastImportedAtAsync(orgId, accommodation.Key, ct) ?? firstRead) - OctorateDocumentImport.Overlap;
                 OctorateFiscalDocument[] documents;
                 try
@@ -125,13 +123,11 @@ public sealed class OctorateDocumentImportService(
         return new OctorateDocumentImportResult(created, updated, skipped, failed);
     }
 
-    /// <summary>The two flags and the option <c>FiscalDocuments:ImportOctorateDocuments</c> (off by default): the import never runs by accident.</summary>
     private bool Enabled =>
         options.Value.ImportOctorateDocuments
         && featureFlags.IsEnabled(FeatureFlags.OctorateConnector)
         && featureFlags.IsEnabled(FeatureFlags.OctorateDocumentImport);
 
-    /// <summary>The last time a document of this accommodation was imported (<c>null</c> when none was: the accommodation is read from the first-read window).</summary>
     private async Task<DateTime?> LastImportedAtAsync(Guid orgId, string accommodationId, CancellationToken ct) =>
         await db.FiscalDocuments
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -201,12 +197,10 @@ public sealed class OctorateDocumentImportService(
         }
         catch (DbUpdateException ex) when (isNew && OrgTeamAccess.IsUniqueViolation(ex, FiscalDocument.OctorateDocumentIndexName))
         {
-            // Another run imported the same document at the same moment: its row is the one; this run reads it next time.
             db.Entry(row).State = EntityState.Detached;
             return Outcome.Skipped;
         }
 
-        // The document is linked to its booking and nothing more: it never locks the issuer of the booking (CasaZen issues every booking).
         await SyncTodosAsync(orgId, row, booking?.PropertyId, ct);
 
         return isNew ? Outcome.Created : Outcome.Updated;
@@ -243,7 +237,6 @@ public sealed class OctorateDocumentImportService(
         }
     }
 
-    /// <summary>The kind of an imported document; <c>null</c> for one CasaZen does not store (a summary, an unknown type).</summary>
     internal static DocumentKind? KindOf(OctorateFiscalDocumentType type) => type switch
     {
         OctorateFiscalDocumentType.Invoice or OctorateFiscalDocumentType.CorrectingInvoice or OctorateFiscalDocumentType.SimplifiedInvoice => DocumentKind.Invoice,

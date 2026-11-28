@@ -21,7 +21,6 @@ internal sealed class ReviewConfiguration : IEntityTypeConfiguration<Review>
             .HasForeignKey(r => r.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Two parallel submissions for one booking (the link opened twice): the loser gets 23505 on UIX_Reviews_BookingId and 409.
         entity.ToTable(t => t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" BETWEEN 1 AND 5"));
     }
 }

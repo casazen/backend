@@ -3,7 +3,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>One line of text found in the lower part of a document picture, cut and ready for the OCR, with the numbers that describe its quality.</summary>
 public sealed class MrzLine : IDisposable
 {
     public MrzLine(GrayBitmap gray, GrayBitmap binary, int top, int bottom, int left, int right, double glareShare, double blurRatio)
@@ -18,13 +17,10 @@ public sealed class MrzLine : IDisposable
         BlurRatio = blurRatio;
     }
 
-    /// <summary>The strip with its contrast stretched: dark characters on a light ground, about 40 pixels high.</summary>
     public GrayBitmap Gray { get; }
 
-    /// <summary>The same strip binarised with a local threshold: black characters (0) on white (255).</summary>
     public GrayBitmap Binary { get; }
 
-    /// <summary>Rows and columns of the line in the levelled picture (inclusive).</summary>
     public int Top { get; }
 
     public int Bottom { get; }
@@ -33,10 +29,8 @@ public sealed class MrzLine : IDisposable
 
     public int Right { get; }
 
-    /// <summary>Share of the pixels of the line that are saturated (a reflection), 0 to 1.</summary>
     public double GlareShare { get; }
 
-    /// <summary>Share of the edge energy that survives a blur of the line: low for crisp text, close to 1 for text that is out of focus.</summary>
     public double BlurRatio { get; }
 
     public void Dispose()
@@ -46,7 +40,6 @@ public sealed class MrzLine : IDisposable
     }
 }
 
-/// <summary>What the locator found in a picture: the text lines of its lower part and the groups of two or three of them that could be an MRZ.</summary>
 public sealed class MrzLocation : IDisposable
 {
     public static MrzLocation Empty { get; } = new([], []);
@@ -57,10 +50,8 @@ public sealed class MrzLocation : IDisposable
         Groups = groups;
     }
 
-    /// <summary>The text lines found, from the top to the bottom of the picture.</summary>
     public IReadOnlyList<MrzLine> Lines { get; }
 
-    /// <summary>Candidate MRZ blocks, the likeliest first: each one the indices (in <see cref="Lines"/>) of its two or three lines, top to bottom.</summary>
     public IReadOnlyList<IReadOnlyList<int>> Groups { get; }
 
     public void Dispose()
@@ -70,31 +61,17 @@ public sealed class MrzLocation : IDisposable
     }
 }
 
-/// <summary>Finds where the MRZ of a document picture is (E03/F04/US01/T02).</summary>
 public interface IMrzBandLocator
 {
-    /// <summary>
-    /// Looks for the MRZ in the lower part of the picture: levels the picture, binarises it, finds the text lines and the blocks of two or three
-    /// similar lines. Works on the pixels in memory; the strips it returns are copies the caller disposes.
-    /// </summary>
     MrzLocation Locate(GrayBitmap page, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// The classic projection method for the MRZ, on a gray picture in memory (ADR-013-R6: no file): estimate the tilt of the text, level the picture,
-/// mark the ink with a local threshold, find the rows where the ink is densest in the lower part of the page (the lines of the MRZ are the
-/// densest text of a document), keep the runs that have the height of a line and a width many times that, and group two or three lines that
-/// have the same height, the same extent and a regular spacing. The geometry only proposes candidates: the check digits decide whether one is an MRZ.
-/// </summary>
 public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : IMrzBandLocator
 {
-    /// <summary>The MRZ sits in the lower part of a document; rows above this share of the page are not searched.</summary>
     private const double SearchStart = 0.30;
 
-    /// <summary>A text line is at least this many times as wide as it is high (an MRZ line is 30 to 45 times).</summary>
     private const double MinAspect = 12;
 
-    /// <summary>Height of a character in the strips given to the OCR, in pixels.</summary>
     private const double TargetLineHeight = 40;
 
     public MrzLocation Locate(GrayBitmap page, CancellationToken cancellationToken)
@@ -160,7 +137,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         }
     }
 
-    /// <summary>A run of rows of dense ink: a candidate text line, with the extent of its ink once it has been measured.</summary>
     internal sealed record Run(int Top, int Bottom, int Left, int Right)
     {
         public int Height => Bottom - Top + 1;
@@ -168,10 +144,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         public int Width => Right - Left + 1;
     }
 
-    /// <summary>
-    /// The angle, in degrees clockwise, by which the lines of text descend to the right (negative when they climb): the one, between -10 and 10
-    /// (in steps of 0.5, then of 0.1 around the best), that makes the ink pile up in the fewest rows. 0 when no angle does clearly better than none.
-    /// </summary>
     internal static double EstimateTiltDegrees(GrayBitmap page)
     {
         GrayBitmap? reduced = null;
@@ -201,7 +173,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
             var bins = new int[picture.Height + picture.Width + 4];
             var centre = picture.Width / 2.0;
 
-            // How concentrated the ink is in rows when the picture is levelled by this angle: the sum of the squares of the ink per row.
             long ScoreOf(double degrees)
             {
                 var slope = Math.Tan(degrees * Math.PI / 180.0);
@@ -236,7 +207,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
             if (bestScore <= zeroScore * 1.03)
                 return 0;
 
-            // Half a degree over the width of a document is several pixels: look again around the best angle in steps of a tenth.
             var coarse = best;
             for (var step = -4; step <= 4; step++)
             {
@@ -259,10 +229,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         }
     }
 
-    /// <summary>
-    /// Marks as ink the pixels clearly darker than the average of their neighbourhood (Bradley's adaptive threshold, with an integral image):
-    /// <paramref name="ratio"/> times the local mean, in a square of <paramref name="radius"/> pixels around the pixel.
-    /// </summary>
     internal static bool[] InkMask(GrayBitmap picture, int radius, double ratio)
     {
         var width = picture.Width;
@@ -305,10 +271,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         }
     }
 
-    /// <summary>
-    /// The runs of rows, in the lower part of the picture, where the ink is dense (at least 35 % of the densest rows) and that are as high as a
-    /// line of text; runs separated by a gap smaller than a third of a line are one.
-    /// </summary>
     internal static List<Run> FindTextRuns(GrayBitmap picture, bool[] ink)
     {
         var width = picture.Width;
@@ -326,7 +288,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
             profile[y] = count;
         }
 
-        // A moving average over three rows, so a row with a gap in the middle of a letter does not split the line.
         var smooth = new float[height];
         for (var y = 0; y < height; y++)
         {
@@ -388,11 +349,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
             .ToList();
     }
 
-    /// <summary>
-    /// Cuts the strip of one run: its extent is the longest stretch of inked columns (gaps up to the height of the line do not break it), with a
-    /// margin; null when it is not wide enough to be a line of an MRZ. The strip is stretched to the full gray range and brought to about 40 pixels
-    /// of height; a binarised twin is made for a second reading.
-    /// </summary>
     private static MrzLine? CutLine(GrayBitmap picture, bool[] ink, Run run)
     {
         var width = picture.Width;
@@ -453,11 +409,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         return new MrzLine(gray, new GrayBitmap(gray.Width, gray.Height, binary), run.Top, run.Bottom, bestLeft, bestRight, glare, blur);
     }
 
-    /// <summary>
-    /// The blocks of two or three consecutive lines that look like an MRZ: lines of the same height (within 40 %), the same left and right
-    /// edges, and a regular spacing (the gap between lines from a quarter to twice a line). Three lines are preferred to two, and so are the lines
-    /// lower on the page. Best first, at most three.
-    /// </summary>
     internal static List<IReadOnlyList<int>> GroupLines(IReadOnlyList<Run> lines, int pictureWidth, int pictureHeight)
     {
         var groups = new List<(double Score, IReadOnlyList<int> Indices)>();
@@ -507,7 +458,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         return true;
     }
 
-    /// <summary>Share of the pixels at the top of the range (250 or more): a reflection or an over-exposed zone.</summary>
     internal static double SaturatedShare(GrayBitmap picture)
     {
         var saturated = 0;
@@ -520,10 +470,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         return picture.Pixels.Length == 0 ? 0 : (double)saturated / picture.Pixels.Length;
     }
 
-    /// <summary>
-    /// How much of the edge energy of the picture survives a 3 x 3 blur: about a third for crisp text, close to 1 when the text is already
-    /// smeared (the "re-blur" test of no-reference sharpness). 1 for a picture with no edges.
-    /// </summary>
     internal static double BlurRatio(GrayBitmap picture)
     {
         var width = picture.Width;
@@ -573,7 +519,6 @@ public sealed class MrzImageLocator(IOptions<MrzOcrOptions>? options = null) : I
         }
     }
 
-    /// <summary>The picture with its 1st and 99th percentile of gray taken to 0 and 255.</summary>
     internal static GrayBitmap Stretch(GrayBitmap picture)
     {
         var histogram = new int[256];

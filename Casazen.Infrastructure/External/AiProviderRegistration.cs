@@ -17,11 +17,9 @@ public static class AiProviderRegistration
     {
         var section = configuration.GetSection(AiOptions.SectionName);
         services.Configure<AiOptions>(section);
-        // Bounded, expiring cache of the answers (A8-25): one per process, shared by every AI caller.
         services.Configure<AiCacheOptions>(section.GetSection("Cache"));
         services.AddSingleton<IAiResponseCache, AiResponseCache>();
         services.AddScoped<IAiBudgetGuard, PlatformAiBudgetGuard>();
-        // The admin panel can switch the provider without a restart: each call reads the settings in effect.
         services.AddSingleton<IAiRuntimeSettings, AiRuntimeSettings>();
         services.AddScoped<DeepSeekAiProvider>();
         services.AddScoped<StubAiProvider>();
@@ -30,7 +28,6 @@ public static class AiProviderRegistration
         // (LocalCheckInDocumentReader, registered with the self-hosted identity verification), never by an AI provider.
 
         services.AddHttpClient("DeepSeek", client => client.Timeout = TimeSpan.FromSeconds(30));
-        // Calls with photos and a long answer (the text of a listing): a vision model takes longer.
         services.AddHttpClient(DeepSeekAiProvider.LongCallHttpClientName, client => client.Timeout = TimeSpan.FromSeconds(90));
         services.AddScoped<IWebSearchClient, DeepSeekWebSearchClient>();
         services.AddScoped<IAiSupplierDiscoveryService, AiSupplierDiscoveryService>();

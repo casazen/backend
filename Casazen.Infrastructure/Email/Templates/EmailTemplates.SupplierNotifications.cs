@@ -50,14 +50,9 @@ public static partial class EmailTemplates
             .Build("ServiceRequestDayBefore_Subject", serviceName, comune);
     }
 
-    /// <summary>The push of the same reminder: the service, the comune and the hour of Rome. No address.</summary>
     public static PushText ServiceRequestDayBeforePush(CultureInfo culture, string serviceName, string comune, DateTime startUtc) =>
         Push(culture, "Push_ServiceRequestDayBefore", serviceName, comune, RomeCalendar.ToRome(startUtc).ToString("HH:mm", culture));
 
-    /// <summary>
-    /// The push of a payment made through CasaZen, to the supplier (SP-16d): the work and the net, which is before the fees of Stripe. Nothing
-    /// about when the money arrives.
-    /// </summary>
     public static PushText ServicePaymentReceivedPush(CultureInfo culture, string serviceName, int netCents) =>
         Push(culture, "Push_ServicePaymentReceived", serviceName, FormatEuro(netCents, culture));
 }

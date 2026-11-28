@@ -27,13 +27,8 @@ public sealed class ServiceRequestReminderService(
 {
     internal const string RunLockKey = "service-request-reminders";
 
-    /// <summary>Requests one run handles at most (an hour's reminders are few; the bound keeps a run short whatever happens).</summary>
     public const int MaxPerRun = 500;
 
-    /// <summary>
-    /// How far ahead a work can start for its reminder to be due: the reminder is due at 18:00 of the day before, so at the latest
-    /// when the work is less than 30 hours away; two days is a safe superset the exact rule then narrows.
-    /// </summary>
     private static readonly TimeSpan Horizon = TimeSpan.FromHours(48);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -74,7 +69,6 @@ public sealed class ServiceRequestReminderService(
         if (sent > 0 || failed > 0)
             logger.LogInformation("Service request reminders: {Sent} queued, {Failed} could not be queued", sent, failed);
 
-        // SP-16d: the supplier's own reminder, for every context. In its own pass: the customer's pass above is untouched by it.
         var (supplierSent, supplierFailed) = supplierReminders is null
             ? (0, 0)
             : await supplierReminders.SendDueAsync(now, cancellationToken);
@@ -103,7 +97,6 @@ public sealed class ServiceRequestReminderService(
             .Select(r => new ReminderCandidate(r.Id, r.ScheduledStartUtc!.Value, r.TakenAt))
             .Take(MaxPerRun);
 
-    /// <summary>A request whose reminder may be due: when the work starts and when the supplier took the request.</summary>
     internal sealed record ReminderCandidate(Guid Id, DateTime StartUtc, DateTime? TakenAt);
 
     /// <summary>

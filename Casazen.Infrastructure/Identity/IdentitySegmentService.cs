@@ -71,7 +71,6 @@ public sealed class IdentitySegmentService(
         if (code is null || !IdentityChannels.All.Contains(code, StringComparer.Ordinal))
             throw Invalid();
 
-        // A property of the org, not deleted: another org's property, or one that does not exist, is the same answer.
         if (propertyId is { } property
             && !await db.Properties.AsNoTracking().IgnoreQueryFilters().AnyAsync(p => p.Id == property && p.OrgId == orgId && !p.IsDeleted, cancellationToken))
         {
@@ -134,7 +133,6 @@ public sealed class IdentitySegmentService(
         switch (mode)
         {
             case IdentitySegmentMode.Automatic:
-                // Automatic is a claim about the policy and the weights in force: only a qualification for them makes it.
                 if (QualificationReasonOf(row, Current()) is not null)
                     throw new DomainRuleException(IdentityApiErrors.IdentitySegmentNotQualified, "IdentitySegmentNotQualified");
 
@@ -161,7 +159,6 @@ public sealed class IdentitySegmentService(
         Record(orgId, actorUserId);
         await db.SaveChangesAsync(cancellationToken);
 
-        // The mode and who; never the text of a suspension.
         logger.LogInformation(
             "Identity segment {SegmentId} of org {OrgId}: mode {Previous} -> {Mode} by {UserId}",
             row.Id, orgId, IdentitySegmentModeCodes.CodeOf(previous), IdentitySegmentModeCodes.CodeOf(mode), actorUserId ?? "none");
@@ -198,7 +195,6 @@ public sealed class IdentitySegmentService(
         if (!configuration.Policy.IsReady || configuration.Fingerprint is not { } fingerprint)
             throw new DomainRuleException(IdentityApiErrors.IdentitySegmentInvalid, "IdentitySegmentFingerprintUnavailable");
 
-        // A provisional policy is never qualified: nothing is approved automatically until a calibrated policy file is committed (NF-194).
         if (configuration.Policy.Provisional)
             throw new DomainRuleException(IdentityApiErrors.IdentitySegmentInvalid, "IdentitySegmentPolicyProvisional");
 
@@ -270,7 +266,6 @@ public sealed class IdentitySegmentService(
                 .Where(s => s.OrgId == orgId && s.FormatId == format && s.Channel == code && (s.PropertyId == propertyId || s.PropertyId == null))
                 .ToListAsync(cancellationToken);
 
-            // The segment of the property first, then the one of every property of the org.
             row = rows.FirstOrDefault(s => s.PropertyId == propertyId) ?? rows.FirstOrDefault(s => s.PropertyId is null);
         }
 
@@ -284,10 +279,6 @@ public sealed class IdentitySegmentService(
             evaluation.AutoApprovalReason);
     }
 
-    /// <summary>
-    /// Why a segment is not qualified for what is in force, null when it is: no qualification recorded, no usable policy, or a qualification for another policy version,
-    /// policy hash or weights hash (the models not loaded is no match).
-    /// </summary>
     private static string? QualificationReasonOf(IdentitySegmentSetting? row, Configuration configuration)
     {
         if (row is null || !HasQualification(row))
@@ -304,7 +295,6 @@ public sealed class IdentitySegmentService(
             : IdentitySegmentReasonCodes.QualificationMismatch;
     }
 
-    /// <summary>The conditions of the automatic approval for a segment (null: none), in their order (see the remarks of the class).</summary>
     private Evaluation Evaluate(IdentitySegmentSetting? row, Configuration configuration)
     {
         var qualificationReason = QualificationReasonOf(row, configuration);
@@ -334,14 +324,12 @@ public sealed class IdentitySegmentService(
         return new Evaluation(qualified, qualificationReason, reason);
     }
 
-    /// <summary>The format gives, on the channel, at least the assurance the segment requires; a format or a channel the registry does not admit gives none.</summary>
     private bool AssuranceSatisfied(string formatId, string channel, string requiredAssurance)
     {
         var required = RankOf(requiredAssurance);
         return required >= 0 && RankOf(formats.AssuranceFor(formatId, channel)) >= required;
     }
 
-    /// <summary>The order of the levels of assurance: <c>consistency</c> below <c>cryptographic</c>; -1 for a code that is not a level (it satisfies nothing and nothing satisfies it).</summary>
     private static int RankOf(string? level)
     {
         return level switch
@@ -385,7 +373,6 @@ public sealed class IdentitySegmentService(
         return ViewOf(row, await PropertyNamesAsync(row.OrgId, [row], cancellationToken), Current());
     }
 
-    /// <summary>The names of the properties of the org the rows name (a deleted property keeps its name: its segment is still listed).</summary>
     private async Task<IReadOnlyDictionary<Guid, string>> PropertyNamesAsync(Guid orgId, IReadOnlyList<IdentitySegmentSetting> rows, CancellationToken cancellationToken)
     {
         var ids = rows.Where(row => row.PropertyId is not null).Select(row => row.PropertyId!.Value).Distinct().ToList();
@@ -399,7 +386,6 @@ public sealed class IdentitySegmentService(
             .ToDictionaryAsync(p => p.Id, p => p.Name, cancellationToken);
     }
 
-    /// <summary>The segment of the org with this id, tracked; null when it is not of the org (a uniform not found).</summary>
     private Task<IdentitySegmentSetting?> FindAsync(Guid orgId, Guid segmentId, CancellationToken cancellationToken)
     {
         return db.IdentitySegmentSettings.IgnoreQueryFilters().FirstOrDefaultAsync(s => s.Id == segmentId && s.OrgId == orgId, cancellationToken);
@@ -418,7 +404,6 @@ public sealed class IdentitySegmentService(
         row.UpdatedByUserId = Cut(actorUserId);
     }
 
-    /// <summary>One line in the activity log of the org, in the same save as the change: the fact, never a value (like the biometric settings).</summary>
     private void Record(Guid orgId, string? actorUserId)
     {
         activityLog?.Record(OrgActivity.Of(orgId, OrgActivityType.OrgSettingsChanged, actorUserId, orgId.ToString()));
@@ -452,9 +437,7 @@ public sealed class IdentitySegmentService(
 
     private DateTime UtcNow() => clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>What a resolution reads once: the platform permission, the policy and the fingerprint in force.</summary>
     private sealed record Configuration(bool AutoApprovalEnabled, IdentityPolicySnapshot Policy, IdentityFingerprint? Fingerprint);
 
-    /// <summary>Whether a segment is qualified for what is in force (and why not), and the first condition of the automatic approval that fails (null: allowed).</summary>
     private sealed record Evaluation(bool Qualified, string? QualificationReason, string? AutoApprovalReason);
 }

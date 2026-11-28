@@ -13,49 +13,34 @@ using Stripe;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>What one run of the deferred charge job did, booking by booking.</summary>
 public sealed record DeferredChargeRun(int Succeeded, int Processing, int AwaitingGuest, int Errors, int Cancelled, int Skipped)
 {
     public static DeferredChargeRun Empty { get; } = new(0, 0, 0, 0, 0, 0);
 }
 
-/// <summary>What the payment webhook did with an event of a deferred charge PaymentIntent.</summary>
 public enum DeferredChargeWebhookOutcome
 {
-    /// <summary>No booking for the PaymentIntent, event from another account, or nothing to change.</summary>
     Ignored,
 
-    /// <summary>The deferred payment was updated (completed, processing, failed, canceled).</summary>
     Applied,
 
-    /// <summary>
-    /// The PaymentIntent succeeded on a booking that is no longer confirmed: the caller settles it like any booking
-    /// payment (<see cref="CheckoutPaymentSettlementService"/>, BK-04: confirmed again or refunded in full).
-    /// </summary>
     SettleAsCheckoutPayment,
 }
 
-/// <summary>Result of <see cref="DeferredChargeService.ApplyPaymentIntentEventAsync"/>; pass it to <see cref="DeferredChargeService.CompleteAsync"/> after the commit.</summary>
 public sealed record DeferredChargeWebhookResult(DeferredChargeWebhookOutcome Outcome, DeferredChargeNotice? Notice = null)
 {
     public static DeferredChargeWebhookResult Ignored { get; } = new(DeferredChargeWebhookOutcome.Ignored);
 }
 
-/// <summary>Emails due once a change of a deferred charge is committed.</summary>
 public enum DeferredChargeNoticeKind
 {
-    /// <summary>The charge failed and needs the guest: guest (link to pay) and host.</summary>
     GuestMustPay,
 
-    /// <summary>Every attempt ended without an answer from Stripe (or without a saved card): host only.</summary>
     ChargeNotAttempted,
 
-    /// <summary>Not paid in time: booking cancelled, guest and host.</summary>
     Cancelled,
 }
 
-/// <param name="CheckoutToken">Raw checkout token of the link to pay (<see cref="DeferredChargeNoticeKind.GuestMustPay"/>); only its hash is stored.</param>
-/// <param name="CancellationDay">Day of the automatic cancellation of an unpaid booking, when one applies.</param>
 public sealed record DeferredChargeNotice(
     Guid BookingId,
     DeferredChargeNoticeKind Kind,
@@ -93,10 +78,8 @@ public sealed class DeferredChargeService(
 {
     private const string PaymentIntentUnexpectedStateCode = "payment_intent_unexpected_state";
 
-    /// <summary>The <c>kind</c> of the PaymentIntent of the checkout of the booking site: the payment webhook settles these (see <see cref="ChargeSavedCardAsync"/>).</summary>
     internal const string BookingEditChargeKind = "direct-booking";
 
-    /// <summary>PaymentIntent statuses the guest (or a new off-session attempt) can still pay.</summary>
     private static readonly HashSet<string> PayableStatuses = new(StringComparer.Ordinal)
     {
         "requires_payment_method",
@@ -146,7 +129,6 @@ public sealed class DeferredChargeService(
                  p.Status == PaymentStatus.Refunded ||
                  p.Status == PaymentStatus.PartiallyRefunded ||
                  p.Status == PaymentStatus.Canceled)))
-            // Something left to do: an attempt, the cancellation of an unpaid booking, or a payment in flight to check.
             .Where(b => b.DeferredChargeAttempts < maxAttempts ||
                         (b.DeferredChargeFailedAt != null && b.Status == BookingStatus.Confirmed && b.CheckInDate > today) ||
                         db.Payments.Any(p => p.BookingId == b.Id && p.Status == PaymentStatus.Processing))
@@ -186,7 +168,6 @@ public sealed class DeferredChargeService(
         int maxAttempts,
         CancellationToken cancellationToken)
     {
-        // One booking at a time in this context: nothing tracked from the previous one is saved with this one.
         db.ChangeTracker.Clear();
         try
         {
@@ -203,7 +184,6 @@ public sealed class DeferredChargeService(
             await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
                 db, cancellationToken, locks.ToArray());
 
-            // Read again under the locks: another run, the webhook or the host may have changed it meanwhile.
             var booking = await db.Bookings
                 .Include(b => b.Payments)
                 .Include(b => b.Org)
@@ -245,17 +225,12 @@ public sealed class DeferredChargeService(
         deadline <= today &&
         booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut;
 
-    /// <summary>
-    /// Confirmed, unpaid, on or after its cancellation day and still before the check-in day (a run missed on the
-    /// cancellation day never cancels a stay that may have started).
-    /// </summary>
     private bool IsCancellationDue(Booking booking, DateTime today) =>
         booking.Status == BookingStatus.Confirmed &&
         DeferredCharges.CancellationDay(booking, DeferredCharges.GetCancelAfterDays(configuration)) is { } day &&
         RomeCalendar.DateInRome(today) >= day &&
         RomeCalendar.DateInRome(today) < RomeCalendar.DateInRome(booking.CheckInDate);
 
-    /// <summary>One off-session attempt, recorded with its result in the booking's transaction.</summary>
     private async Task<(Step, DeferredChargeNotice?)> AttemptAsync(
         Booking booking,
         Payment? payment,
@@ -285,8 +260,6 @@ public sealed class DeferredChargeService(
             }
             catch (StripeException ex) when (ex.StripeError?.PaymentIntent is { } failed)
             {
-                // 402: the payment needs the guest (authentication_required, card_declined…); the PaymentIntent stays
-                // payable (requires_payment_method) for the link of the email.
                 paymentIntent = failed;
                 logger.LogWarning(
                     "Deferred charge of booking {BookingId} failed (attempt {Attempt}): {Code} {DeclineCode}",
@@ -297,7 +270,6 @@ public sealed class DeferredChargeService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                // No PaymentIntent in the answer (network, 5xx, rate limit, invalid request): nothing to show the guest.
                 failure = ex is StripeException stripeError ? $"Stripe {stripeError.StripeError?.Code ?? stripeError.HttpStatusCode.ToString()}" : ex.GetType().Name;
                 logger.LogError(ex, "Deferred charge of booking {BookingId} not attempted on Stripe (attempt {Attempt})", booking.Id, attempt);
             }
@@ -311,7 +283,6 @@ public sealed class DeferredChargeService(
                 attempt,
                 maxAttempts,
                 failure);
-            // Every attempt used and the guest was never asked: the host handles the payment.
             return attempt >= maxAttempts && booking.DeferredChargeFailedAt is null
                 ? (Step.Error, new DeferredChargeNotice(booking.Id, DeferredChargeNoticeKind.ChargeNotAttempted))
                 : (Step.Error, null);
@@ -371,8 +342,6 @@ public sealed class DeferredChargeService(
                 cancellationToken);
         }
 
-        // Succeeded or processing (the guest paid from the link, the webhook is late), or canceled on Stripe (outside
-        // CasaZen: no new charge).
         return existing;
     }
 
@@ -431,7 +400,6 @@ public sealed class DeferredChargeService(
         return StayCurrency.ForStripe(currency);
     }
 
-    /// <summary>A deferred charge PaymentIntent of this booking on the customer, not canceled: an attempt whose answer was lost.</summary>
     private async Task<PaymentIntent?> FindLostPaymentIntentAsync(Booking booking, string account, CancellationToken cancellationToken)
     {
         var bookingId = booking.Id.ToString();
@@ -453,7 +421,6 @@ public sealed class DeferredChargeService(
         return lost;
     }
 
-    /// <summary>A payment Stripe reported in flight (e.g. SEPA): read it again, in case its webhook was lost. Not an attempt.</summary>
     private async Task<(Step, DeferredChargeNotice?)> SynchronizeInFlightAsync(
         Booking booking,
         Payment payment,
@@ -471,10 +438,6 @@ public sealed class DeferredChargeService(
         return (StepOf(paymentIntent.Status), notice);
     }
 
-    /// <summary>
-    /// Unpaid on its cancellation day: a last look at Stripe (a payment made meanwhile wins), then the PaymentIntent is
-    /// canceled and the saved payment method detached on the connected account, the booking cancelled and its dates released.
-    /// </summary>
     private async Task<(Step, DeferredChargeNotice?)> CancelUnpaidAsync(
         Booking booking,
         Payment? payment,
@@ -496,7 +459,6 @@ public sealed class DeferredChargeService(
                 }
                 catch (StripeException ex) when (ex.StripeError?.Code == PaymentIntentUnexpectedStateCode)
                 {
-                    // The guest paid between the read and the cancellation.
                     current = await stripeService.GetPaymentIntentAsync(paymentIntentId, account, cancellationToken);
                 }
 
@@ -513,7 +475,6 @@ public sealed class DeferredChargeService(
             }
             catch (StripeException ex)
             {
-                // Not blocking: the job never charges a cancelled booking.
                 logger.LogWarning(ex, "Saved payment method of booking {BookingId} could not be detached", booking.Id);
             }
         }
@@ -530,8 +491,6 @@ public sealed class DeferredChargeService(
         booking.CancellationReason = BookingCancellationReason.DeferredPaymentNotCompleted;
         booking.UpdatedAt = now;
 
-        // Cancelled by the rules of the deferred payment: the system's cancellation, saved by the save of the booking's turn (a failed
-        // turn clears the context, event included).
         await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
         logger.LogInformation(
             "Booking {BookingId} cancelled: deferred payment not completed since {FailedAt}; dates released",
@@ -555,7 +514,6 @@ public sealed class DeferredChargeService(
         ArgumentNullException.ThrowIfNull(paymentIntent);
         if (source == WebhookSource.Platform && string.IsNullOrWhiteSpace(eventAccountId))
         {
-            // Deferred charges are always created on the connected account: an event of the platform account is not one.
             logger.LogWarning(
                 "Deferred charge event {EventType} for {PaymentIntentId} from the platform account: ignored", eventType, paymentIntent.Id);
             return DeferredChargeWebhookResult.Ignored;
@@ -584,7 +542,6 @@ public sealed class DeferredChargeService(
         var booking = await db.Bookings
             .Include(b => b.Payments)
             .SingleAsync(b => b.Id == bookingId, cancellationToken);
-        // The job may have written this booking in its own transaction while this one waited on the locks.
         await db.Entry(booking).ReloadAsync(cancellationToken);
         foreach (var row in booking.Payments)
             await db.Entry(row).ReloadAsync(cancellationToken);
@@ -614,8 +571,6 @@ public sealed class DeferredChargeService(
 
         if (status == PaymentStatus.Completed && !confirmed)
         {
-            // Never "Completed" on a cancelled booking (BK-04): the settlement confirms it again or refunds it. It finds
-            // the payment by its PaymentIntent.
             payment = EnsurePaymentRow(booking, payment, paymentIntent, eventAccountId);
             payment.TransactionId = paymentIntent.Id;
             payment.StripePaymentIntentId = paymentIntent.Id;
@@ -636,7 +591,6 @@ public sealed class DeferredChargeService(
             if (status == PaymentStatus.Completed &&
                 !string.Equals(PaymentRefundService.PaymentIntentIdOf(payment), paymentIntent.Id, StringComparison.Ordinal))
             {
-                // A second deferred charge succeeded: recorded as its own payment so the host can refund it.
                 logger.LogError(
                     "Booking {BookingId} has a second succeeded deferred charge {PaymentIntentId} besides payment {PaymentId}: refund one of them",
                     booking.Id,
@@ -685,7 +639,6 @@ public sealed class DeferredChargeService(
         return null;
     }
 
-    /// <summary>Records <paramref name="paymentIntent"/>'s status on the deferred payment (created when missing).</summary>
     private async Task<DeferredChargeNotice?> ApplyPaymentIntentAsync(Booking booking, Payment? payment, PaymentIntent paymentIntent, string? account, CancellationToken cancellationToken)
     {
         payment = EnsurePaymentRow(booking, payment, paymentIntent, account);
@@ -695,10 +648,6 @@ public sealed class DeferredChargeService(
         return ApplyStatus(booking, payment, paymentIntent, account, status);
     }
 
-    /// <summary>
-    /// Sets the payment status; the first failure of a confirmed booking starts the "guest must pay" episode: a new
-    /// checkout token for the link of the email (only its hash is stored) and the notice for the emails.
-    /// </summary>
     private DeferredChargeNotice? ApplyStatus(
         Booking booking,
         Payment payment,
@@ -724,7 +673,6 @@ public sealed class DeferredChargeService(
                     booking.DeferredChargeFailedAt = null;
                     booking.UpdatedAt = now;
 
-                    // E08/F01/US01/T04: the deferred charge is a payment received, saved with its event (the Octorate handler records it).
                     if (completedNow)
                         PaymentEvents.RecordSucceeded(domainEvents, db, payment, paymentIntent.Currency);
                     return null;
@@ -799,10 +747,6 @@ public sealed class DeferredChargeService(
 
     private static long ToCents(decimal amount) => (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
 
-    /// <summary>
-    /// Queues the emails of a committed change through <see cref="BookingNotifier"/>: guest (link to pay, or cancellation)
-    /// and host (<c>Org.ContactEmail</c>). A failure is logged with the booking id only and never undoes the change.
-    /// </summary>
     public Task CompleteAsync(DeferredChargeNotice notice, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(notice);

@@ -18,17 +18,14 @@ namespace Casazen.Core.Entities;
 [Index(nameof(OrgId), nameof(PropertyId), nameof(SentAt))]
 public class ComplianceSendLogEntry : ITenantOwned
 {
-    /// <summary>Longest <see cref="Reference"/>.</summary>
     public const int ReferenceMaxLength = 100;
 
-    /// <summary>Longest <see cref="ByUserId"/> (the one of <c>User.Id</c>).</summary>
     public const int UserIdMaxLength = 255;
 
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Property))]
@@ -42,28 +39,21 @@ public class ComplianceSendLogEntry : ITenantOwned
 
     public ComplianceSender Sender { get; set; }
 
-    /// <summary>When the send happened (UTC).</summary>
     public DateTime SentAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>The person who sent it (<c>User.Id</c>); <c>null</c> for a job or for the channel manager's own run.</summary>
     [MaxLength(UserIdMaxLength)]
     public string? ByUserId { get; set; }
 
-    /// <summary>A receipt or confirmation id of the send; <c>null</c> when there is none. Never guest data.</summary>
     [MaxLength(ReferenceMaxLength)]
     public string? Reference { get; set; }
 }
 
-/// <summary>What was sent (stored as an integer, never renumbered).</summary>
 public enum ComplianceSendKind
 {
-    /// <summary>The Alloggiati Web communication of the guests of a stay.</summary>
     AlloggiatiGuests = 1,
 
-    /// <summary>The ISTAT communication of a period.</summary>
     IstatPeriod = 2,
 
-    /// <summary>The tourist tax declaration of a period.</summary>
     TouristTaxPeriod = 3,
 
     /// <summary>
@@ -74,18 +64,11 @@ public enum ComplianceSendKind
     DocumentsDeleted = 4,
 }
 
-/// <summary>
-/// Who sent it, as the log keeps it (stored as an integer, never renumbered). Its own numbers: it is not the sender chosen for a property
-/// (<see cref="Enums.ComplianceSenderType"/>, whose numbers differ), and whoever writes a line maps one to the other by name.
-/// </summary>
 public enum ComplianceSender
 {
-    /// <summary>CasaZen transmitted it with the Questura account of the property.</summary>
     CasaZen = 1,
 
-    /// <summary>The channel manager (Octorate) sent it.</summary>
     ChannelManager = 2,
 
-    /// <summary>The host sent it by hand and declared it.</summary>
     Manual = 3,
 }

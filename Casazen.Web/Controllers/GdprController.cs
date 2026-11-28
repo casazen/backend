@@ -81,7 +81,6 @@ public class GdprController(
             && bookings.Any(b => b.Id == r.EntityId));
     }
 
-    /// <summary>Consents with their versions, retention per category and status of the guest's data.</summary>
     [HttpGet("guests/{id:guid}")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
     [ProducesResponseType(typeof(GuestPrivacySummary), StatusCodes.Status200OK)]
@@ -137,7 +136,6 @@ public class GdprController(
         return NoContent();
     }
 
-    /// <summary>Anonymization without deletion: 204, also when already anonymized; 409 while a stay is open.</summary>
     [HttpPost("guests/{id:guid}/anonymize")]
     [Authorize(Policy = CasazenPolicies.GuestManage)]
     public async Task<IActionResult> AnonymizeGuestData(Guid id)
@@ -152,11 +150,6 @@ public class GdprController(
         return NoContent();
     }
 
-    /// <summary>
-    /// Marketing consent (A5-14): the host can only withdraw it, on the guest's documented request (<c>note</c>).
-    /// <c>marketingConsent: true</c> answers 422 <c>gdpr_marketing_consent_host_grant_forbidden</c>; a withdrawal without
-    /// note 422 <c>gdpr_marketing_withdrawal_note_required</c>.
-    /// </summary>
     [HttpPut("guests/{id:guid}/consent")]
     [Authorize(Policy = CasazenPolicies.GuestManage)]
     public async Task<IActionResult> UpdateConsent(Guid id, [FromBody] UpdateConsentRequest request)
@@ -188,7 +181,6 @@ public class GdprController(
         if (orgId is null)
             return NotFound();
 
-        // No scope (a deactivated member, a member of another org) is no reach: never widened to the whole org.
         if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
             return Forbid();
 
@@ -232,10 +224,6 @@ public class GdprController(
         return reach?.OrgId;
     }
 
-    /// <summary>
-    /// <see cref="ResolveGuestOrgAsync"/> with the reach it was decided on: the org and the scope of the caller, for the answers that
-    /// narrow their content by it (the messages of the export).
-    /// </summary>
     private async Task<(Guid OrgId, HostScope Scope)?> ResolveGuestReachAsync(Guid guestId)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
@@ -261,6 +249,4 @@ public class GdprController(
     }
 }
 
-/// <param name="MarketingConsent">Only <c>false</c> is accepted from the host (withdrawal).</param>
-/// <param name="Note">The guest's request to withdraw (date, channel): required; stored up to 500 characters.</param>
 public record UpdateConsentRequest(bool MarketingConsent, string? Note = null);

@@ -30,10 +30,8 @@ public class ListingStatusSyncJob(
 {
     public const string RecurringJobId = "listing-status-sync";
 
-    /// <summary>Every 15 minutes (UTC).</summary>
     public const string Cron = "*/15 * * * *";
 
-    /// <summary>The seconds a run waits for the previous one.</summary>
     public const int LockTimeoutSeconds = 60;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]

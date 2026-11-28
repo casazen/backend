@@ -45,7 +45,6 @@ public class UserRepository(AppDbContext context) : IUserRepository
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            // A parallel first request of the same user inserted the row first (A1-14): keep that row.
             context.Entry(user).State = EntityState.Detached;
             var stored = await context.Users.FirstOrDefaultAsync(u => u.Id == user.Id);
             if (stored is null)
@@ -71,8 +70,6 @@ public class UserRepository(AppDbContext context) : IUserRepository
     public async Task UpdateAsync(User user)
     {
         user.UpdatedAt = DateTime.UtcNow;
-        // A tracked user saves only the columns that changed. Update() would rewrite every column, and a copy
-        // loaded before a parallel request linked the org would put OrgId back to null (A1-14).
         if (context.Entry(user).State == EntityState.Detached)
             context.Users.Update(user);
         await context.SaveChangesAsync();
@@ -86,7 +83,6 @@ public class UserRepository(AppDbContext context) : IUserRepository
     public async Task<(IEnumerable<User> Users, int TotalCount)> GetPagedAsync(
         string? search, string? role, bool? isActive, int page, int pageSize)
     {
-        // A page below 1 would turn into a negative OFFSET, which Postgres rejects with a 500 (A1-26).
         page = Math.Max(page, 1);
         var query = context.Users.AsQueryable();
 
@@ -114,8 +110,6 @@ public class UserRepository(AppDbContext context) : IUserRepository
         var totalCount = await query.CountAsync();
 
         var users = await query
-            // Newest first (A1-26): an admin looking for a just-created or just-changed account expects it near
-            // the top, not sorted alphabetically by e-mail.
             .OrderByDescending(u => u.CreatedAt)
             .ThenBy(u => u.Id)
             .Skip((page - 1) * pageSize)
@@ -125,7 +119,6 @@ public class UserRepository(AppDbContext context) : IUserRepository
         return (users, totalCount);
     }
 
-    /// <inheritdoc />
     public Task<bool> HasOtherActiveAdminAsync(string excludingUserId, CancellationToken cancellationToken = default) =>
         context.Users.AnyAsync(
             u => u.Id != excludingUserId && u.IsActive && u.Role == UserRole.Admin, cancellationToken);
@@ -155,7 +148,6 @@ public class UserRepository(AppDbContext context) : IUserRepository
 
         if (!isActive)
         {
-            // Read under the lock: an admin deactivated by a parallel request no longer acts as one.
             var actorActive = await context.Users
                 .AsNoTracking()
                 .Where(u => u.Id == actorId)

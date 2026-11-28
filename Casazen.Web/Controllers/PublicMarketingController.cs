@@ -95,7 +95,6 @@ public class PublicMarketingController(
         [FromQuery] string? expiresAt,
         [FromQuery] string? signature)
     {
-        // Validate required parameters
         if (string.IsNullOrWhiteSpace(email))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "email_missing", "EmailMissing");
 
@@ -105,7 +104,6 @@ public class PublicMarketingController(
         if (string.IsNullOrWhiteSpace(signature))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "signature_missing", "SignatureMissing");
 
-        // Check link expiration
         if (!DateTime.TryParseExact(expiresAt, "yyyy-MM-ddTHH:mm:ssZ",
             System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
@@ -119,7 +117,6 @@ public class PublicMarketingController(
             return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "link_expired", "LinkExpired");
         }
 
-        // Verify HMAC signature (ADR-007-R17)
         var secret = Environment.GetEnvironmentVariable("SIGNED_LINK_SECRET");
         if (string.IsNullOrWhiteSpace(secret))
         {
@@ -139,7 +136,6 @@ public class PublicMarketingController(
             return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
         }
 
-        // Find the marketing consent record
         var consentRecord = await db.MarketingConsentRecords
             .Where(r => r.GuestId == guestId && r.MarketingEmail.ToLower() == email.ToLower())
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
@@ -149,14 +145,12 @@ public class PublicMarketingController(
             return this.ApiProblem(StatusCodes.Status404NotFound, "consent_record_not_found", "ConsentRecordNotFound");
         }
 
-        // Already confirmed: idempotent success
         if (consentRecord.EmailConfirmed)
         {
             logger.LogInformation("Marketing email already confirmed: guestId={GuestId}", guestId);
             return Ok(new { confirmed = true, alreadyConfirmed = true });
         }
 
-        // ADR-007-R21: Mark as confirmed
         consentRecord.EmailConfirmed = true;
         await db.SaveChangesAsync(HttpContext.RequestAborted);
 
@@ -185,7 +179,6 @@ public class PublicMarketingController(
         [FromQuery] string? signature,
         [FromQuery] Guid orgId)
     {
-        // Validate required parameters
         if (string.IsNullOrWhiteSpace(emailHash))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "email_hash_missing", "EmailHashMissing");
 
@@ -198,7 +191,6 @@ public class PublicMarketingController(
         if (orgId == Guid.Empty)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "org_id_missing", "OrgIdMissing");
 
-        // Expiry and HMAC signature (ADR-007-R18)
         switch (unsubscribeLinks.Verify(orgId, emailHash, expiresAt, signature))
         {
             case MarketingUnsubscribeCheck.Valid:

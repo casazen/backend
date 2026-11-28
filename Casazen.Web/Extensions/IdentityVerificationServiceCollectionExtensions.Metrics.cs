@@ -13,10 +13,8 @@ public static partial class IdentityVerificationServiceCollectionExtensions
 {
     static partial void AddMetricsServices(IServiceCollection services)
     {
-        // E73/F01/US03/T01: the counters with the complete denominator; scoped like the database it reads.
         services.AddScoped<IIdentityVerificationMetricsService, IdentityVerificationMetricsService>();
 
-        // E73/F01/US03/T02: the CSV of the pilot, made of the same records as the counters.
         services.AddScoped<IdentityPilotExport>();
     }
 }

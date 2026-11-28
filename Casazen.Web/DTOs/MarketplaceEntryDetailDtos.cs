@@ -50,17 +50,12 @@ public sealed record MarketplaceEntryDetailDto(
     }
 }
 
-/// <summary>How the entry is activated: <c>type</c> is <c>api</c> (a channel or a tool), <c>licenseRequest</c> or <c>partnerSite</c>; <c>needsOctoratePanel</c> is true when the host gives the access on the channel manager's own panel.</summary>
 public sealed record MarketplaceActivationInfoDto(string Type, IReadOnlyList<MarketplaceRequirementDto> Requirements, bool NeedsOctoratePanel);
 
-/// <summary>One thing needed to activate: a stable <c>code</c> (<c>hotelId</c>, <c>credentials</c>, <c>panelAccess</c>, <c>licenseRequest</c>, or <c>requirement_n</c> for a partner) and its words.</summary>
 public sealed record MarketplaceRequirementDto(string Code, string Text);
 
-/// <summary>How to deactivate: the words, and <c>guided</c> when the host must do it on a site.</summary>
 public sealed record MarketplaceDeactivationDto(string Text, bool Guided);
 
-/// <summary>A question and its answer.</summary>
 public sealed record MarketplaceFaqDto(string Q, string A);
 
-/// <summary>Whether the entry can be activated now and, when not, the code of why.</summary>
 public sealed record MarketplaceDetailActionsDto(bool CanActivate, string? Reason);

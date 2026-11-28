@@ -18,13 +18,10 @@ namespace Casazen.Core.Leases;
 /// </remarks>
 public static class LongRentRules
 {
-    /// <summary>The security deposit is at most this many monthly rents (demo <c>LAW.depositMaxRents</c>; to be confirmed, LR-D29).</summary>
     public const int DepositMaxRents = 3;
 
-    /// <summary>Months a tacitly renewed canone libero (4+4) goes on for (interview D5).</summary>
     public const int LiberoRenewalMonths = 48;
 
-    /// <summary>Months a tacitly renewed canone concordato (3+2) goes on for (interview D5).</summary>
     public const int ConcordatoRenewalMonths = 24;
 
     /// <summary>
@@ -35,23 +32,14 @@ public static class LongRentRules
     public static IReadOnlyList<LeaseContractType> AvailableTypes { get; } =
         [LeaseContractType.Libero, LeaseContractType.Concordato, LeaseContractType.Transitorio];
 
-    /// <summary>
-    /// The types an imported contract (already signed outside CasaZen, LR-13) can have: the available ones and the transitory one
-    /// (decision LR-D12). The student lease is not a type of CasaZen and stays out.
-    /// </summary>
     public static IReadOnlyList<LeaseContractType> ImportedTypes { get; } =
         [LeaseContractType.Libero, LeaseContractType.Concordato, LeaseContractType.Transitorio];
 
     public static bool IsAvailable(LeaseContractType type) => AvailableTypes.Contains(type);
 
-    /// <summary>Whether a contract of this <paramref name="origin"/> can have this type: <see cref="AvailableTypes"/>, plus <see cref="ImportedTypes"/> for an imported one.</summary>
     public static bool IsAvailable(LeaseContractType type, LeaseOrigin origin) =>
         origin == LeaseOrigin.Imported ? ImportedTypes.Contains(type) : IsAvailable(type);
 
-    /// <summary>
-    /// Months of the first period of a contract created in CasaZen: 48 for the libero, 36 for the concordato (the minimum of the
-    /// type, <see cref="LeaseContractTerms"/>); <c>null</c> for a type that is not created here.
-    /// </summary>
     public static int? FirstTermMonths(LeaseContractType type) => type switch
     {
         LeaseContractType.Libero => LeaseContractTerms.LiberoMinimumMonths,
@@ -59,7 +47,6 @@ public static class LongRentRules
         _ => null,
     };
 
-    /// <summary>Months of a tacit renewal; <c>null</c> for a type that does not renew (the transitory one).</summary>
     public static int? RenewalMonths(LeaseContractType type) => type switch
     {
         LeaseContractType.Libero => LiberoRenewalMonths,
@@ -75,7 +62,6 @@ public static class LongRentRules
     /// </summary>
     public static DateTime FirstTermEnd(DateTime startDate, int months) => startDate.Date.AddMonths(months).AddDays(-1);
 
-    /// <summary>The rules as the API hands them to the screens (<c>GET api/long-rent/rules</c>).</summary>
     public static LongRentRulesDto Current { get; } = new(
         TermMonths: new Dictionary<string, int>
         {
@@ -117,5 +103,4 @@ public sealed record LongRentRulesDto(
     int TransitoryDocumentationAfterDays,
     int TransitoryBandFromInhabitants);
 
-/// <summary>A range of whole months, both ends included.</summary>
 public sealed record LongRentMonthRange(int Min, int Max);

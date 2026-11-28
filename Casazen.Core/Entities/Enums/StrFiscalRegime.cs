@@ -15,10 +15,8 @@ public enum StrFiscalRegime
     CedolareSecca21 = 0,
     CedolareSecca26 = 1,
 
-    /// <summary>Impresa, regime ordinario (partita IVA).</summary>
     RegimeOrdinario = 2,
 
-    /// <summary>Impresa, regime forfettario (partita IVA).</summary>
     RegimeForfettario = 3,
 
     /// <summary>

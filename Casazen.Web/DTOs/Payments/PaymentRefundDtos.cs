@@ -4,7 +4,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Payments;
 
-/// <summary>Body of <c>POST /api/payments/{id}/refund</c>; without <see cref="Amount"/> everything still refundable.</summary>
 public sealed class RefundPaymentRequest
 {
     [Range(0.01, 1_000_000, ErrorMessage = "RefundAmountInvalid")]
@@ -41,7 +40,6 @@ public sealed record PaymentRefundDto(
         refund.CompletedAt);
 }
 
-/// <summary>Refunds of one payment with its amounts (<c>GET /api/payments/{id}/refunds</c>).</summary>
 public sealed record PaymentRefundsResponse(
     Guid PaymentId,
     decimal PaidAmount,

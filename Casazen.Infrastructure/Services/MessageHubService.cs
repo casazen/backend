@@ -34,13 +34,10 @@ public sealed partial class MessageHubService(
     IOtaReviewService? otaReviews = null,
     IFeatureFlags? flags = null) : IMessageHubService
 {
-    /// <summary>Stable code of the 404 of a conversation that is not there or not within reach.</summary>
     public const string ThreadNotFoundCode = "thread_not_found";
 
-    /// <summary>Stable code of the 404 of a message that is not there or not within reach (the generic one).</summary>
     public const string MessageNotFoundCode = "message_not_found";
 
-    /// <summary>Stable code of the 404 of a file that is gone, expired, too big, of another type or unreachable.</summary>
     public const string AttachmentUnavailableCode = "attachment_unavailable";
 
     private const int DirectSource = (int)MessageThreadSource.Direct;
@@ -62,9 +59,7 @@ public sealed partial class MessageHubService(
         pageSize = Math.Clamp(pageSize, 1, GuestMessageRules.MaxPageSize);
         var now = Now();
 
-        // A direct thread is open while its check-out day is not more than seven days behind today (Europe/Rome): the same rule as StateOf.
         var openFrom = RomeCalendar.TodayAt(new DateTimeOffset(now)).AddDays(-GuestMessageRules.ClosedAfterCheckOutDays);
-        // The reviews are listed under their own filter and never in the default view: the list of «Da rispondere» is the conversations (E05/F06/US01/T03).
         var reviewsOnly = filter.Kind == MessageHubThreadKind.Review;
         var rows = Filtered(reviewsOnly ? ReviewRows(scope) : Rows(scope, openFrom), filter);
 
@@ -102,7 +97,6 @@ public sealed partial class MessageHubService(
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The key of a review is the one of a thing that is not a conversation: it is opened with GetReviewThreadAsync, never as a conversation.
         if (key.IsReview)
             throw ThreadNotFound();
 
@@ -129,7 +123,6 @@ public sealed partial class MessageHubService(
 
         if (key.Source == MessageThreadSource.Direct)
         {
-            // The booking is within reach, or it is a 404 (the same check as the detail): only then is the existing service asked.
             await DirectBookingAsync(scope, key.Id, cancellationToken);
             var view = await guestMessages.MarkReadAsync(key.Id, userId, cancellationToken);
             return new MessageHubReadResult(key, view.UnreadCount);
@@ -143,7 +136,6 @@ public sealed partial class MessageHubService(
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw ThreadNotFound();
 
-        // The same lock as the sync of the thread: a read of the host and a pass that stores a new message do not undo each other's count.
         var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
             db, cancellationToken, (PostgresAdvisoryLocks.Scope.OtaMessageThread, $"{scope.OrgId:N}:{thread.OctorateThreadId}"));
         await using (transaction)
@@ -217,7 +209,6 @@ public sealed partial class MessageHubService(
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw MessageNotFound();
 
-        // The thread of the message is within reach of the caller, or the message does not exist for it.
         var reachable = await db.OtaMessageThreads
             .AsNoTracking()
             .Where(t => t.OrgId == scope.OrgId && t.Id == message.ThreadId)
@@ -239,14 +230,6 @@ public sealed partial class MessageHubService(
         return content;
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The list
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The two sources in the same shape. Both sides name the same members in the same order, which is what lets the provider concatenate them
-    /// in one statement; the only strings in it are names and codes, never the words of a message.
-    /// </summary>
     private IQueryable<HubRow> Rows(HostScope scope, DateTime openFrom)
     {
         var orgId = scope.OrgId;
@@ -384,10 +367,6 @@ public sealed partial class MessageHubService(
         return rows;
     }
 
-    /// <summary>
-    /// The last message of each conversation of the page, for the preview and the author: the id of the newest message first (a correlated
-    /// subquery of plain columns), then the messages themselves, so the encrypted text is read through the entity.
-    /// </summary>
     private async Task<Dictionary<MessageThreadKey, LastMessage>> LastMessagesAsync(
         Guid orgId,
         IReadOnlyList<HubRow> pageRows,
@@ -497,10 +476,8 @@ public sealed partial class MessageHubService(
             rating);
     }
 
-    /// <summary>A conversation of a channel is archived or not; a direct one is open until the seventh day after the check-out (the rule of <see cref="GuestMessageRules.StateOf"/>).</summary>
     private static MessageHubThreadState StateOf(HubRow row, DateTime now)
     {
-        // A review has no state of a conversation: it is shown as open (the host may still answer it).
         if ((MessageThreadSource)row.Source is MessageThreadSource.Storefront or MessageThreadSource.OtaReview or MessageThreadSource.Review)
             return MessageHubThreadState.Open;
 
@@ -514,10 +491,6 @@ public sealed partial class MessageHubService(
             ? MessageHubThreadState.Open
             : MessageHubThreadState.Closed;
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // A conversation of a channel
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private async Task<MessageThreadView> GetOtaThreadAsync(HostScope scope, MessageThreadKey key, bool includeAmounts, CancellationToken cancellationToken)
     {
@@ -543,8 +516,6 @@ public sealed partial class MessageHubService(
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw ThreadNotFound();
 
-        // The latest messages, one more than the cap to know whether there are earlier ones. Only whether a message has a file is asked of the
-        // database, never where it is: the address does not leave the table.
         var latest = await db.OtaMessages
             .AsNoTracking()
             .Where(m => m.OrgId == scope.OrgId && m.ThreadId == thread.Id)
@@ -641,8 +612,6 @@ public sealed partial class MessageHubService(
     {
         ArgumentNullException.ThrowIfNull(scope);
 
-        // The confirmed listings of the org whose property the scope reaches: the reach of a collaborator «Solo alcuni» is applied to the properties in SQL, so a listing of
-        // a house it was not given is never in the answer, and a listing nobody confirmed (no property) has no row to be joined to.
         var properties = db.Properties
             .AsNoTracking()
             .Where(p => p.OrgId == scope.OrgId)
@@ -699,13 +668,8 @@ public sealed partial class MessageHubService(
             .ToList();
     }
 
-    /// <summary>The actions of a conversation as the table of capabilities says them: the one place that turns a row of it into what the screens read.</summary>
     private static MessageThreadActions ActionsOf(OtaChannelCapability capability) =>
         new(capability.CanReply, capability.ContactDetailsAllowed, capability.AttachmentsConfirmed, capability.AutoReplyConfirmed, null);
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The conversation with the guest of a direct booking
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private async Task<MessageThreadView> GetDirectThreadAsync(HostScope scope, MessageThreadKey key, bool includeAmounts, CancellationToken cancellationToken)
     {
@@ -753,7 +717,6 @@ public sealed partial class MessageHubService(
             false);
     }
 
-    /// <summary>The direct booking of a key within the reach of the scope, or the 404 of a conversation that is not there.</summary>
     private async Task<DirectBooking> DirectBookingAsync(HostScope scope, Guid bookingId, CancellationToken cancellationToken)
     {
         var booking = await db.Bookings
@@ -764,10 +727,6 @@ public sealed partial class MessageHubService(
             .FirstOrDefaultAsync(cancellationToken);
         return booking ?? throw ThreadNotFound();
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The booking beside the conversation
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// The booking card and the guest of the booking. A booking of another property than the thread's is not shown (a thread is never shown under a
@@ -829,7 +788,6 @@ public sealed partial class MessageHubService(
                     .AnyAsync(s => s.OrgId == scope.OrgId && s.BookingId == id, cancellationToken);
             if (BookingAmountSourceRules.HoldsChannelManagerMoney(facts, pushedByCasaZen))
             {
-                // A booking of a channel: the four figures the channel manager gave, as stored (null stays null) and the total when it is set.
                 amounts = new MessageBookingAmounts(
                     booking.TotalPrice > 0m ? booking.TotalPrice : null,
                     booking.OtaPaidAmount,
@@ -866,8 +824,6 @@ public sealed partial class MessageHubService(
         return new BookingCardResult(card, booking.GuestId, name.Length > 0 ? name : null);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     private static NotFoundException ThreadNotFound() =>
         new("The message thread was not found or is not within reach") { Code = ThreadNotFoundCode, MessageKey = "MessageThreadNotFound" };
 
@@ -885,15 +841,10 @@ public sealed partial class MessageHubService(
 
     private sealed record LastMessage(MessageOrigin Origin, string? Preview);
 
-    /// <summary>
-    /// A row of the list in the shape both sources are projected to. Plain columns and codes only; the numbers are those of
-    /// <see cref="MessageThreadSource"/>, <see cref="MessageHubChannel"/>, <see cref="MessageHubThreadKind"/> and <see cref="BookingStatus"/>.
-    /// </summary>
     private sealed class HubRow
     {
         public int Source { get; set; }
 
-        /// <summary>The id of the booking for a direct conversation, the id of the thread for a conversation of a channel (the id of the key).</summary>
         public Guid KeyId { get; set; }
 
         public int Channel { get; set; }

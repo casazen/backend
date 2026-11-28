@@ -21,7 +21,6 @@ public sealed class SdiIssuerRegistrationContributor(
 {
     public string Section => BillingSetupSections.Italy;
 
-    // The setup of the billing is the organization's (the guide of its administrators, like every contributor of the section): the whole org is looked at, whoever reads it.
     public async Task<bool> AppliesAsync(Guid orgId, CancellationToken ct) =>
         ChannelIsOpen && (await sdi.IssuerRegistrationsAsync(new HostScope(orgId), ct)).Count > 0;
 

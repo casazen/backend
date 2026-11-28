@@ -30,8 +30,6 @@ public sealed class AssistantRulesController(
     IOrgContextResolver orgContextResolver,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>The rules of the organization; the defaults (assistant off, neutral tone, Italian and English, threshold 0.85) while it never saved any.</summary>
-    /// <response code="200">The rules.</response>
     [HttpGet("rules")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [ProducesResponseType(typeof(AssistantRulesDto), StatusCodes.Status200OK)]
@@ -44,12 +42,6 @@ public sealed class AssistantRulesController(
         return Ok(AssistantRulesDto.From(await rules.GetAsync(caller.OrgId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Saves the rules of the organization (the whole set: what the body does not give is the default). The version of the instructions grows when something changed.
-    /// </summary>
-    /// <response code="200">The rules as saved.</response>
-    /// <response code="409"><c>assistant_concurrent_change</c>: someone changed the instructions at the same moment; read them again.</response>
-    /// <response code="422"><c>assistant_rules_invalid</c> (no language, a language that is not two lower-case letters, a signature over 300 characters, hours with one end only or equal ends, an unknown topic) or <c>assistant_threshold_invalid</c> (outside 0.50 to 0.99).</response>
     [HttpPut("rules")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -67,9 +59,6 @@ public sealed class AssistantRulesController(
         return Ok(AssistantRulesDto.From(saved));
     }
 
-    /// <summary>The exceptions of a property: a null field means «as the organization»; every field null when the property has none.</summary>
-    /// <response code="200">The exceptions.</response>
-    /// <response code="404"><c>property_not_found</c>: not in the caller's organization, or not within the caller's reach.</response>
     [HttpGet("properties/{propertyId:guid}/settings")]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
     [ProducesResponseType(typeof(PropertyAssistantSettingsDto), StatusCodes.Status200OK)]
@@ -86,14 +75,6 @@ public sealed class AssistantRulesController(
         return Ok(PropertyAssistantSettingsDto.From(await rules.GetPropertySettingsAsync(caller.OrgId, propertyId, cancellationToken)));
     }
 
-    /// <summary>
-    /// Saves the exceptions of a property (the whole set: a field not given is «as the organization»; no field at all removes them). The version of the instructions grows when
-    /// something changed.
-    /// </summary>
-    /// <response code="200">The exceptions as saved.</response>
-    /// <response code="404"><c>property_not_found</c>.</response>
-    /// <response code="409"><c>assistant_concurrent_change</c>.</response>
-    /// <response code="422"><c>assistant_rules_invalid</c> or <c>assistant_threshold_invalid</c>, as for the organization.</response>
     [HttpPut("properties/{propertyId:guid}/settings")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [RequestSizeLimit(16384)]
@@ -117,9 +98,6 @@ public sealed class AssistantRulesController(
         return Ok(PropertyAssistantSettingsDto.From(saved));
     }
 
-    /// <summary>Removes the exceptions of a property: it follows the organization again.</summary>
-    /// <response code="204">Removed (or there were none).</response>
-    /// <response code="404"><c>property_not_found</c>.</response>
     [HttpDelete("properties/{propertyId:guid}/settings")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -138,7 +116,6 @@ public sealed class AssistantRulesController(
         return NoContent();
     }
 
-    /// <summary>The caller's id and organization; <c>null</c> when it has no organization.</summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { Length: > 0 } userId

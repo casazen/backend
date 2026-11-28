@@ -39,7 +39,6 @@ public sealed class OctorateWebhookController(
     TimeProvider timeProvider,
     ILogger<OctorateWebhookController> logger) : ControllerBase
 {
-    /// <summary>The largest body read: a notification carries ids only.</summary>
     public const long MaxBodyBytes = 64 * 1024;
 
     private static readonly EventId SecretRefusedEvent = new(52_101, "OctorateWebhookSecretRefused");
@@ -55,7 +54,6 @@ public sealed class OctorateWebhookController(
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> Receive(string secret, CancellationToken cancellationToken)
     {
-        // A placeholder committed in a file is public: an address built on it would accept forged calls.
         if (RequiredConfiguration.IsMissing(verifier.ConfiguredSecret) || !verifier.HasUsableSecret)
         {
             logger.LogError("Octorate webhook secret not configured (Octorate__WebhookSecret, 32+ characters): the call is refused");
@@ -85,8 +83,6 @@ public sealed class OctorateWebhookController(
             return Ok();
         }
 
-        // The subscription is the partner's, not a property's: the org is found from the accommodation, across orgs (a system read),
-        // and only where a person confirmed the mapping. Several orgs may have mapped the same accommodation: each gets its event.
         var mappings = await db.OctorateListingMappings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()

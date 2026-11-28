@@ -3,10 +3,6 @@ using Casazen.Core.Services;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// One piece of the withholding evidence of a payout (E18/F01/US02, NF-117): the base and the withholding of one stay, in euro, with the owner, the month and the stay it is about.
-/// The annual data of the owners, the owner portal and the exports read the evidence through these pieces, so they all say the same euro.
-/// </summary>
 internal sealed record EvidenceLine(
     Guid EvidenceId,
     Guid OrgId,
@@ -68,7 +64,6 @@ internal static class TaxEvidenceLines
                 sign * FromCents(parts[index])));
         }
 
-        // What the stays do not explain of the base (a rule that reads another component than the gross of the stays): one piece of its own, so the base is the evidence's.
         var rest = grossBase - lines.Sum(l => l.GrossBase);
         if (rest != 0m)
             lines.Add(WithoutStay(evidence, rest, 0m));
@@ -76,13 +71,8 @@ internal static class TaxEvidenceLines
         return lines;
     }
 
-    /// <summary>The rule set a decision was taken on, as the evidence names it: <c>IT-STR-WITHHOLDING@2026.1</c>.</summary>
     public static string RuleVersionOf(TaxObligationEvidence evidence) => evidence.RuleCode + "@" + evidence.RuleVersion;
 
-    /// <summary>
-    /// <paramref name="total"/> cents split in proportion to <paramref name="weights"/>: each part is the share rounded down, and the cents that are left go one each to the
-    /// largest remainders (the first of the stays among equal ones), so the parts always add up to <paramref name="total"/>. Without any weight the whole is the first part.
-    /// </summary>
     internal static long[] Split(long total, long[] weights)
     {
         ArgumentNullException.ThrowIfNull(weights);

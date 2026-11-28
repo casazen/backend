@@ -4,10 +4,6 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>
-/// One condominium the owner pays (CondoLedger <c>houses</c>). Amounts are the owner's quota, already assigned
-/// by the administrator: there is no millesimi engine.
-/// </summary>
 [Table("Condominiums")]
 public class Condominium : ITenantOwned
 {
@@ -35,7 +31,6 @@ public class Condominium : ITenantOwned
     [MaxLength(AdministratorPhoneMaxLength)]
     public string? AdministratorPhone { get; set; }
 
-    /// <summary>First month of the fiscal year, 1-12. CondoLedger defaults to June.</summary>
     public int FiscalStartMonth { get; set; } = 6;
 
     [MaxLength(UserIdMaxLength)]

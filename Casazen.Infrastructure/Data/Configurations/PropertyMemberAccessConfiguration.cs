@@ -13,8 +13,6 @@ internal sealed class PropertyMemberAccessConfiguration : IEntityTypeConfigurati
             .HasForeignKey(a => a.OrgId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // The grants of a property go with it (it is soft-deleted, so in practice never) and the grants of a person go
-        // with the account.
         entity.HasOne(a => a.Property)
             .WithMany(p => p.MemberAccesses)
             .HasForeignKey(a => a.PropertyId)
@@ -31,7 +29,6 @@ internal sealed class PropertyMemberAccessConfiguration : IEntityTypeConfigurati
             .IsUnique()
             .HasDatabaseName("UIX_PropertyMemberAccesses_UserId_PropertyId");
 
-        // «Chi può accedere» per property, and the tenant filter (OrgId) of every read.
         entity.HasIndex(a => new { a.PropertyId })
             .HasDatabaseName("IX_PropertyMemberAccesses_PropertyId");
         entity.HasIndex(a => new { a.OrgId, a.UserId })

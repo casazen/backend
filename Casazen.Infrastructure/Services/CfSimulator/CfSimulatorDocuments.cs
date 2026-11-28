@@ -11,7 +11,6 @@ namespace Casazen.Infrastructure.Services.CfSimulator;
 /// <param name="Province">The two letters of the province of the municipality, empty when it is not known (the receipt of the registration names it).</param>
 public sealed record CfSimulatorHouse(string Address, string City, string PostalCode, string Comune, string Province = "")
 {
-    /// <summary>The house of a practice that arrived without a lease (or whose lease is gone): any house will do for a sample.</summary>
     public static CfSimulatorHouse Generic(string? comune, string? province = null) =>
         new(
             "Via Roma 1",
@@ -39,20 +38,16 @@ public sealed record CfSimulatorHouse(string Address, string City, string Postal
 /// </remarks>
 public static class CfSimulatorDocuments
 {
-    /// <summary>The sentence every sample document shows.</summary>
     public const string SampleNotice = "Documento di esempio generato dall'ambiente di prova.";
 
-    /// <summary>The monthly rent of the sample contract (euro).</summary>
     public const decimal SampleMonthlyRent = 650m;
 
-    /// <summary>The security deposit of the sample contract (euro): two months of rent.</summary>
     public const decimal SampleSecurityDeposit = 1300m;
 
     public const string LandlordFiscalCode = "RSSMRA80A01H501U";
 
     public const string TenantFiscalCode = "VRDGLI85B42F205E";
 
-    // As the contracts of the templates write an amount (1.300,00), whatever the cultures of the host.
     private static readonly NumberFormatInfo ItalianNumbers = new()
     {
         NumberDecimalSeparator = ",",
@@ -60,10 +55,8 @@ public static class CfSimulatorDocuments
         NumberDecimalDigits = 2,
     };
 
-    /// <summary>The first day of the month after <paramref name="today"/>: when the sample contract starts.</summary>
     public static DateOnly StartOf(DateOnly today) => new DateOnly(today.Year, today.Month, 1).AddMonths(1);
 
-    /// <summary>The last day of the first period: three years after the start, less a day (the 3 of a 3+2).</summary>
     public static DateOnly EndOf(DateOnly start) => start.AddYears(3).AddDays(-1);
 
     public static PdfDocumentContent Contract(CfSimulatorHouse house, DateOnly today)
@@ -95,26 +88,16 @@ public static class CfSimulatorDocuments
         ]);
     }
 
-    /// <summary>The conventional surface of the house in the attestation and the sheet (square metres).</summary>
     public const decimal SampleSurface = 80m;
 
-    /// <summary>The lowest monthly rent the sample agreement allows for the house (6 euro the square metre).</summary>
     public const decimal SampleRangeMinimum = 480m;
 
-    /// <summary>The highest monthly rent the sample agreement allows for the house (9 euro the square metre).</summary>
     public const decimal SampleRangeMaximum = 720m;
 
     public const string OwnersOrganization = "ASSOCIAZIONE PROPRIETARI DI PROVA";
 
     public const string TenantsOrganization = "UNIONE INQUILINI DI PROVA";
 
-    /// <summary>
-    /// The one document the guided service delivers (CF-DOCS-REAL): the signed contract, the attestation of conformity and the calculation sheet
-    /// of the rent, each starting its own page with the heading of the real ones ("Attestazione di Rispondenza", "Scheda Riepilogativa Canone").
-    /// The simulator hands it out as a scan (<c>ScannedPdf</c>), so the reading of the whole round runs the OCR and tells the sections
-    /// apart as it does for the real file. The attestation repeats the people and the dates of the contract and the rent, which is within the
-    /// values it states; the sheet works the same figures out: a reading that mixed the sections up would find two rents, not one.
-    /// </summary>
     public static PdfDocumentContent ContractWithAttestation(CfSimulatorHouse house, DateOnly today)
     {
         ArgumentNullException.ThrowIfNull(house);
@@ -248,13 +231,11 @@ public static class CfSimulatorDocuments
         ]);
     }
 
-    /// <summary>Six digits taken from the number of a practice: what changes from one sample receipt to another (the code and the number).</summary>
     private static string SixDigits(string practiceId) =>
         uint.TryParse(Tail(practiceId), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var value)
             ? (value % 1_000_000u).ToString("D6", CultureInfo.InvariantCulture)
             : "000000";
 
-    /// <summary>The last 8 characters of the number of a practice, in capitals: the part that changes from one practice to another.</summary>
     private static string Tail(string practiceId) => practiceId.Length > 8 ? practiceId[^8..].ToUpperInvariant() : practiceId.ToUpperInvariant();
 
     private static string Date(DateOnly date) => date.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);

@@ -72,7 +72,6 @@ public sealed class ShowcaseInquiryService(
         if (!await comuneMatcher.CoversAsync(supplier, new ComuneTarget(content.ComuneIstat, content.City), cancellationToken))
             throw ShowcaseBookingErrors.OutsideSupplierZone();
 
-        // With the code of the comune the supplier reads the official name, not the text typed next to it.
         var city = await ComuneNameAsync(content.ComuneIstat, content.City, cancellationToken);
 
         var emailHash = customerIndex.HashEmail(content.Email);
@@ -95,15 +94,12 @@ public sealed class ShowcaseInquiryService(
             DateTime.MinValue,
             content.ConsentIp);
 
-        // Rendered before the row is saved: a missing App:PublicSiteBaseUrl is a configuration error that has to stop the request,
-        // not a wrong link in an e-mail.
         var verification = notifier.RenderInquiryVerification(supplier, payload, inquiryId, token, validMinutes);
 
         ShowcaseInquiryResult result;
         ShowcaseInquiry created;
         await using (var transaction = await LockSupplierCalendarAsync(orgId, cancellationToken))
         {
-            // Everything from here on is read after the lock: what the previous holder committed is there.
             var now = UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
 
             var existing = await InquiriesOf(db, orgId)
@@ -157,7 +153,6 @@ public sealed class ShowcaseInquiryService(
 
         logger.LogInformation("Showcase inquiry {InquiryId} of supplier {OrgId} created", result.Id, orgId);
 
-        // After the commit: an e-mail for an inquiry that was not saved would be a link to nothing.
         if (!notifier.QueueInquiryVerification(content.Email, verification))
         {
             // The customer cannot be written to (provider not configured, queue down): nobody can check the address, and the customer
@@ -187,7 +182,6 @@ public sealed class ShowcaseInquiryService(
         {
             var inquiry = await InquiriesOf(db, orgId).Where(i => i.Id == inquiryId).FirstOrDefaultAsync(cancellationToken);
 
-            // One answer for an inquiry that does not exist, one of another supplier and a wrong token.
             if (inquiry is null || !ShowcaseBookingTokens.Matches(inquiry.TokenHash, token))
                 throw ShowcaseBookingErrors.InvalidLink();
 
@@ -200,7 +194,6 @@ public sealed class ShowcaseInquiryService(
             if (inquiry.ExpiresAt <= now)
                 throw ShowcaseBookingErrors.ExpiredLink();
 
-            // A supplier suspended meanwhile takes no new request (the profile is read again under the lock).
             var status = await db.SupplierProfiles
                 .AsNoTracking()
                 .Where(sp => sp.OrgId == orgId)
@@ -236,8 +229,6 @@ public sealed class ShowcaseInquiryService(
                 UpdatedAt = now,
                 ServiceListingId = payload.ServiceListingId,
                 ServiceNameSnapshot = payload.ServiceName,
-                // No time and no price: they come with the offer of the supplier. The supplier has the time of the configuration to
-                // answer, or the request lapses (the always-on service-request-expiry job); its first message stops the clock.
                 ResponseDueAt = now.AddMinutes(options.Value.InquiryResponseMinutes),
                 PublicCode = publicCode,
                 CustomerId = customer.Id,
@@ -246,7 +237,6 @@ public sealed class ShowcaseInquiryService(
             };
             db.ServiceRequests.Add(request);
 
-            // What the customer wrote is the first message of the thread, encrypted by the column.
             db.ServiceRequestMessages.Add(new ServiceRequestMessage
             {
                 ServiceRequestId = request.Id,
@@ -256,8 +246,6 @@ public sealed class ShowcaseInquiryService(
                 CreatedAt = now,
             });
 
-            // The inquiry becomes the request in the same save. The payload goes: the data moved to the customer, the request and the
-            // message. The token hash stays for the replay.
             inquiry.ConsumedAt = now;
             inquiry.ServiceRequestId = request.Id;
             inquiry.Payload = null;
@@ -287,15 +275,10 @@ public sealed class ShowcaseInquiryService(
     internal static IQueryable<ShowcaseInquiry> InquiriesOf(AppDbContext db, Guid orgId) =>
         db.ShowcaseInquiries.Where(i => i.OrgId == orgId);
 
-    /// <summary>
-    /// The requests on measure of <paramref name="orgId"/> that wait for the supplier (<c>Richiesto</c>) and belong to the customer with the
-    /// e-mail index <paramref name="emailHash"/>. Static and internal like <see cref="InquiriesOf"/>.
-    /// </summary>
     internal static IQueryable<ServiceRequest> OpenCustomRequestsOf(AppDbContext db, Guid orgId, string emailHash)
     {
         var customerIds = ShowcaseBookingService.CustomerByEmailOf(db, orgId, emailHash).Select(c => (Guid?)c.Id);
 
-        // ServiceRequest is not tenant-filtered (two parties, TN-2 allow-list); scoped by the explicit supplier org.
         return db.ServiceRequests
             .IgnoreQueryFilters()
             .Where(r => r.SupplierOrgId == orgId
@@ -304,7 +287,6 @@ public sealed class ShowcaseInquiryService(
                         && customerIds.Contains(r.CustomerId));
     }
 
-    /// <summary>Deletes an inquiry nobody can check (see <see cref="CreateAsync"/>); a failure here only leaves it to lapse.</summary>
     private async Task ReleaseAsync(ShowcaseInquiry inquiry, CancellationToken cancellationToken)
     {
         try
@@ -319,7 +301,6 @@ public sealed class ShowcaseInquiryService(
         }
     }
 
-    /// <summary>The service the request is about (id included), or the 404 the public gives for a service that is not published.</summary>
     private async Task<SupplierBookableService> FindServiceAsync(Guid orgId, string slug, CancellationToken cancellationToken)
     {
         var normalized = SupplierShowcaseSlug.Normalize(slug);
@@ -329,7 +310,6 @@ public sealed class ShowcaseInquiryService(
         return await catalog.FindBookableAsync(orgId, normalized, cancellationToken) ?? throw ServiceNotFound();
     }
 
-    /// <summary>The category of a request about no service: the first the supplier offers (an active supplier has at least one).</summary>
     private static string CategoryOf(SupplierProfile supplier) =>
         SupplierComuneMatcher.ReadStrings(supplier.CategoriesJson).FirstOrDefault(ServiceCategories.IsKnown) ?? ServiceCategories.Maintenance;
 
@@ -343,10 +323,6 @@ public sealed class ShowcaseInquiryService(
         return string.IsNullOrWhiteSpace(comune?.Name) ? typed : comune.Name;
     }
 
-    /// <summary>
-    /// The customer of this address for this supplier, created or brought up to date with what the customer just wrote (the same rule as
-    /// the booking's: one customer per supplier and address, and a request is never attached to somebody else).
-    /// </summary>
     private async Task<ServiceCustomer> UpsertCustomerAsync(
         Guid orgId,
         ShowcaseInquiry inquiry,
@@ -367,8 +343,6 @@ public sealed class ShowcaseInquiryService(
         }
         else if (!ServiceCustomerEmails.SameAddress(customer.Email, payload.Email))
         {
-            // The index says it is the same address and the address says it is not: a collision or a key that changed under existing
-            // customers. A request must never be attached to somebody else: stop, loudly.
             logger.LogError("Customer {CustomerId} of supplier {OrgId} has the e-mail index of another address", customer.Id, orgId);
             throw new InvalidOperationException("The e-mail index of a customer does not match its address.");
         }
@@ -384,10 +358,8 @@ public sealed class ShowcaseInquiryService(
         return customer;
     }
 
-    /// <summary>What a second check of the same link answers: the request, as it is now.</summary>
     private async Task<ShowcaseInquiryConfirmation> ReplayAsync(ShowcaseInquiry inquiry, Guid orgId, CancellationToken cancellationToken)
     {
-        // ServiceRequest is not tenant-filtered (two parties, TN-2 allow-list); scoped by the explicit supplier org.
         var request = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -404,10 +376,6 @@ public sealed class ShowcaseInquiryService(
             AlreadyConfirmed: true);
     }
 
-    /// <summary>
-    /// A code no hold and no request of the supplier has. 50 random bits: the first try is enough; the check is the guarantee, under the
-    /// lock that every hold and every request of the supplier is created under.
-    /// </summary>
     private async Task<string> NewPublicCodeAsync(Guid orgId, CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < ShowcaseBookingLimits.PublicCodeAttempts; attempt++)
@@ -482,6 +450,5 @@ public sealed class ShowcaseInquiryService(
     private static DomainConflictException StateChanged() =>
         new(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
 
-    /// <summary>The generic code of a 404 (the web layer's <c>ProblemCodes.NotFound</c>, which Infrastructure cannot name).</summary>
     private const string ProblemNotFound = "not_found";
 }

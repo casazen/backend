@@ -11,13 +11,6 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Seasonal price suggestions ("Suggerimenti stagionali", D4, PC-15): configuration, computed suggestions and manual
-/// recalculation for a property. The suggestions are the property's nightly rate times the host's explicit rules; they are
-/// read-only proposals (no price model per date exists yet): quotes and bookings keep using the nightly rate.
-/// Host endpoints (TN-3): <c>property.read</c> to read, <c>property.write</c> to change; the property itself is
-/// authorized as a <see cref="HostResource"/> (org, permission, ownership).
-/// </summary>
 [ApiController]
 [Route("api/pricing-adapter")]
 [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -28,7 +21,6 @@ public class PricingAdapterController(
     IAuthorizationService authorizationService,
     ILogger<PricingAdapterController> logger) : ControllerBase
 {
-    /// <summary>422: a recalculation was asked while the suggestions are disabled.</summary>
     public const string SuggestionsNotEnabledCode = "pricing_suggestions_not_enabled";
 
     /// <summary>
@@ -69,7 +61,6 @@ public class PricingAdapterController(
         if (request.LowSeasonMultiplier is { } low) config.LowSeasonMultiplier = low;
         if (request.HolidayMultiplier is { } holiday) config.HolidayMultiplier = holiday;
 
-        // Only one list sent: it may overlap the stored other one.
         if (config.HighSeasonMonths.Intersect(config.LowSeasonMonths).Any())
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "PricingSeasonMonthsOverlap");
 
@@ -83,14 +74,6 @@ public class PricingAdapterController(
         return Ok(PricingAdapterConfigResponse.From(saved));
     }
 
-    /// <summary>
-    /// Get the seasonal suggestions configuration of a property (the example rule, disabled, when none was saved).
-    /// </summary>
-    /// <param name="propertyId">The property identifier.</param>
-    /// <response code="200">Current configuration.</response>
-    /// <response code="401">Authentication required.</response>
-    /// <response code="403">Caller is not the property owner.</response>
-    /// <response code="404">Property not found.</response>
     [HttpGet("config/{propertyId:guid}")]
     [ProducesResponseType(typeof(PricingAdapterConfigResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -105,15 +88,6 @@ public class PricingAdapterController(
         return Ok(config is null ? PricingAdapterConfigResponse.Default(propertyId) : PricingAdapterConfigResponse.From(config));
     }
 
-    /// <summary>
-    /// Disable the seasonal suggestions of a property and remove the computed ones.
-    /// </summary>
-    /// <param name="propertyId">The property identifier.</param>
-    /// <param name="cancellationToken">Request abort.</param>
-    /// <response code="204">Suggestions disabled.</response>
-    /// <response code="401">Authentication required.</response>
-    /// <response code="403">Caller is not the property owner.</response>
-    /// <response code="404">Property or configuration not found.</response>
     [HttpDelete("config/{propertyId:guid}")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -134,16 +108,6 @@ public class PricingAdapterController(
         return NoContent();
     }
 
-    /// <summary>
-    /// The computed seasonal suggestions of a property (one per date, 90 days from the last computation), with the
-    /// property's current nightly rate. Empty when the suggestions are disabled or not computed yet.
-    /// </summary>
-    /// <param name="propertyId">The property identifier.</param>
-    /// <param name="cancellationToken">Request abort.</param>
-    /// <response code="200">Suggestions.</response>
-    /// <response code="401">Authentication required.</response>
-    /// <response code="403">Caller is not the property owner.</response>
-    /// <response code="404">Property not found.</response>
     [HttpGet("suggestions/{propertyId:guid}")]
     [ProducesResponseType(typeof(SeasonalSuggestionsResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -210,10 +174,6 @@ public class PricingAdapterController(
         });
     }
 
-    /// <summary>
-    /// Confirms seasonal proposals so quotes use them. The host may send an edited price per date; omitted prices use
-    /// the suggestion. An empty list confirms every current suggestion of the property.
-    /// </summary>
     [HttpPost("suggestions/{propertyId:guid}/apply")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(SeasonalApplyResponse), StatusCodes.Status200OK)]
@@ -233,10 +193,6 @@ public class PricingAdapterController(
         return Ok(new SeasonalApplyResponse { Applied = applied });
     }
 
-    /// <summary>
-    /// Loads the property (tenant-filtered: another org's property is 404) and authorizes <paramref name="operation"/>
-    /// on it; a visible property the caller may not use is 403.
-    /// </summary>
     private async Task<(Property Property, ActionResult? Denied)> AuthorizePropertyAsync(
         Guid propertyId,
         HostOperationRequirement operation)

@@ -21,16 +21,12 @@ public sealed record QueuedMessageAlert
 
     public Guid MessageId { get; set; }
 
-    /// <summary>When the message was written: the same instant the first delivery judged the quiet hours at.</summary>
     public DateTime OccurredAtUtc { get; set; }
 
-    /// <summary>The person who is told (<c>User.Id</c>).</summary>
     public string UserId { get; set; } = string.Empty;
 
-    /// <summary>The channels held back: <see cref="NotificationChannels.MobilePush"/> and/or <see cref="NotificationChannels.Email"/>.</summary>
     public NotificationChannels Channels { get; set; }
 
-    /// <summary>When they are due: the end of the quiet hours, and the instant the slot of the email was claimed for.</summary>
     public DateTime DueAtUtc { get; set; }
 
     public HostMessageAlert ToAlert() => new(OrgId, Source, EventType, ThreadId, MessageId, OccurredAtUtc);

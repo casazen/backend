@@ -32,14 +32,11 @@ public sealed record SupplierToday(
     int JobsTotal,
     int Days = 1)
 {
-    /// <summary>The last day <see cref="Jobs"/> cover.</summary>
     public DateOnly LastDate => Date.AddDays(Days - 1);
 }
 
-/// <summary>The limits of the home of the console (SP-04e).</summary>
 public static class SupplierTodayLimits
 {
-    /// <summary>Most days <c>GET api/supplier/today?days=</c> covers: "today and the next days" of the home, a week at most.</summary>
     public const int MaxDays = 7;
 }
 
@@ -75,29 +72,13 @@ public sealed record SupplierChecklist(
     bool? PaymentsActive,
     SupplierChecklistVerification? Verification = null);
 
-/// <summary>
-/// Whether the supplier is "Verificato" and, when it is not, what is still missing (SP-16a): the stable codes of
-/// <see cref="SupplierVerification"/> (<c>profile_not_active</c>, <c>payments_not_enabled</c>, <c>vat_number_missing</c>), in that order.
-/// </summary>
 public sealed record SupplierChecklistVerification(bool Verified, IReadOnlyList<string> Missing);
 
-/// <summary>
-/// The two reads of the supplier's console home (SP-04), composed from the service requests, the profile, the catalog and the
-/// agenda. Every read is scoped by the supplier org of the caller.
-/// </summary>
 public interface ISupplierTodayService
 {
-    /// <summary>The home of the supplier for today (Europe/Rome). Read-only.</summary>
     Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The home of the supplier for today and the next days (SP-04e): the jobs go from today to today plus
-    /// <paramref name="days"/> minus one (at most 50 of them), the rest is as for today. <paramref name="days"/> is from 1 to
-    /// <see cref="SupplierTodayLimits.MaxDays"/>. Read-only.
-    /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="days"/> is outside that range.</exception>
     Task<SupplierToday> GetTodayAsync(Guid supplierOrgId, int days, CancellationToken cancellationToken = default);
 
-    /// <summary>The activation checklist of the supplier. Read-only; <c>null</c> when the org has no supplier profile.</summary>
     Task<SupplierChecklist?> GetChecklistAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 }

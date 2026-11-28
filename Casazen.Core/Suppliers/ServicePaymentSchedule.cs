@@ -10,13 +10,10 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class ServicePaymentSchedule
 {
-    /// <summary>The payer still has to pay: nothing was collected, nothing is in flight, and the payment was not dropped.</summary>
     public static bool IsOwed(ServicePaymentStatus status) => status is ServicePaymentStatus.Requested or ServicePaymentStatus.Failed;
 
-    /// <summary>The instant a payment asked for at <paramref name="requestedAt"/> becomes late; null while it was not asked for yet.</summary>
     public static DateTime? LateSince(DateTime? requestedAt, int lateAfterDays) => requestedAt?.AddDays(lateAfterDays);
 
-    /// <summary>The payment is owed and its late date has passed.</summary>
     public static bool IsLate(ServicePaymentStatus status, DateTime? requestedAt, int lateAfterDays, DateTime now) =>
         IsOwed(status) && LateSince(requestedAt, lateAfterDays) is { } since && now >= since;
 

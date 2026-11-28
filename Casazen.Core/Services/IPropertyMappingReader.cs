@@ -7,10 +7,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IPropertyMappingReader
 {
-    /// <summary>
-    /// False when nothing provides the mapping: a flow that needs it has the <c>mapping</c> prerequisite unmet
-    /// (<c>mapping_unavailable</c>), never met by default.
-    /// </summary>
     bool IsProvided { get; }
 
     /// <summary>

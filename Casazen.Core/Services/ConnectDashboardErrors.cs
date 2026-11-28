@@ -14,6 +14,5 @@ public static class ConnectDashboardErrors
     /// </summary>
     public const string NotReady = "stripe_connect_dashboard_not_ready";
 
-    /// <summary>The key of <see cref="NotReady"/>.</summary>
     public const string NotReadyMessageKey = "StripeConnectDashboardNotReady";
 }

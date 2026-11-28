@@ -67,7 +67,6 @@ public sealed class GuestDocumentPurgeService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // What this stay staged is dropped, so the next stay starts clean; its rows and references are still there for the next run.
                 db.ChangeTracker.Clear();
                 failed++;
                 firstFailure ??= ex;
@@ -81,7 +80,6 @@ public sealed class GuestDocumentPurgeService(
             "Documents deleted after the receipt: {Stays} stays, {Images} document photos, {Scans} scans, {Failed} stays failed",
             stays, images, scans, failed);
 
-        // Nothing is kept past its receipt in silence: the run fails (and is repeated) while a stay could not be cleared; what was deleted stays deleted.
         if (failed > 0)
         {
             throw new InvalidOperationException(
@@ -92,11 +90,6 @@ public sealed class GuestDocumentPurgeService(
         return new GuestDocumentPurgeResult(true, stays, images, scans);
     }
 
-    /// <summary>
-    /// The stays that may have something to delete: those that owe the communication and hold a photo of a document (a row of <c>DocumentImages</c>, marked deleted or not)
-    /// or whose booker holds a legacy scan. Read as a few ids and one day, oldest arrival first: a stay with nothing left is not here, so the set follows the stays that
-    /// wait for their receipt.
-    /// </summary>
     private async Task<List<StayRow>> CandidatesAsync(Guid? orgId, CancellationToken ct)
     {
         var stays = db.Bookings
@@ -148,10 +141,6 @@ public sealed class GuestDocumentPurgeService(
         return covered;
     }
 
-    /// <summary>
-    /// Deletes what one covered stay holds and saves it with its line of the send log, in one unit of work; the context is cleared after it. Nothing is written when
-    /// the stay holds nothing any more.
-    /// </summary>
     private async Task<(int Images, int Scans)> PurgeStayAsync(StayRow stay, DateTime now, CancellationToken ct)
     {
         var photos = await db.DocumentImages
@@ -165,9 +154,6 @@ public sealed class GuestDocumentPurgeService(
         if (photos.Count == 0 && !scan.ReferenceCleared)
             return (0, 0);
 
-        // The line of the send log of the stay, with the date it was deleted, only for what really left the storage: the photos, and a scan whose object was deleted. A scan
-        // whose object another guest record still points to (a snapshot of the same guest) or whose reference is not a storage key only loses its reference here: that is
-        // saved all the same, but it is neither counted nor written as a deletion. Added through the set (its id is preset).
         if (photos.Count > 0 || scan.ObjectsDeleted > 0)
         {
             db.ComplianceSendLogEntries.Add(new ComplianceSendLogEntry
@@ -193,7 +179,6 @@ public sealed class GuestDocumentPurgeService(
     /// </summary>
     private async Task<ScanOutcome> DeleteScanOfBookerAsync(StayRow stay, CancellationToken ct)
     {
-        // The reference first and nothing else: most covered stays have no legacy scan, and the record of the guest is loaded only for the one that has.
         var scan = await db.Guests
             .AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -226,7 +211,6 @@ public sealed class GuestDocumentPurgeService(
 
     private sealed record StayRow(Guid Id, Guid OrgId, Guid PropertyId, Guid GuestId, DateTime CheckInDate);
 
-    /// <summary>What happened to the scan of a booker: whether its reference was cleared (to be saved), and how many objects left the storage (0 when another record still points to it).</summary>
     private sealed record ScanOutcome(bool ReferenceCleared, int ObjectsDeleted)
     {
         public static ScanOutcome Untouched { get; } = new(false, 0);

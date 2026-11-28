@@ -18,13 +18,6 @@ public interface IVerificationQueueService
         Authorization.HostScope scope,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Request a new selfie photo from the guest (AC-NF12-5): generates a signed link and queues an email with
-    /// <see cref="IEmailService"/>. False when the booking is outside <paramref name="scope"/>, has no active check-in
-    /// session or the guest has no email. E03/F04/US02: when the verification of the booking is with the operator (rejected, or a hand-off still
-    /// open) the request also writes the operator row that opens the way again (<c>Escalate</c>, with <paramref name="operatorUserId"/>: not a
-    /// decision), or the new session would answer «operator» like the old one.
-    /// </summary>
     Task<bool> RequestNewPhotoAsync(
         Guid bookingId,
         Authorization.HostScope scope,
@@ -47,11 +40,6 @@ public interface IVerificationQueueService
         string? operatorUserId = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Reject the guest's check-in (AC-NF12-7): marks the verification as rejected with <paramref name="reason"/>.
-    /// Returns false when the booking is outside <paramref name="scope"/> (TN-3) or has no pending verification. E03/F04/US02/T03: the
-    /// rejection is logged like a decision (method <c>Operator</c>, <paramref name="operatorUserId"/>, the reason as the note); no code is released.
-    /// </summary>
     Task<bool> RejectVerificationAsync(
         Guid bookingId,
         Authorization.HostScope scope,
@@ -78,11 +66,6 @@ public interface IVerificationQueueService
         string? operatorUserId = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The outcomes of the verifications of the bookings <paramref name="scope"/> reaches, decided from <paramref name="fromUtc"/> (included) to
-    /// <paramref name="toUtc"/> (excluded): what the agent decided, what the operators decided, and the share of the concluded verifications an
-    /// operator concluded (the monitoring of NF-51, E03/F04/US02/T03).
-    /// </summary>
     Task<VerificationMetrics> GetMetricsAsync(
         Authorization.HostScope scope,
         DateTime fromUtc,
@@ -90,19 +73,14 @@ public interface IVerificationQueueService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>What became of a proposed video call (<see cref="IVerificationQueueService.ProposeVideoCallAsync"/>).</summary>
 public enum VideoCallOutcome
 {
-    /// <summary>The e-mail with the link was queued for the guest.</summary>
     Sent = 1,
 
-    /// <summary>The booking is outside the caller's scope or its verification does not wait for an operator: 404 <c>no_pending_verification</c>.</summary>
     NotPending = 2,
 
-    /// <summary>The guest has no e-mail address: nothing was sent and the "To do" suggests the portal chat: 409 <c>guest_unreachable</c>.</summary>
     GuestUnreachable = 3,
 
-    /// <summary>The e-mail could not be queued (no provider configured, the queue failed): nothing was recorded: 409 <c>video_call_not_sent</c>.</summary>
     NotSent = 4,
 }
 
@@ -112,13 +90,10 @@ public enum VideoCallOutcome
 /// </summary>
 public static class VideoCallLinks
 {
-    /// <summary>The longest address accepted.</summary>
     public const int MaxLength = 500;
 
-    /// <summary>The code of the 422 for an address that is not one.</summary>
     public const string UrlInvalidCode = "video_call_url_invalid";
 
-    /// <summary>The address as an absolute <c>https</c> URI, or null when <paramref name="url"/> is not one. The input is trimmed first.</summary>
     public static Uri? TryParse(string? url)
     {
         if (string.IsNullOrWhiteSpace(url))
@@ -168,14 +143,8 @@ public sealed record PendingVerification(
     string? Channel = null,
     PendingEvidenceSummary? Evidence = null);
 
-/// <summary>The evidence kept for the reviewer of a booking (E73/F01/US02/T02): how many pictures are live and when the first of them expires (UTC). Never a picture.</summary>
 public sealed record PendingEvidenceSummary(int Count, DateTime ExpiresAt);
 
-/// <summary>
-/// The figures of the identity verifications of one period (E03/F04/US02/T03, NF-51 monitoring): the automatic outcomes by result
-/// (<paramref name="Ok"/>, <paramref name="Review"/>, <paramref name="NotOk"/>), the operators' decisions, and
-/// <paramref name="OperatorShare"/> = operator decisions / (automatic ok + operator decisions), 0 when nothing was concluded.
-/// </summary>
 public sealed record VerificationMetrics(
     DateTime FromUtc,
     DateTime ToUtc,
@@ -186,6 +155,5 @@ public sealed record VerificationMetrics(
     int OperatorRejected,
     double OperatorShare)
 {
-    /// <summary>Every decision an operator took in the period.</summary>
     public int OperatorDecisions => OperatorApproved + OperatorRejected;
 }

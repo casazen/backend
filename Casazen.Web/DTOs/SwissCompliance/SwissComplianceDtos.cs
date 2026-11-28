@@ -5,29 +5,15 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.SwissCompliance;
 
-/// <summary>
-/// Body of <c>POST /api/properties/{propertyId}/swiss/ticino-notification</c> (casazen/backend#979): the arrival day whose guests go to the
-/// Ticino police, and the format of the file.
-/// </summary>
 public sealed class TicinoNotificationRequest
 {
-    /// <summary>
-    /// The arrival day, a calendar day (<c>yyyy-MM-dd</c>, for instance <c>2026-11-19</c>) in Switzerland (Europe/Zurich), no time and no time
-    /// zone. The file lists the guests of the stays that arrive on that day.
-    /// </summary>
     [Required(ErrorMessage = "SwissReportDateRequired")]
     public DateOnly? ReportDate { get; set; }
 
-    /// <summary><c>csv</c> (default, the official CSV model) or <c>xml</c> (the official XSD), case-insensitive.</summary>
     public string? Format { get; set; }
 
-    /// <summary>
-    /// <c>true</c> when the person confirmed that the file of a day that is already declared (or has a receipt of the portal) is generated again, knowing that the portal may create
-    /// duplicates (E30/F02/US02/T01, NF-128). Without it such a day answers 409 <c>ticino_day_already_declared</c>; a day that is not declared is never asked. Default <c>false</c>.
-    /// </summary>
     public bool ConfirmRegenerate { get; set; }
 
-    /// <summary>The format of <paramref name="value"/>: CSV when blank; false when it is neither <c>csv</c> nor <c>xml</c>.</summary>
     public static bool TryParseFormat(string? value, out TicinoPoliceFileFormat format)
     {
         format = TicinoPoliceFileFormat.Csv;
@@ -120,20 +106,11 @@ public sealed record TicinoNotificationDayResponse(
     }
 }
 
-/// <summary>
-/// Body of <c>POST /api/properties/{propertyId}/swiss/ticino-notification/declare</c> (E30/F02/US02/T01, NF-128, decision D10): the arrival day the host uploaded to the police portal, and
-/// optionally the receipt of the portal they recorded for it.
-/// </summary>
 public sealed class DeclareTicinoDayRequest
 {
-    /// <summary>The arrival day, a calendar day (<c>yyyy-MM-dd</c>) in Switzerland (Europe/Zurich), not after today.</summary>
     [Required(ErrorMessage = "SwissArrivalDayRequired")]
     public DateOnly? ArrivalDay { get; set; }
 
-    /// <summary>
-    /// A <c>Police</c> receipt of this property whose report date is the arrival day (the id <c>POST …/upload-receipt</c> gave back): optional, the declaration closes the day without it. A
-    /// receipt of another property, of another day or of another type is refused (422 <c>ticino_declaration_receipt_invalid</c>).
-    /// </summary>
     public Guid? ReceiptId { get; set; }
 }
 
@@ -160,23 +137,11 @@ public sealed record TicinoDeclarationResponse(Guid PropertyId, DateOnly Arrival
     }
 }
 
-/// <summary>
-/// A row of the file: the guest and the accompanying minors counted on them (14 to 17, under 14), or the leader of a group of six or more with every
-/// other member counted on the row (14 or more, under 14).
-/// </summary>
-/// <param name="BookingId">The stay.</param>
-/// <param name="GuestName">The notified person.</param>
-/// <param name="PersonsOver14">«Mag14».</param>
-/// <param name="PersonsUnder14">«Min14».</param>
-/// <param name="Kind"><c>guest</c>, or <c>group</c> for the leader of a group of six or more (its sheet: <c>GET …/ticino-notification/group-sheet?bookingId=</c>).</param>
-/// <param name="GroupSize">The persons of the group, the leader included; 0 for a guest.</param>
 public sealed record TicinoNotificationRowResponse(
     Guid BookingId, string GuestName, int PersonsOver14, int PersonsUnder14, string Kind = TicinoNotificationRowResponse.GuestKind, int GroupSize = 0)
 {
-    /// <summary>The <see cref="Kind"/> of the row of a guest.</summary>
     public const string GuestKind = "guest";
 
-    /// <summary>The <see cref="Kind"/> of the row of the leader of a group of six or more.</summary>
     public const string GroupKind = "group";
 
     public static TicinoNotificationRowResponse From(TicinoRegistration row)
@@ -195,52 +160,31 @@ public sealed record TicinoNotificationRowResponse(
 /// <summary>A warning about a stay of the day (the codes of <c>TicinoWarnings</c>, the clients translate them).</summary>
 public sealed record TicinoStayWarningResponse(Guid BookingId, string Code);
 
-/// <summary>A guest left out of the file and what they miss (the codes of <c>TicinoMissing</c>).</summary>
 public sealed record TicinoNotificationIssueResponse(Guid BookingId, int? Position, string GuestName, IReadOnlyList<string> Missing);
 
-/// <summary>An arrival day still to notify.</summary>
 public sealed record TicinoPendingDayResponse(DateOnly Day, int StayCount, DateTime DueAt);
 
-/// <summary>
-/// Body of <c>POST /api/properties/{propertyId}/swiss/otr-report</c> (E08, ADR-016): the period of the overnight report.
-/// </summary>
 public sealed class OtrReportRequest
 {
-    /// <summary>First day of the period, a calendar day (<c>2026-10-01</c>); the night that starts on it is counted.</summary>
     [Required(ErrorMessage = "SwissPeriodFromRequired")]
     public DateOnly? FromDate { get; set; }
 
-    /// <summary>
-    /// Last day of the period, <b>inclusive</b> (<c>2026-10-31</c> for the month of October): the night that starts on it is
-    /// counted. Not before <see cref="FromDate"/>, at most 366 days from it (both ends counted).
-    /// </summary>
     [Required(ErrorMessage = "SwissPeriodToRequired")]
     public DateOnly? ToDate { get; set; }
 }
 
-/// <summary>
-/// Query of <c>GET /api/properties/{propertyId}/swiss/guest-register</c> and of <c>GET …/guest-register/info</c> (E31/F01/US01/T01, NF-130): the period of the guest register, by arrival day,
-/// and the format of the file.
-/// </summary>
 public sealed class GuestRegisterQuery
 {
-    /// <summary>The csv of the register: the default and the only format.</summary>
     public const string CsvFormat = "csv";
 
-    /// <summary>First day of the period, a calendar day (<c>2026-01-01</c>): the stays that arrive on it are listed.</summary>
     [Required(ErrorMessage = "SwissPeriodFromRequired")]
     public DateOnly? From { get; set; }
 
-    /// <summary>
-    /// Last day of the period, <b>inclusive</b> (<c>2026-03-31</c>): the stays that arrive on it are listed. Not before <see cref="From"/>, at most 366 days from it (both ends counted).
-    /// </summary>
     [Required(ErrorMessage = "SwissPeriodToRequired")]
     public DateOnly? To { get; set; }
 
-    /// <summary><c>csv</c> (default, and the only one), case-insensitive. Read by the file; the info does not need it.</summary>
     public string? Format { get; set; }
 
-    /// <summary>The format asked is the csv: blank (the default) or <c>csv</c> in any case.</summary>
     public static bool IsCsv(string? value) =>
         string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), CsvFormat, StringComparison.OrdinalIgnoreCase);
 }
@@ -284,39 +228,18 @@ public sealed record SwissComplianceFileResponse(
     string Reference,
     string FileHash);
 
-/// <summary>
-/// Multipart form of <c>POST /api/properties/{propertyId}/swiss/upload-receipt</c> (E08, ADR-016): the receipt the cantonal
-/// portal gave back for a file the host submitted, with the reference of the submission.
-/// </summary>
 public sealed class UploadSwissReceiptForm
 {
-    /// <summary>
-    /// What the document is, case-insensitive: <c>Police</c> (the receipt of the police notification), <c>OTR</c> (the overnight report),
-    /// <c>ParentalAuthorization</c> (the written authorization of the parents of a minor staying without an adult) or <c>GroupSheet</c> (the sheet of a
-    /// group of six or more): the last two are the documents the Ticino rules keep five years (decision D11).
-    /// </summary>
     [Required(ErrorMessage = "SwissReceiptTypeRequired")]
     public string? Type { get; set; }
 
-    /// <summary>
-    /// The day the document is about, a calendar day in ISO format (<c>yyyy-MM-dd</c>, for instance <c>2026-10-25</c>): the arrival day of a police
-    /// notification, of a group sheet or of a parents' authorization, the first day (<c>fromDate</c>) of the period of an OTR report. The five years of
-    /// the retention of the police documents run from it.
-    /// </summary>
     [Required(ErrorMessage = "SwissReportDateRequired")]
     public DateOnly? ReportDate { get; set; }
 
-    /// <summary>
-    /// Reference of the submission: the confirmation number the portal showed or a reference of the host's own. At most
-    /// 200 characters; surrounding spaces are removed.
-    /// </summary>
     [Required(ErrorMessage = "SwissReceiptReferenceRequired")]
     [MaxLength(SwissComplianceReceipts.MaxReferenceLength, ErrorMessage = "SwissReceiptReferenceTooLong")]
     public string? Reference { get; set; }
 
-    /// <summary>
-    /// The receipt file, any type, not empty, at most 10 MB. Its original bytes are encrypted and retained in private storage.
-    /// </summary>
     [Required(ErrorMessage = "SwissReceiptFileRequired")]
     public IFormFile? File { get; set; }
 }
@@ -350,7 +273,6 @@ public sealed record SwissReceiptResponse(
         receipt.UploadedAt);
 }
 
-/// <summary>No storage key or public URL is exposed; HasFile distinguishes retained originals from legacy hash-only rows.</summary>
 public sealed record SwissReceiptArchiveItem(SwissReceiptResponse Receipt, bool HasFile);
 public sealed record SwissReceiptPageResponse(IReadOnlyList<SwissReceiptArchiveItem> Items, int Page, int PageSize, int TotalCount, bool IsTicinoProperty)
 {

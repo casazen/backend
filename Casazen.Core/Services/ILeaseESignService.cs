@@ -17,40 +17,25 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ILeaseESignService
 {
-    /// <summary>True only when every setting the provider needs (endpoint, API key, webhook secret) is present.</summary>
     bool IsConfigured { get; }
 
-    /// <summary>
-    /// Opens a signing session for the final contract <paramref name="pdfBytes"/> with one signer per party. Throws
-    /// <see cref="ESignProviderException"/> when the provider does not take the request.
-    /// </summary>
     Task<SigningSessionResult> InitiateSigningAsync(LeaseContract lease, byte[] pdfBytes, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Reads a webhook body whose signature was already verified. Null when the body is not an event of this provider.
-    /// </summary>
     Task<ESignEvent?> ParseWebhookEventAsync(string payload);
 
-    /// <summary>The PDF signed by every party of a completed session. The caller disposes the stream.</summary>
     Task<Stream> DownloadSignedDocumentAsync(string externalSessionId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A signing session opened by the provider.</summary>
 public sealed record SigningSessionResult(string ExternalSessionId, IReadOnlyList<ProviderSigner> Signers);
 
-/// <summary>The personal signing link of one party. <paramref name="ExpiresAt"/> is a UTC instant.</summary>
 public sealed record ProviderSigner(Guid PartyId, string ExternalSignerId, string SigningUrl, DateTime ExpiresAt);
 
-/// <summary>Kind of a provider event.</summary>
 public enum ESignEventKind
 {
-    /// <summary>One signer signed; others may still be pending.</summary>
     SignerSigned,
 
-    /// <summary>Every signer signed: the signed document can be downloaded.</summary>
     AllSigned,
 
-    /// <summary>Any other event (viewed, reminder, ...): recorded nowhere.</summary>
     Other,
 }
 
@@ -60,7 +45,6 @@ public enum ESignEventKind
 /// </summary>
 public sealed record ESignEvent(string ExternalSessionId, ESignEventKind Kind, string? ExternalSignerId = null);
 
-/// <summary>The e-signature provider could not take or process a request (network, credit, validation, outage).</summary>
 public sealed class ESignProviderException(string message, Exception? innerException = null)
     : Exception(message, innerException);
 

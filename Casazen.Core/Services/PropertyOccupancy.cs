@@ -20,10 +20,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class PropertyOccupancy
 {
-    /// <summary>
-    /// A booking of <paramref name="propertyId"/> that takes at least one night from <paramref name="fromDate"/>
-    /// (included) to <paramref name="toDate"/> (excluded). Combine it with <see cref="CheckoutHolds.OccupiesDates"/>.
-    /// </summary>
     public static Expression<Func<Booking, bool>> BookingTakesNightIn(Guid propertyId, DateTime fromDate, DateTime toDate)
     {
         var from = fromDate.Date;
@@ -31,11 +27,6 @@ public static class PropertyOccupancy
         return b => b.PropertyId == propertyId && b.CheckInDate.Date < to && b.CheckOutDate.Date > from;
     }
 
-    /// <summary>
-    /// A booking of any property that takes at least one night from <paramref name="fromDate"/> (included) to
-    /// <paramref name="toDate"/> (excluded): same rule as <see cref="BookingTakesNightIn(Guid, DateTime, DateTime)"/>, for
-    /// reads over many properties (host dashboard, PC-16) that filter the properties themselves.
-    /// </summary>
     public static Expression<Func<Booking, bool>> BookingTakesNightIn(DateTime fromDate, DateTime toDate)
     {
         var from = fromDate.Date;
@@ -60,11 +51,6 @@ public static class PropertyOccupancy
                 || b.Booking.CheckOutDate.Date != b.EndUtc.Date);
     }
 
-    /// <summary>
-    /// A calendar block of any property that takes at least one night from <paramref name="fromDate"/> (included) to
-    /// <paramref name="toDate"/> (excluded): same rule as <see cref="BlockTakesNightIn(Guid, DateTime, DateTime)"/>, a
-    /// block standing for its OTA stay included (CO-21: its nights count once, through the stay).
-    /// </summary>
     public static Expression<Func<CalendarBlock, bool>> BlockTakesNightIn(DateTime fromDate, DateTime toDate)
     {
         var from = fromDate.Date;
@@ -76,12 +62,6 @@ public static class PropertyOccupancy
                 || b.Booking.CheckOutDate.Date != b.EndUtc.Date);
     }
 
-    /// <summary>
-    /// An imported block converted into an OTA stay (CO-21, D7) that stands for it: the stay is not cancelled and takes
-    /// exactly the block's nights, so the stay counts them and the block does not (no double occupancy). A block whose
-    /// stay was cancelled, or whose dates changed on the channel, counts on its own again: its nights stay taken whatever
-    /// the host does with the stay.
-    /// </summary>
     public static bool IsRepresentedByStay(CalendarBlock block, Booking? stay) =>
         stay is not null
         && block.BookingId == stay.Id
@@ -89,10 +69,6 @@ public static class PropertyOccupancy
         && stay.CheckInDate.Date == block.StartUtc.Date
         && stay.CheckOutDate.Date == block.EndUtc.Date;
 
-    /// <summary>
-    /// The nights taken by a stay or block from <paramref name="start"/> to <paramref name="end"/> (see the class
-    /// remarks) that fall from <paramref name="fromDate"/> (included) to <paramref name="toDate"/> (excluded), in order.
-    /// </summary>
     public static IEnumerable<DateTime> NightsIn(DateTime start, DateTime end, DateTime fromDate, DateTime toDate)
     {
         var night = start.Date > fromDate.Date ? start.Date : fromDate.Date;

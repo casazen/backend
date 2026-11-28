@@ -35,7 +35,6 @@ public sealed class SdiWebhookController(
     IServiceScopeFactory scopeFactory,
     ILogger<SdiWebhookController> logger) : ControllerBase
 {
-    /// <summary>The largest body read: a notification names an event, not an invoice.</summary>
     public const long MaxBodyBytes = 64 * 1024;
 
     private static readonly EventId SecretRefusedEvent = new(52_201, "SdiWebhookSecretRefused");
@@ -72,7 +71,6 @@ public sealed class SdiWebhookController(
         using (var reader = new StreamReader(Request.Body))
             body = await reader.ReadToEndAsync(cancellationToken);
 
-        // Only the adapter knows the provider's wire format; a failure to read what the call names is thrown (500), so the provider calls again.
         var notifications = await provider.ReadNotificationAsync(body, cancellationToken);
         if (notifications.Count == 0)
         {
@@ -84,7 +82,6 @@ public sealed class SdiWebhookController(
         var recorded = 0;
         foreach (var notification in notifications)
         {
-            // The org of the document is found across the orgs (a system read), then the outcome is recorded in a scope of its own, under that org's tenant.
             SdiSubmittedDocument? document;
             await using (var finding = scopeFactory.CreateAsyncScope())
                 document = await finding.ServiceProvider.GetRequiredService<IFiscalDocumentSdiService>().FindByTransmissionAsync(notification.TransmissionId, cancellationToken);

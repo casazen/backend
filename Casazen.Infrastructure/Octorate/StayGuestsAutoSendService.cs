@@ -11,43 +11,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Octorate;
 
-/// <summary>What <see cref="IStayGuestsAutoSendService.TrySendAsync"/> did for a stay.</summary>
 public enum StayGuestsAutoSendOutcome
 {
-    /// <summary>The org did not ask for it (the default): nothing changes, the guests go only when the host confirms the check-in wizard.</summary>
     SettingOff = 0,
 
-    /// <summary><c>Features:OctorateConnector</c> is off.</summary>
     ConnectorOff = 1,
 
-    /// <summary>There is no such stay in the org (another org's stay, or none): nothing was read of it, nothing was sent.</summary>
     StayNotFound = 2,
 
-    /// <summary>The stay is not on Octorate.</summary>
     NotMirrored = 3,
 
-    /// <summary>The stay owes no communication (a request still waiting, a cancelled booking, a no-show).</summary>
     NotDue = 4,
 
-    /// <summary>The data of the guests is not complete yet: nothing is sent until it is.</summary>
     GuestsNotComplete = 5,
 
-    /// <summary>The identity check is on and the latest verification of the stay is not a pass: no guest leaves before it.</summary>
     IdentityNotVerified = 6,
 
-    /// <summary>The guests went through the send path of the check-in wizard: <see cref="StayGuestsAutoSendResult.Send"/> says what happened.</summary>
     Sent = 7,
 }
 
-/// <summary>The answer of <see cref="IStayGuestsAutoSendService.TrySendAsync"/>.</summary>
-/// <param name="Outcome">What was done.</param>
-/// <param name="Send">The send of the guests, only with <see cref="StayGuestsAutoSendOutcome.Sent"/>.</param>
 public sealed record StayGuestsAutoSendResult(StayGuestsAutoSendOutcome Outcome, OctorateCheckInSendResult? Send = null)
 {
-    /// <summary>
-    /// The send path really tried the guests: something was written, kept back or failed. A stay that could not go (not ready, not on the channel
-    /// manager, nothing to send) is not an attempt: the sweep spends its places on attempts only, so such stays never take a place from a ready one.
-    /// </summary>
     public bool Attempted =>
         Outcome == StayGuestsAutoSendOutcome.Sent
         && Send is { State: OctorateCheckInSendState.Sent or OctorateCheckInSendState.PartlyFailed or OctorateCheckInSendState.Failed };
@@ -61,10 +45,6 @@ public sealed record StayGuestsAutoSendResult(StayGuestsAutoSendOutcome Outcome,
 public sealed class StayGuestsSendBusyException(Guid bookingId)
     : Exception($"The guests of booking {bookingId} are being written to Octorate by another send: delivered again later.");
 
-/// <summary>
-/// The guests of a stay written to the channel manager on their own (E20/F01/US01/T01, decision O1): for an org that asked for it, the stay whose
-/// guest data is complete and whose identity check passed goes through the same send path as the confirmation of the check-in wizard.
-/// </summary>
 public interface IStayGuestsAutoSendService
 {
     /// <summary>
@@ -108,19 +88,14 @@ public sealed class StayGuestsAutoSendService(
     ILogger<StayGuestsAutoSendService> logger,
     TimeProvider? timeProvider = null) : IStayGuestsAutoSendService
 {
-    /// <summary>The reason code of the "To do" raised when a guest already sent to the channel manager is corrected.</summary>
     public const string CorrectionTodoReason = "octorate_guest_corrected_after_send";
 
-    /// <summary>The days back from today the sweep looks at the arrivals (a stay that arrived long ago is not chased).</summary>
     public const int SweepLookbackDays = 1;
 
-    /// <summary>The days ahead of today the sweep looks at the arrivals (the guests of a stay far ahead are not ready yet).</summary>
     public const int SweepLookaheadDays = 14;
 
-    /// <summary>The stays the sweep reads from the database at a time: the window is read page by page, so no stay hides another.</summary>
     public const int SweepPageSize = 200;
 
-    /// <summary>The most pages one sweep reads (a bound on the work of a run, 2,000 stays of the window).</summary>
     public const int SweepMaxPages = 10;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -133,7 +108,6 @@ public sealed class StayGuestsAutoSendService(
         if (orgId == Guid.Empty || bookingId == Guid.Empty || !await setting.GetAsync(orgId, ct))
             return new StayGuestsAutoSendResult(StayGuestsAutoSendOutcome.SettingOff);
 
-        // The stay of THIS org: another org's stay is read by nothing here, whoever named it.
         var booking = await db.Bookings
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
@@ -148,17 +122,12 @@ public sealed class StayGuestsAutoSendService(
         if (!AlloggiatiStatusRules.IsDue(booking))
             return new StayGuestsAutoSendResult(StayGuestsAutoSendOutcome.NotDue);
 
-        // The registered guests only: the booker shown before any guest is registered is not a guest to send.
         var guests = (await stayGuests.GetForBookingAsync(booking, ct)).Where(g => g.Id != Guid.Empty).ToList();
         var issues = CheckInReadinessRules.Evaluate(new CheckInReadinessInput(
             guests, null, DateOnly.FromDateTime(booking.CheckInDate), booking.NumberOfGuests, OctorateReceivesGuests: true, []));
-        // The same rule as the confirmation of the wizard (CheckInReadinessRules.SendBlockers). The statistical fields of a region are not read here: they are
-        // warnings in every evaluation, so they can never hold the guests back from the police communication.
         if (CheckInReadinessRules.SendBlockers(issues).Count > 0)
             return new StayGuestsAutoSendResult(StayGuestsAutoSendOutcome.GuestsNotComplete);
 
-        // The privacy rule of the identity check: while it is on, no guest leaves before a passed verification (the latest one, as the gate of the
-        // lock code reads it). A rejection, or the row that asks for a new photo, is not a pass.
         if (featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification) && !await IdentityPassedAsync(orgId, booking.Id, ct))
             return new StayGuestsAutoSendResult(StayGuestsAutoSendOutcome.IdentityNotVerified);
 
@@ -193,15 +162,11 @@ public sealed class StayGuestsAutoSendService(
         if (orgIds.Count == 0)
             return [];
 
-        // The window is the ARRIVAL: from yesterday to 14 days ahead (the dates are stored as midnight UTC of the Rome day). A stay that arrived earlier
-        // and is still in progress is not chased, and one far ahead has guests that are not ready yet.
         var today = _clock.TodayInRome();
         var from = today.AddDays(-SweepLookbackDays);
         var to = today.AddDays(SweepLookaheadDays);
         var found = new List<(Guid OrgId, Guid BookingId)>();
 
-        // The window is read page by page, in order of arrival, and each page is filtered before the next one is read: a stay with no registered guest,
-        // or whose guests were all tried after their last change, takes no place, so it never hides a stay behind it.
         for (var page = 0; page < SweepMaxPages && found.Count < limit; page++)
         {
             var stays = await db.Bookings
@@ -238,8 +203,6 @@ public sealed class StayGuestsAutoSendService(
                     .ToListAsync(ct))
                 .ToLookup(l => l.BookingId);
 
-            // A stay is to sweep when a registered guest has no link (never written) or changed after its link was last touched (a write attempt, kept
-            // or failed, is the "once": the next one waits for a new change).
             foreach (var stay in stays)
             {
                 var links = linkRows[stay.Id].ToDictionary(l => l.Position, l => l.UpdatedAt);
@@ -258,7 +221,6 @@ public sealed class StayGuestsAutoSendService(
         return found;
     }
 
-    /// <summary>The latest row of the verification log of the stay is an Accept, whoever decided it.</summary>
     private async Task<bool> IdentityPassedAsync(Guid orgId, Guid bookingId, CancellationToken ct)
     {
         var latest = await db.BiometricVerificationLogs

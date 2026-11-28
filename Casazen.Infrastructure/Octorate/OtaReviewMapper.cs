@@ -37,16 +37,13 @@ internal readonly record struct OtaReviewApplyResult(bool NewlyPublished, bool R
 /// </remarks>
 internal static class OtaReviewMapper
 {
-    /// <summary>The status of a review the channel published, as the channel manager spells it.</summary>
     internal const string PublishedStatus = "REVIEW_PUBLISHED";
 
-    /// <summary>The most characters of a guest's review or of a reply that are kept: far more than any channel lets a person write.</summary>
     internal const int MaxKeptTextLength = 4000;
 
     private const int MaxCategories = 20;
     private const int MaxCategoryLength = 64;
 
-    /// <summary>The JSON the ratings are kept in: camel case, read without regard to case.</summary>
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private static readonly string[] GuestMembers = ["guestReview", "guest_review", "guest", "reviewFromGuest", "receivedReview"];
@@ -64,12 +61,6 @@ internal static class OtaReviewMapper
     private static readonly string[] ReplyTimeMembers = ["publishedAt", "publishTime", "createdAt", "createTime", "time", "date"];
     private static readonly string[] DeadlineMembers = ["expiresAt", "expireTime", "deadline", "windowEnd", "reviewDeadline", "closesAt"];
 
-    // ─── The wire ───
-
-    /// <summary>
-    /// The reviews an answer holds, or <c>null</c> when the answer is none of the shapes the class remarks describe (a string, a number, an object with nothing in it that is a
-    /// review): a caller never takes it for «no review». <see cref="OctorateReview.IsEmpty"/> is an answer that says there is none.
-    /// </summary>
     internal static OctorateReview? ReadReview(JsonElement root)
     {
         switch (root.ValueKind)
@@ -106,17 +97,14 @@ internal static class OtaReviewMapper
         if (guest is not null || host is not null)
             return new OctorateReview(guest, host);
 
-        // One review on its own, said to be the guest's or the host's by its type.
         if (KindOf(body) is { } kind && LooksLikeAReview(body))
             return kind ? new OctorateReview(null, ReadHost(body)) : new OctorateReview(ReadGuest(body), null);
 
-        // An object with nothing of a review in it: an empty answer, as long as it does not look like one that has members CasaZen does not know.
         return body.EnumerateObject().All(property => property.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Array or JsonValueKind.Object && IsEmptyValue(property.Value))
             ? new OctorateReview(null, null)
             : null;
     }
 
-    /// <summary>The reviews of a list: each said to be the guest's or the host's by its type; an item that says neither is left out, and a list whose every item is left out is unreadable.</summary>
     private static OctorateReview? ReadItems(JsonElement items)
     {
         OctorateGuestReview? guest = null;
@@ -141,7 +129,6 @@ internal static class OtaReviewMapper
         return !any || guest is not null || host is not null ? new OctorateReview(guest, host) : left > 0 ? null : new OctorateReview(null, null);
     }
 
-    /// <summary>The guest's review of <paramref name="element"/>: published or not, and only when it is published its rating, categories, text and the reply of the host.</summary>
     private static OctorateGuestReview ReadGuest(JsonElement element)
     {
         var status = OctorateJson.Text(element, StatusMembers);
@@ -162,7 +149,6 @@ internal static class OtaReviewMapper
         };
     }
 
-    /// <summary>The host's review of <paramref name="element"/>: where its window stands.</summary>
     private static OctorateHostReviewInfo ReadHost(JsonElement element)
     {
         var status = OctorateJson.Text(element, StatusMembers);
@@ -171,10 +157,6 @@ internal static class OtaReviewMapper
         return new OctorateHostReviewInfo(window, window == HostReviewWindow.Sent ? sentAt : null);
     }
 
-    /// <summary>
-    /// <c>true</c> when the review is the host's, <c>false</c> when it is the guest's, <c>null</c> when its <c>type</c> says neither: <c>GUEST_TO_HOST</c> (what the guest wrote about
-    /// the host) is the guest's, <c>HOST_TO_GUEST</c> the host's; a word with only one of the two names is that one's; a word with both and no direction is not read.
-    /// </summary>
     private static bool? KindOf(JsonElement element)
     {
         var kind = OctorateJson.Text(element, KindMembers)?.ToUpperInvariant();
@@ -208,7 +190,6 @@ internal static class OtaReviewMapper
         _ => false,
     };
 
-    /// <summary>The channel published the review: its status says <c>REVIEW_PUBLISHED</c> or <c>PUBLISHED</c> (not <c>UNPUBLISHED</c>, not <c>NOT_PUBLISHED</c>), or it has no status and says <c>published</c> is true.</summary>
     private static bool IsPublished(JsonElement element, string? status)
     {
         if (status is not null)
@@ -220,7 +201,6 @@ internal static class OtaReviewMapper
         return OctorateJson.Bool(element, "published", "isPublished") == true;
     }
 
-    /// <summary>The overall rating, 1 to 5, to one decimal; <c>null</c> when it is missing or outside the scale (a scale CasaZen does not know is not guessed at).</summary>
     private static decimal? RatingOf(JsonElement element) =>
         ValidRating(OctorateJson.Decimal(element, RatingMembers));
 
@@ -251,7 +231,6 @@ internal static class OtaReviewMapper
         return ratings;
     }
 
-    /// <summary>The reply of the host the review carries: a text, or an object with a text and the time it was published.</summary>
     private static (string? Text, DateTime? At) ReplyOf(JsonElement element)
     {
         if (OctorateJson.Find(element, ReplyMembers) is not { } reply)
@@ -263,7 +242,6 @@ internal static class OtaReviewMapper
         return (Clip(OctorateJson.TextOf(reply), MaxKeptTextLength), null);
     }
 
-    /// <summary>Where the host's own review stands, from the status the channel gives (<c>PUBLISHED</c>, <c>EXPIRED</c>, <c>PENDING</c>, ...), a flag, or a deadline that is over; <see cref="HostReviewWindow.Unknown"/> when none says.</summary>
     private static HostReviewWindow WindowOf(JsonElement element, string? status)
     {
         if (status is not null)
@@ -291,13 +269,6 @@ internal static class OtaReviewMapper
         return HostReviewWindow.Unknown;
     }
 
-    // ─── What CasaZen keeps ───
-
-    /// <summary>
-    /// Lays <paramref name="answer"/> over <paramref name="row"/> (see the remarks of the class for the rules), sets the time of the next read, and says what changed that the service
-    /// has to act on. Changes the row in place and saves nothing. <paramref name="guestErased"/>: the guest of the booking was erased or anonymized, so what the guest wrote is not
-    /// stored again (the host's own words are).
-    /// </summary>
     internal static OtaReviewApplyResult Apply(OtaReview row, OctorateReview answer, DateTime checkOutUtc, bool guestErased, DateTime nowUtc)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -327,11 +298,6 @@ internal static class OtaReviewMapper
         return new OtaReviewApplyResult(newlyPublished, replyCompleted, replyFailed, hostCompleted, hostFailed);
     }
 
-    /// <summary>
-    /// The reply of the host against what the channel holds. A reply on the channel is the host's, whoever sent it (a person on the channel itself too): the row is
-    /// <see cref="OtaReviewActionState.Sent"/>. A reply CasaZen asked for whose outcome is not known and that the channel does not show is an error after
-    /// <see cref="OtaReviewPollSchedule.UnconfirmedActionWindow"/>; one the row calls sent is not turned back by a read that does not show it yet.
-    /// </summary>
     private static (bool Completed, bool Failed) ApplyReply(OtaReview row, OctorateGuestReview? guest, DateTime nowUtc)
     {
         if (!string.IsNullOrWhiteSpace(guest?.HostReply))
@@ -359,7 +325,6 @@ internal static class OtaReviewMapper
         return (false, false);
     }
 
-    /// <summary>The host's own review against what the channel says: the window it reports, and the same completion or error of an action nobody confirmed.</summary>
     private static (bool Completed, bool Failed) ApplyHostReview(OtaReview row, OctorateHostReviewInfo? host, DateTime nowUtc)
     {
         var completed = false;
@@ -398,13 +363,11 @@ internal static class OtaReviewMapper
         return (completed, failed);
     }
 
-    /// <summary>The ratings as the row keeps them (a JSON list of <c>{ "category", "value" }</c>); <c>null</c> for none.</summary>
     internal static string? RatingsJson(IReadOnlyCollection<OctorateReviewRating> ratings) =>
         ratings.Count == 0
             ? null
             : JsonSerializer.Serialize(ratings.Select(r => new RatingRow(r.Category, r.Value)), JsonOptions);
 
-    /// <summary>The ratings of a row, read back; empty for none or for a value that is not the list <see cref="RatingsJson"/> writes.</summary>
     internal static IReadOnlyList<ReviewCategoryRating> ReadRatingsJson(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -425,9 +388,6 @@ internal static class OtaReviewMapper
 
     private sealed record RatingRow(string Category, decimal Value);
 
-    // ─── Small helpers ───
-
-    /// <summary>The first of <paramref name="names"/> that holds a text, trimmed.</summary>
     private static string? FirstText(JsonElement element, string[] names)
     {
         foreach (var name in names)
@@ -441,7 +401,6 @@ internal static class OtaReviewMapper
 
     private static string? Clip(string? text, int max) => text is null || text.Length <= max ? text : text[..max];
 
-    /// <summary>The letters of a status, upper case: <c>review_published</c>, <c>REVIEW-PUBLISHED</c> and <c>ReviewPublished</c> are all <c>REVIEWPUBLISHED</c>.</summary>
     private static string Letters(string status) =>
         string.Concat(status.Where(char.IsLetter)).ToUpper(CultureInfo.InvariantCulture);
 }

@@ -23,7 +23,6 @@ namespace Casazen.Core.Entities;
 [Table("OwnerFiscalProfiles")]
 public class OwnerFiscalProfile : ITenantOwned
 {
-    /// <summary>Unique (<see cref="OrgId"/>, <see cref="PropertyOwnerId"/>, <see cref="ValidFrom"/>).</summary>
     public const string OwnerValidFromIndexName = "UIX_OwnerFiscalProfiles_OrgId_PropertyOwnerId_ValidFrom";
 
     public const int LegalNameMaxLength = 200;
@@ -43,42 +42,30 @@ public class OwnerFiscalProfile : ITenantOwned
 
     public Guid PropertyOwnerId { get; set; }
 
-    /// <summary>The first day the profile applies.</summary>
     public DateOnly ValidFrom { get; set; }
 
-    /// <summary>The last day the profile applies; <c>null</c> while it is in force.</summary>
     public DateOnly? ValidTo { get; set; }
 
-    /// <summary>A natural person or a legal entity.</summary>
     public OwnerEntityKind EntityKind { get; set; } = OwnerEntityKind.NaturalPerson;
 
-    /// <summary>The legal name. <b>Encrypted at rest.</b></summary>
     public string? LegalName { get; set; }
 
-    /// <summary>The country of tax residence (ISO 3166-1 alpha-2).</summary>
     [MaxLength(CountryMaxLength)]
     public string? TaxResidenceCountry { get; set; }
 
-    /// <summary>The legal address, one text. <b>Encrypted at rest.</b></summary>
     public string? LegalAddress { get; set; }
 
-    /// <summary>The Italian fiscal code. <b>Encrypted at rest.</b></summary>
     public string? FiscalCode { get; set; }
 
-    /// <summary>The VAT number. <b>Encrypted at rest.</b></summary>
     public string? VatNumber { get; set; }
 
-    /// <summary>The tax identifier of another country (the Swiss AVS/UID...). <b>Encrypted at rest.</b></summary>
     public string? ForeignTaxId { get; set; }
 
-    /// <summary>The currency the owner is paid in (ISO 4217).</summary>
     [MaxLength(CurrencyMaxLength)]
     public string? SettlementCurrency { get; set; }
 
-    /// <summary>The bank account the owner is paid on (an IBAN). <b>Encrypted at rest.</b></summary>
     public string? BankAccountReference { get; set; }
 
-    /// <summary>The role of the owner in the mandate (<c>owner</c>, <c>usufructuary</c>, <c>landlord</c>...).</summary>
     [MaxLength(CodeMaxLength)]
     public string? MandateRole { get; set; }
 
@@ -86,23 +73,18 @@ public class OwnerFiscalProfile : ITenantOwned
 
     public DateOnly? MandateTo { get; set; }
 
-    /// <summary>How revenue is recognized for the owner (<c>cash</c>, <c>stay</c>...), from the approved rule set.</summary>
     [MaxLength(CodeMaxLength)]
     public string? RevenueRecognitionRule { get; set; }
 
-    /// <summary>How expenses and the commission are charged (<c>net_of_commission</c>, <c>gross</c>...).</summary>
     [MaxLength(CodeMaxLength)]
     public string? ExpenseCommissionModel { get; set; }
 
-    /// <summary>How working capital is held (<c>none</c>, <c>reserve</c>...).</summary>
     [MaxLength(CodeMaxLength)]
     public string? WorkingCapitalRule { get; set; }
 
-    /// <summary>The tax jurisdiction the profile is under (<c>IT</c>, <c>CH</c>, <c>CH-TI</c>): it must be the one of its rule set.</summary>
     [MaxLength(JurisdictionMaxLength)]
     public string? TaxJurisdiction { get; set; }
 
-    /// <summary>The rule set the profile follows; <c>null</c> while none is chosen (the financial operations are blocked).</summary>
     public Guid? AccountingPolicyId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

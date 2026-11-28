@@ -25,18 +25,12 @@ public class SuppressionListEntry : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the org of the guest (TN-2).</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>
-    /// Blind index of the normalized email address (lowercase, trimmed): the keyed HMAC-SHA256 for a new row, the plain SHA-256 for a legacy
-    /// row (see the remarks of the class). Allows suppression checking without storing the plaintext email.
-    /// </summary>
     [Required]
     [MaxLength(64)]
     public string EmailHash { get; set; } = string.Empty;
 
-    /// <summary>When this email was added to the suppression list.</summary>
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>

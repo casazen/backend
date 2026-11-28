@@ -7,11 +7,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <inheritdoc cref="IAdminReviewService"/>
-/// <remarks>
-/// The staff reads across orgs on purpose (<c>IgnoreQueryFilters</c>); the endpoints are <c>AdminOnly</c>. The decision is the only way a
-/// review is ever taken down, and it is logged with the ids of the report, the review and the staff user, never with the text.
-/// </remarks>
 public sealed class AdminReviewService(
     AppDbContext db,
     ILogger<AdminReviewService> logger,

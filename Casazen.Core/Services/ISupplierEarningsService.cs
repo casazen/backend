@@ -18,14 +18,7 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface ISupplierEarningsService
 {
-    /// <summary>A page of the list, the newest first, with the figures above it.</summary>
     Task<SupplierEarningsPage> GetAsync(Guid supplierOrgId, SupplierEarningsQuery query, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The rows of <paramref name="query"/> (its page is ignored) for the export, the newest first.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="SupplierEarningsErrors.ExportTooLarge"/>: more than <see cref="SupplierEarningsLimits.MaxExportRows"/> rows.
-    /// </exception>
     Task<IReadOnlyList<SupplierEarningRow>> ExportAsync(Guid supplierOrgId, SupplierEarningsQuery query, CancellationToken cancellationToken = default);
 }

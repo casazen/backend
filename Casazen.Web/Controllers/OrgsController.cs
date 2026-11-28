@@ -25,11 +25,6 @@ public class OrgsController(
     IPublicHostResolver publicHostResolver,
     IOptions<PublicHostOptions> publicHostOptions) : ControllerBase
 {
-    /// <summary>
-    /// Returns the caller org's editable identity: name, public slug and contact email with its publication
-    /// opt-in (A1-22, A1-23). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>: unlike
-    /// <c>OrgSummaryDto</c> (any member, via <c>/api/users/me</c>) this carries the contact email.
-    /// </summary>
     [HttpGet("me/settings")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OrgSettingsDto), StatusCodes.Status200OK)]
@@ -116,12 +111,10 @@ public class OrgsController(
             dto.ContactEmailPublic,
             actorUserId: User.GetUserId(),
             cancellationToken: cancellationToken,
-            // DB-03b-a: the operator data of the booking-site footer changes only when the body carries it.
             legalName: dto.LegalNameSent ? FieldUpdate<string>.Set(dto.LegalName) : FieldUpdate<string>.Unchanged,
             registeredOffice: dto.RegisteredOfficeSent
                 ? FieldUpdate<string>.Set(dto.RegisteredOffice)
                 : FieldUpdate<string>.Unchanged,
-            // AM-08b-b: the phone (never published) and the language of the account change only when the body carries them.
             contactPhone: dto.ContactPhoneSent ? FieldUpdate<string>.Set(dto.ContactPhone) : FieldUpdate<string>.Unchanged,
             defaultLanguage: dto.DefaultLanguageSent ? FieldUpdate<string>.Set(dto.DefaultLanguage) : FieldUpdate<string>.Unchanged);
         if (updated is null)
@@ -133,10 +126,6 @@ public class OrgsController(
         return Ok(OrgSettingsDto.FromOrg(updated));
     }
 
-    /// <summary>
-    /// The caller org's rules for the requests it sends to suppliers (SP-BKP): whether a request also goes to up to three backup
-    /// suppliers (on by default). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>, like the rest of the org's settings.
-    /// </summary>
     [HttpGet("me/service-request-settings")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OrgServiceRequestSettingsDto), StatusCodes.Status200OK)]
@@ -156,10 +145,6 @@ public class OrgsController(
         return Ok(new OrgServiceRequestSettingsDto { UseBackupSuppliers = org.SupplierBackupsEnabled });
     }
 
-    /// <summary>
-    /// Turns on or off the org's default for sending its requests to backup suppliers too (SP-BKP). A request already sent is not touched:
-    /// the choice is read when a request is created.
-    /// </summary>
     [HttpPut("me/service-request-settings")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OrgServiceRequestSettingsDto), StatusCodes.Status200OK)]
@@ -181,7 +166,6 @@ public class OrgsController(
         return Ok(new OrgServiceRequestSettingsDto { UseBackupSuppliers = updated.SupplierBackupsEnabled });
     }
 
-    /// <summary>Returns available plan tiers and property limits.</summary>
     [HttpGet("plans")]
     [AllowAnonymous]
     [ProducesResponseType(typeof(IEnumerable<PlanDto>), StatusCodes.Status200OK)]
@@ -194,13 +178,6 @@ public class OrgsController(
             Description = p.Description,
         }));
 
-    /// <summary>
-    /// Returns the caller org's plan entitlement: tier, limits, current usage, and whether
-    /// another property may be created (AC8). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>, like the billing
-    /// endpoints: the org's owner reads it from the short-rent or the long-rent context alike (PL-16, A1-36). The tier is
-    /// the effective one: with the open access on (<c>Entitlement:OpenAccess</c>, BL-01) it can be higher than the plan the
-    /// org pays for, and <c>openAccess</c> says so.
-    /// </summary>
     [HttpGet("me/entitlement")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(EntitlementDto), StatusCodes.Status200OK)]
@@ -246,8 +223,6 @@ public class OrgsController(
         if (org is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
-        // The plan change rules compare with the tier the subscription pays for, not with the one raised by the open access
-        // (BL-01): without a subscription a paid tier is still refused, and the stored tier stays what the org pays for.
         switch (PlanChangePolicy.EvaluateManualChange(org, entitlementService.ResolvePaidTier(org), planTier))
         {
             case ManualPlanChangeOutcome.ManagedByStripe:

@@ -28,7 +28,6 @@ public static class BillingConfiguration
         ("Stripe:PublishableKey", "Stripe__PublishableKey"),
     ];
 
-    /// <summary>Registers the startup validation of the billing configuration (every environment).</summary>
     public static IServiceCollection AddCasazenBillingConfiguration(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -40,7 +39,6 @@ public static class BillingConfiguration
         return services;
     }
 
-    /// <summary>Problems that stop the startup, naming variables and never values.</summary>
     public static IReadOnlyList<string> GetStartupErrors(IConfiguration configuration, IHostEnvironment environment)
     {
         var errors = new List<string>();
@@ -77,13 +75,8 @@ public static class BillingConfiguration
     }
 }
 
-/// <summary>
-/// Marker of the billing startup validation (<see cref="BillingConfiguration"/>): the checks read the Stripe and
-/// <c>Billing</c> sections directly, so the options carry no value.
-/// </summary>
 public sealed class BillingConfigurationOptions;
 
-/// <summary>Runs <see cref="BillingConfiguration.GetStartupErrors"/> with <c>ValidateOnStart</c>.</summary>
 public sealed class BillingConfigurationValidator(IConfiguration configuration, IHostEnvironment environment)
     : IValidateOptions<BillingConfigurationOptions>
 {

@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>The caller of an org team endpoint (AM-02): its org and its account, or the answer to give when it has neither.</summary>
 internal readonly record struct OrgTeamCaller(Guid OrgId, string UserId, ActionResult? Problem);
 
 internal static class OrgTeamControllerExtensions

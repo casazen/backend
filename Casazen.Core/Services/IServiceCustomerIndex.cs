@@ -8,9 +8,5 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IServiceCustomerIndex
 {
-    /// <summary>
-    /// The index of <paramref name="email"/> (trimmed, lowercase): 64 lowercase hex characters. The same address always gives the
-    /// same value for the same key; a key that changes makes every earlier value unfindable (runbook: do not rotate it).
-    /// </summary>
     string HashEmail(string email);
 }

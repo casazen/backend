@@ -26,10 +26,8 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class SupplierDayBeforeReminders(AppDbContext db, ServiceRequestNotifier notifier, ILogger<SupplierDayBeforeReminders> logger)
 {
-    /// <summary>The same bound as the customers' pass: a run is short whatever happens.</summary>
     public const int MaxPerRun = ServiceRequestReminderService.MaxPerRun;
 
-    /// <summary>How far ahead a work can start for its reminder to be due (the reminder is at 18:00 of the day before: less than 30 hours); two days is a safe superset.</summary>
     private static readonly TimeSpan Horizon = TimeSpan.FromHours(48);
 
     /// <summary>
@@ -87,13 +85,8 @@ public sealed class SupplierDayBeforeReminders(AppDbContext db, ServiceRequestNo
             .Select(r => new Candidate(r.Id, r.ScheduledStartUtc!.Value, r.TakenAt))
             .Take(MaxPerRun);
 
-    /// <summary>A request whose reminder may be due: when the work starts and when the supplier took the request.</summary>
     internal sealed record Candidate(Guid Id, DateTime StartUtc, DateTime? TakenAt);
 
-    /// <summary>
-    /// Marks the request and queues its reminder. <c>true</c> queued; <c>false</c> could not be queued (an error, no profile to write to); <c>null</c> not
-    /// sent: the request changed under the run (cancelled, reminded by another run), or the supplier turned the reminder off or is suspended.
-    /// </summary>
     private async Task<bool?> RemindAsync(Guid id, DateTime now, CancellationToken cancellationToken)
     {
         db.ChangeTracker.Clear();

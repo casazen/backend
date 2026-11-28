@@ -7,11 +7,6 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Web.Seo;
 
-/// <summary>
-/// schema.org JSON-LD of the public pages (BK-15). Only real data goes in: a value the database does not hold (rating,
-/// check-in time, pets rule, price availability) is left out, never invented, and an empty value is never written. Every
-/// public builder returns a complete object with its <c>@context</c>.
-/// </summary>
 public static class SeoJsonLd
 {
     public const string Context = "https://schema.org";
@@ -29,7 +24,6 @@ public static class SeoJsonLd
 
     public static string Serialize(JsonObject node) => node.ToJsonString(ScriptSafeOptions);
 
-    /// <summary>The org on its landing page: name, public URL, logo and tagline, when it has them.</summary>
     public static JsonObject Organization(string name, string? url, string? logoUrl, string? description) =>
         Root("Organization",
             ("name", Text(name)),
@@ -59,15 +53,12 @@ public static class SeoJsonLd
             ("areaServed", areas));
     }
 
-    /// <summary>A list of pages (the properties of an org): position, name and URL of each.</summary>
     public static JsonObject ItemList(IEnumerable<(string Name, string? Url)> items) =>
         Root("ItemList", ("itemListElement", ListItems(items, "url")));
 
-    /// <summary>Breadcrumb trail, from the top of the site to the current page.</summary>
     public static JsonObject BreadcrumbList(IEnumerable<(string Name, string? Url)> items) =>
         Root("BreadcrumbList", ("itemListElement", ListItems(items, "item")));
 
-    /// <summary>An editorial page (guide, tourist tax page).</summary>
     public static JsonObject Article(
         string headline,
         string? description,
@@ -86,7 +77,6 @@ public static class SeoJsonLd
                 : null),
             ("publisher", Node("Organization", ("name", Text(publisherName)))));
 
-    /// <summary>A list page (the hub of the guides): the pages it lists are its <c>mainEntity</c>.</summary>
     public static JsonObject CollectionPage(
         string name,
         string? description,
@@ -100,17 +90,12 @@ public static class SeoJsonLd
             ("url", Text(url)),
             ("mainEntity", Node("ItemList", ("itemListElement", ListItems(items, "url")))));
 
-    /// <summary>The site itself (the platform, not an org's booking site): name, home URL and language.</summary>
     public static JsonObject WebSite(string name, string? url, string language) =>
         Root("WebSite",
             ("name", Text(name)),
             ("url", Text(url)),
             ("inLanguage", Text(language)));
 
-    /// <summary>
-    /// Questions and answers that are on the page, word for word: the markup must say what the visible text says, so the
-    /// caller builds both from the same list. Entries with an empty question or answer are left out.
-    /// </summary>
     public static JsonObject FaqPage(IEnumerable<(string Question, string Answer)> items)
     {
         var questions = new JsonArray();
@@ -127,7 +112,6 @@ public static class SeoJsonLd
         return Root("FAQPage", ("mainEntity", questions));
     }
 
-    /// <summary>What <see cref="VacationRental"/> reads of a property: published data only.</summary>
     public sealed record VacationRentalData(
         string Name,
         string? Description,
@@ -153,13 +137,6 @@ public static class SeoJsonLd
         TimeOnly? CheckOutTime = null,
         bool PetsNotAllowed = false);
 
-    /// <summary>
-    /// <c>VacationRental</c> of a property page (spec-branded-booking-site AC12). The whole property is rented
-    /// (<c>EntirePlace</c>: a booking is per property). Only what the host said goes in (DB-11a): the floor size, the check-in and
-    /// check-out times and the pets rule are written when the host stated them (a "pets not allowed" rule only when the host said No: an
-    /// absent amenity is not a rule). Left out: <c>aggregateRating</c> (until the reviews are on the page) and availability (it depends on
-    /// the dates). The nightly price is a <c>makesOffer</c> of the business: schema.org has no <c>offers</c> on a lodging business.
-    /// </summary>
     public static JsonObject VacationRental(VacationRentalData data)
     {
         var amenities = new JsonArray();
@@ -188,7 +165,6 @@ public static class SeoJsonLd
         // its door. The exact value is not in this record's output under any circumstance.
         var latitude = PropertyAddress.ToPublicCoordinate(data.Latitude);
         var longitude = PropertyAddress.ToPublicCoordinate(data.Longitude);
-        // 0,0 is the default of an unset position, not a place: never published as coordinates.
         var hasPosition = latitude != 0m || longitude != 0m;
 
         JsonNode? images = null;
@@ -227,7 +203,6 @@ public static class SeoJsonLd
             ("containsPlace", place),
             ("checkinTime", data.CheckInTime is { } checkIn ? Text(checkIn.ToString("HH:mm", CultureInfo.InvariantCulture)) : null),
             ("checkoutTime", data.CheckOutTime is { } checkOut ? Text(checkOut.ToString("HH:mm", CultureInfo.InvariantCulture)) : null),
-            // A rule the host stated: «Yes» (or the amenity) is true, «No» is false; «on request» and a rule never given say nothing.
             ("petsAllowed", data.PetsAllowed ? JsonValue.Create(true) : data.PetsNotAllowed ? JsonValue.Create(false) : null),
             ("brand", string.IsNullOrWhiteSpace(data.OrgName)
                 ? null
@@ -253,7 +228,6 @@ public static class SeoJsonLd
     private static JsonNode? Text(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : JsonValue.Create(value.Trim());
 
-    /// <summary>A complete top-level object: <c>@context</c>, <c>@type</c> and the properties whose value is not null.</summary>
     private static JsonObject Root(string type, params (string Key, JsonNode? Value)[] properties)
     {
         var node = new JsonObject { ["@context"] = Context };
@@ -261,7 +235,6 @@ public static class SeoJsonLd
         return node;
     }
 
-    /// <summary>A nested object (no <c>@context</c>), with the properties whose value is not null.</summary>
     private static JsonObject Node(string type, params (string Key, JsonNode? Value)[] properties)
     {
         var node = new JsonObject();

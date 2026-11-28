@@ -21,13 +21,11 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         string? reason,
         CancellationToken cancellationToken = default)
     {
-        // Checked before anything is read: a reason that is not valid is the same 422 for everybody who got this far.
         var text = ShowcaseBookingManagementRules.NormalizeReason(reason);
 
         ServiceRequest request;
         await using (var transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken))
         {
-            // Read after the lock: whoever held it before is seen, and a booking another door moved or cancelled a moment ago is judged as it is.
             request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
 
             // A second call, or a retry after a lost answer: the customer has already cancelled it. Nothing happens again.
@@ -36,7 +34,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
 
             var now = NowToTheMicrosecond();
 
-            // The rule the lookup shows `canCancel` from, and the state machine's: a customer may cancel what a supplier may.
             if (!ShowcaseBookingManagementRules.CanCancel(request.Status, request.ScheduledStartUtc, now)
                 || !ServiceRequestStateMachine.CanCancel(request.Status, ServiceRequestActorParty.Customer))
             {
@@ -79,7 +76,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
     {
         var start = UtcDateTime.Normalize(startUtc);
 
-        // The slots of the planner start on a whole minute: anything else is not one of them (the same field error as a booking).
         if (start.Ticks % TimeSpan.TicksPerMinute != 0)
             throw ShowcaseBookingErrors.InvalidFields([ShowcaseBookingFields.StartUtc]);
 
@@ -91,8 +87,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
             var now = NowToTheMicrosecond();
 
-            // Only a new request: once the supplier took it, the time is agreed. And only a request that has a time to move, and no quote
-            // waiting (SP-04b): the quote is about the time the request has, so the customer answers it first.
             if (request.Status != ServiceRequestStatus.Richiesto
                 || request.QuoteSentAt is not null
                 || request.ScheduledStartUtc is not { } currentStart
@@ -101,9 +95,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
                 throw ShowcaseBookingManagementErrors.RescheduleRefused();
             }
 
-            // A supplier that is not active takes no work (422 of its own). The service has to be published still: it gives the rules the
-            // planner applies (notice, days), and the page needs its slots. In the end it is the rule the lookup shows `canReschedule`
-            // from that decides, so the page and the API cannot disagree.
             var supplierActive = await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
             if (!supplierActive)
                 throw ShowcaseBookingErrors.InactiveSupplier();
@@ -121,13 +112,9 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             if (start == currentStart)
                 return request;
 
-            // A start no slot can have (the past, beyond the largest horizon, the ends of the calendar) is a slot that is not free,
-            // answered before any date arithmetic runs on it.
             if (!ShowcaseBookingRules.IsWithinSlotWindow(start, now))
                 throw SlotUnavailable();
 
-            // The work keeps its length; the new start has to be one of the slots the planner offers for it, with the request itself
-            // out of its own way, judged after the lock was taken.
             var minutes = (int)Math.Round((currentEnd - currentStart).TotalMinutes);
             var schedule = new RequestSchedule(
                 start,
@@ -142,7 +129,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             request.ScheduledStartUtc = schedule.Start;
             request.ScheduledEndUtc = schedule.End;
 
-            // The supplier has its whole time to answer again; a time it had proposed is moot (the customer chose another one).
             request.ResponseDueAt = now.AddMinutes(settings.RespondWithinMinutes);
             ClearProposal(request);
             request.UpdatedAt = now;
@@ -170,7 +156,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
             var now = NowToTheMicrosecond();
 
-            // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
             var (proposedStart, proposedEnd, madeAt) = await RequireProposalToAnswerAsync(request, supplierOrgId, now, cancellationToken);
 
             var service = request.ServiceListingId is { } listingId
@@ -188,8 +173,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             await EnsureNoOverlappingCommitmentAsync(
                 supplierOrgId, request.Id, proposedStart, proposedEnd, cancellationToken);
 
-            // SP-15c-a: accepting the proposal takes the request on the supplier's behalf, so it charges the customer's card, before the
-            // request changes state (a block that lapsed or a card that is refused is 409 and the proposal stays).
             await CaptureHeldMoneyAsync(request, cancellationToken);
 
             var proposedBy = request.ProposedByUserId;
@@ -227,8 +210,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         var now = NowToTheMicrosecond();
         var (_, _, proposedAt) = await RequireProposalToAnswerAsync(request, supplierOrgId, now, cancellationToken);
 
-        // The request goes back to being a new one at its own time: the deadline that stood on it was the customer's, and the supplier
-        // has its whole time to answer again. Nothing is held or released: no lock, the check of the row version is enough.
         var settings = await agenda.GetBookingSettingsAsync(supplierOrgId, cancellationToken);
         ClearProposal(request);
         request.ResponseDueAt = now.AddMinutes(settings.RespondWithinMinutes);
@@ -252,15 +233,12 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         ServiceRequestQuote quote;
         await using (var transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken))
         {
-            // Read after the lock: whoever held it before is seen, and a quote the supplier replaced a moment ago is judged as it is.
             request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
             var now = NowToTheMicrosecond();
 
-            // The offer of a request on measure is answered with the offer endpoints (SP-10b-b), which are the only way it is taken.
             if (request.Kind == ServiceRequestKind.Custom)
                 throw ShowcaseBookingQuoteErrors.QuoteMissing();
 
-            // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
             quote = await RequireQuoteToAnswerAsync(request, supplierOrgId, quoteSentAt, now, cancellationToken);
 
             // Checked again under the lock, like the host's acceptance: the time may have been taken, or closed, since the supplier quoted.
@@ -285,14 +263,11 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         var request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
         var now = NowToTheMicrosecond();
 
-        // The offer of a request on measure is answered with the offer endpoints (SP-10b-b).
         if (request.Kind == ServiceRequestKind.Custom)
             throw ShowcaseBookingQuoteErrors.QuoteMissing();
 
         var quote = await RequireQuoteToAnswerAsync(request, supplierOrgId, quoteSentAt, now, cancellationToken);
 
-        // The request goes back to being a new one at its own time: the deadline that stood on it was the customer's, and the supplier
-        // has its whole time to answer again. Nothing is held or released: no lock, the check of the row version is enough.
         await RestartSupplierDeadlineAsync(request, now, cancellationToken);
         ClearQuote(request);
         AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Rejected, now, quote.TotalCents);
@@ -306,18 +281,12 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         return request;
     }
 
-    // ─── The offer on a request on measure (SP-10b-b) ─────────────────────────────────────────────────────────────────
-
     public async Task<OfferAcceptance> AcceptOfferAsCustomerAsync(
         Guid id,
         Guid supplierOrgId,
         DateTime offerSentAt,
         CancellationToken cancellationToken = default)
     {
-        // Two roads, told apart by the money (SP-10b-b). An offer that is not paid inside CasaZen (the payments are off, the supplier's account is not
-        // ready, the total is below the minimum) is taken now, as a quote is. One that is paid inside CasaZen is taken when the customer's card is
-        // blocked for its total: this call asks for the card (the session the browser needs) and the request waits; the card blocked, the webhook
-        // takes the request (CompleteOfferAcceptanceAsync) — or this call again, which finds the card and takes it.
         for (var attempt = 0; ; attempt++)
         {
             ServiceRequest request;
@@ -334,10 +303,8 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
                 request = await GetRequestOnMeasureOrThrow(id, supplierOrgId, cancellationToken);
                 var now = NowToTheMicrosecond();
 
-                // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
                 offer = await RequireQuoteToAnswerAsync(request, supplierOrgId, offerSentAt, now, cancellationToken, asOffer: true);
 
-                // The card: blocked (or charged) for this very offer, or not there. A block of an offer that was replaced is not this offer's.
                 var held = funds is null ? null : await funds.FindHeldPaymentAsync(request.Id, cancellationToken);
                 cardWasThere = held is { PayerKind: ServicePayerKind.Private, Status: ServicePaymentStatus.Authorized or ServicePaymentStatus.Held }
                                && ServiceRequestOfferRules.IsPaymentOfOffer(held.CreatedAt, held.AmountCents, offer.SentAt, offer.TotalCents);
@@ -371,8 +338,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             }
             catch (DomainConflictException ex) when (ex.Code is ServiceRequestErrorCodes.SlotUnavailable or ServiceRequestErrorCodes.CommitmentConflict)
             {
-                // The time of the offer is gone. A card blocked for it is released at once: the customer is not left with a block for a job that
-                // cannot be done then (the offer stays, and so does the 409 the customer reads).
                 await ReleaseOfferPaymentAsync(id, CancellationToken.None);
                 throw;
             }
@@ -386,7 +351,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
                 return new OfferAcceptance(request, null);
             }
 
-            // The request waits for the card. Asked outside the calendar lock (a PaymentIntent is created); the offer is the one that stands.
             var session = await funds!.OpenOfferPaymentAsync(request, ServiceRequestOfferRules.PendingOf(request)!, cancellationToken);
             if (session is not null)
             {
@@ -394,7 +358,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
                 return new OfferAcceptance(request, session);
             }
 
-            // The card was blocked for this very offer between the two reads (the webhook was first): once more, now it is there to charge.
             if (attempt >= 1)
                 throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
@@ -410,8 +373,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         var now = NowToTheMicrosecond();
         var offer = await RequireQuoteToAnswerAsync(request, supplierOrgId, offerSentAt, now, cancellationToken, asOffer: true);
 
-        // The offer goes and the conversation goes on: no clock runs on the supplier (it answered), and the deadline that stood on the request
-        // was the customer's. Nothing is held or released: no lock, the check of the row version is enough.
         await RestartSupplierDeadlineAsync(request, now, cancellationToken);
         ClearQuote(request);
         AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Rejected, now, offer.TotalCents);
@@ -420,7 +381,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
 
         logger.LogInformation("ServiceRequest {Id}: its customer turned the offer down", request.Id);
 
-        // SP-10b-b: a card blocked (or waiting) for the offer it just turned down is released. Never throws: the funds job does it if this cannot.
         await ReleaseOfferPaymentAsync(request.Id, CancellationToken.None);
 
         // Committed: the supplier is told even if the customer has gone.
@@ -428,10 +388,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         return request;
     }
 
-    /// <summary>
-    /// The request on measure <paramref name="id"/> of the supplier org, tracked. 404 <see cref="ShowcaseBookingManagementErrors.NotFound"/> for anything
-    /// else: a booking from a slot, a host's request, one of another supplier, one that does not exist.
-    /// </summary>
     private async Task<ServiceRequest> GetRequestOnMeasureOrThrow(Guid id, Guid supplierOrgId, CancellationToken cancellationToken)
     {
         var request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
@@ -456,7 +412,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         CancellationToken cancellationToken,
         bool asOffer = false)
     {
-        // The offer of a request on measure is the quote of SP-04b under its own codes (the frontend branches on them): same rules, same order.
         var quote = ServiceRequestQuoteRules.PendingOf(request)
             ?? throw (asOffer ? ServiceRequestOfferErrors.OfferMissing() : ShowcaseBookingQuoteErrors.QuoteMissing());
         if (!ServiceRequestQuoteRules.IsSameVersion(quote.SentAt, quoteSentAt))
@@ -511,10 +466,6 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         return (request.ProposedStartUtc!.Value, request.ProposedEndUtc!.Value, request.ProposedAt!.Value);
     }
 
-    /// <summary>
-    /// The showcase request <paramref name="id"/> of the supplier org, tracked. 404 <see cref="ShowcaseBookingManagementErrors.NotFound"/>
-    /// for anything else: a request that does not exist, one of a host, one of another supplier.
-    /// </summary>
     private async Task<ServiceRequest> GetShowcaseRequestOrThrow(Guid id, Guid supplierOrgId, CancellationToken cancellationToken)
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
@@ -531,6 +482,5 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
     private static DomainConflictException SlotUnavailable() =>
         new(ServiceRequestErrorCodes.SlotUnavailable, ServiceRequestErrorCodes.SlotUnavailableMessageKey);
 
-    /// <summary>Now at the precision the database keeps (the microsecond): what is written is what is read back.</summary>
     private DateTime NowToTheMicrosecond() => UtcDateTime.TruncateToMicroseconds(Now());
 }

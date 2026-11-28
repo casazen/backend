@@ -2,11 +2,6 @@ using StbImageSharp;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// A picture of a guest (a selfie, the photo of a document) held in memory only, 8 bits per channel, red-green-blue (E03/F04/US01, ADR-013-R2).
-/// It is decoded from the bytes of the upload with a managed decoder (no native code, no temporary file) and zeroed by <see cref="Dispose"/>, which
-/// every caller reaches in a <c>finally</c>. What the caller cannot reach (the temporaries of the decoder and of the models) is freed but not scrubbed.
-/// </summary>
 public sealed class RasterImage : IDisposable
 {
     public RasterImage(int width, int height, byte[] rgb)
@@ -23,13 +18,8 @@ public sealed class RasterImage : IDisposable
 
     public int Height { get; }
 
-    /// <summary>Row after row, three bytes (red, green, blue) per pixel. Empty after <see cref="Dispose"/>.</summary>
     public byte[] Rgb { get; private set; }
 
-    /// <summary>
-    /// Decodes a JPEG or PNG and applies the orientation of its EXIF tag, so the picture is upright. The size is checked before the pixels are
-    /// decoded: a small file can hold a huge picture. A picture that cannot be decoded is <see cref="InvalidDataException"/>.
-    /// </summary>
     public static RasterImage Decode(byte[] encoded, int maxPixels)
     {
         try
@@ -62,11 +52,9 @@ public sealed class RasterImage : IDisposable
         }
     }
 
-    /// <summary>A copy at another size: the average of the covered pixels when it shrinks, a linear interpolation when it grows.</summary>
     public RasterImage Resized(int width, int height) =>
         new(width, height, PixelGrid.Resize(Rgb, Width, Height, width, height, 3));
 
-    /// <summary>A copy of the part from (<paramref name="left"/>, <paramref name="top"/>), cut to the picture.</summary>
     public RasterImage Cropped(int left, int top, int width, int height)
     {
         left = Math.Clamp(left, 0, Width - 1);
@@ -79,14 +67,12 @@ public sealed class RasterImage : IDisposable
         return new RasterImage(width, height, pixels);
     }
 
-    /// <summary>A copy turned as the EXIF orientation says (1 to 8; 6 is a quarter turn clockwise).</summary>
     public RasterImage Oriented(int exifOrientation)
     {
         var pixels = PixelGrid.Orient(Rgb, Width, Height, 3, exifOrientation, out var width, out var height);
         return new RasterImage(width, height, pixels);
     }
 
-    /// <summary>The luminance of every pixel (ITU-R BT.601), as a gray bitmap.</summary>
     public GrayBitmap ToGray()
     {
         var gray = new byte[Width * Height];
@@ -95,7 +81,6 @@ public sealed class RasterImage : IDisposable
         return new GrayBitmap(Width, Height, gray);
     }
 
-    /// <summary>Zeroes the pixels (ADR-013-R2). Safe to call more than once.</summary>
     public void Dispose()
     {
         Array.Clear(Rgb);
@@ -103,7 +88,6 @@ public sealed class RasterImage : IDisposable
     }
 }
 
-/// <summary>A picture in 256 grays held in memory only; zeroed by <see cref="Dispose"/>.</summary>
 public sealed class GrayBitmap : IDisposable
 {
     public GrayBitmap(int width, int height, byte[] pixels)
@@ -120,14 +104,11 @@ public sealed class GrayBitmap : IDisposable
 
     public int Height { get; }
 
-    /// <summary>Row after row, one byte per pixel (0 black, 255 white). Empty after <see cref="Dispose"/>.</summary>
     public byte[] Pixels { get; private set; }
 
-    /// <summary>A copy at another size (see <see cref="RasterImage.Resized"/>).</summary>
     public GrayBitmap Resized(int width, int height) =>
         new(width, height, PixelGrid.Resize(Pixels, Width, Height, width, height, 1));
 
-    /// <summary>A copy of the part from (<paramref name="left"/>, <paramref name="top"/>), cut to the picture; null when nothing is left.</summary>
     public GrayBitmap? Cropped(int left, int top, int width, int height)
     {
         var right = Math.Min(Width, left + width);
@@ -143,17 +124,12 @@ public sealed class GrayBitmap : IDisposable
         return new GrayBitmap(right - left, bottom - top, pixels);
     }
 
-    /// <summary>A copy turned as the EXIF orientation says (6 is a quarter turn clockwise, 8 counter-clockwise, 3 a half turn).</summary>
     public GrayBitmap Oriented(int exifOrientation)
     {
         var pixels = PixelGrid.Orient(Pixels, Width, Height, 1, exifOrientation, out var width, out var height);
         return new GrayBitmap(width, height, pixels);
     }
 
-    /// <summary>
-    /// A copy of the same size with the content turned <paramref name="degrees"/> clockwise around the centre (a small angle: the borders are
-    /// filled with white), bilinear.
-    /// </summary>
     public GrayBitmap Rotated(double degrees)
     {
         var radians = degrees * Math.PI / 180.0;
@@ -177,7 +153,6 @@ public sealed class GrayBitmap : IDisposable
         return new GrayBitmap(Width, Height, pixels);
     }
 
-    /// <summary>Zeroes the pixels (ADR-013-R2). Safe to call more than once.</summary>
     public void Dispose()
     {
         Array.Clear(Pixels);
@@ -201,10 +176,8 @@ public sealed class GrayBitmap : IDisposable
     }
 }
 
-/// <summary>Resampling and turning of interleaved 8-bit pixel grids, shared by the colour and the gray pictures.</summary>
 internal static class PixelGrid
 {
-    /// <summary>A grid at another size: area average when it shrinks, linear interpolation when it grows, one separable pass per axis.</summary>
     public static byte[] Resize(byte[] source, int sourceWidth, int sourceHeight, int width, int height, int channels)
     {
         if (width < 1 || height < 1)
@@ -256,10 +229,6 @@ internal static class PixelGrid
         }
     }
 
-    /// <summary>
-    /// Turns a grid as the EXIF orientation says: 2 mirror, 3 half turn, 4 flip, 5 transpose, 6 quarter turn clockwise, 7 transverse,
-    /// 8 quarter turn counter-clockwise; anything else is a copy.
-    /// </summary>
     public static byte[] Orient(byte[] source, int sourceWidth, int sourceHeight, int channels, int orientation, out int width, out int height)
     {
         var swap = orientation is >= 5 and <= 8;
@@ -316,7 +285,6 @@ internal static class PixelGrid
         return result;
     }
 
-    /// <summary>For every pixel of the result, the first source pixel it reads and the weights of the ones from there on.</summary>
     private static (int First, float[] Weights)[] BuildAxis(int sourceSize, int size)
     {
         var axis = new (int First, float[] Weights)[size];
@@ -365,10 +333,8 @@ internal static class PixelGrid
     }
 }
 
-/// <summary>Reads the orientation tag (0x0112) that cameras write into the EXIF block of a JPEG.</summary>
 internal static class ExifOrientation
 {
-    /// <summary>The orientation 1 to 8 of a JPEG; 1 (upright) when the bytes are not a JPEG, carry no tag or are damaged.</summary>
     public static int Read(byte[] data)
     {
         if (data.Length < 12 || data[0] != 0xFF || data[1] != 0xD8)
@@ -387,14 +353,12 @@ internal static class ExifOrientation
                 continue;
             }
 
-            // Markers without a length: the start of the image, the restart markers and the temporary one.
             if (marker == 0xD8 || marker == 0x01 || marker is >= 0xD0 and <= 0xD7)
             {
                 position += 2;
                 continue;
             }
 
-            // The scan or the end of the image: no more headers.
             if (marker == 0xDA || marker == 0xD9)
                 return 1;
 

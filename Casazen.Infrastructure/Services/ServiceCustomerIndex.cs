@@ -22,7 +22,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed class ServiceCustomerIndex : IServiceCustomerIndex
 {
-    /// <summary>The key of Development and Testing when none is configured: public on purpose, it protects nothing.</summary>
     internal const string DevelopmentKey = "casazen-development-customer-index-key-not-secret";
 
     private readonly byte[] _key;
@@ -37,7 +36,6 @@ public sealed class ServiceCustomerIndex : IServiceCustomerIndex
         {
             if (ShowcaseBookingOptionsValidator.RequiresKey(environment))
             {
-                // The booking is off (the validator refuses the startup when it is on): nothing indexes an address with this key.
                 logger.LogWarning(
                     "Suppliers:CustomerIndexKey is not configured: the e-mail index of the customers of the suppliers cannot be computed");
                 _key = [];

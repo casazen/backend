@@ -10,7 +10,6 @@ public static class RequiredConfiguration
 {
     public const string ConnectionStringVariable = "ConnectionStrings__DefaultConnection";
 
-    /// <summary>True where the configuration must be complete: every environment except Development and Testing.</summary>
     public static bool IsEnforced(IHostEnvironment environment) =>
         !environment.IsDevelopment() && !environment.IsEnvironment("Testing");
 
@@ -33,11 +32,6 @@ public static class RequiredConfiguration
             || trimmed.StartsWith('[');
     }
 
-    /// <summary>
-    /// Without a connection string the app falls back to an in-memory database (tests only) and runs no background
-    /// job: outside Development and Testing that is a configuration error, not a mode.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">The connection string is missing where it is required.</exception>
     public static void EnsureDatabaseConnection(string? connectionString, IHostEnvironment environment)
     {
         if (!IsEnforced(environment) || !string.IsNullOrWhiteSpace(connectionString))

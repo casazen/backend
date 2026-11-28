@@ -7,28 +7,21 @@ namespace Casazen.Core.Suppliers;
 /// </summary>
 public static class SupplierActivation
 {
-    /// <summary>Ids of the five wizard steps, in order (the position is the step number 1-5).</summary>
     public static class Steps
     {
-        /// <summary>1. Business name and phone.</summary>
         public const string Identity = "identity";
 
-        /// <summary>2. Service categories and comuni.</summary>
         public const string Services = "services";
 
-        /// <summary>3. Showcase photos (optional).</summary>
         public const string Showcase = "showcase";
 
-        /// <summary>4. Professional description.</summary>
         public const string Profile = "profile";
 
-        /// <summary>5. Availability (optional) and acceptance of the Terms of Service.</summary>
         public const string Terms = "terms";
 
         public static IReadOnlyList<string> All { get; } = [Identity, Services, Showcase, Profile, Terms];
     }
 
-    /// <summary>Codes of the requirements still missing (<c>blockers</c> of the 409 and of the wizard steps).</summary>
     public static class Blockers
     {
         public const string LegalNameMissing = "legal_name_missing";
@@ -38,11 +31,9 @@ public static class SupplierActivation
         public const string BioMissing = "bio_missing";
         public const string TosNotAccepted = "tos_not_accepted";
 
-        /// <summary>Step 5 of an active supplier whose accepted Terms version is not the current one.</summary>
         public const string TosReacceptanceRequired = "tos_reacceptance_required";
     }
 
-    /// <summary>Statuses of a wizard step.</summary>
     public static class StepStatus
     {
         public const string Completed = "completed";
@@ -66,11 +57,6 @@ public static class SupplierActivation
 
     public const int StepCount = 5;
 
-    /// <summary>
-    /// Whether <paramref name="phone"/> can be a phone number: digits with an optional leading <c>+</c> and the usual
-    /// separators (space, <c>-</c>, <c>.</c>, parentheses), 6 to 15 digits (E.164 allows at most 15). It does not prove the
-    /// number is reachable: no SMS verification exists yet (see the runbook).
-    /// </summary>
     public static bool IsPlausiblePhone(string? phone)
     {
         if (string.IsNullOrWhiteSpace(phone))
@@ -95,10 +81,6 @@ public static class SupplierActivation
     }
 }
 
-/// <summary>
-/// The activation of the profile cannot be completed: <see cref="Blockers"/> lists the requirements still missing
-/// (<see cref="SupplierActivation.Blockers"/>). HTTP 409.
-/// </summary>
 public class SupplierActivationBlockedException(IReadOnlyList<string> blockers)
     : Exceptions.DomainConflictException(SupplierActivation.BlockedCode, SupplierActivation.BlockedMessageKey)
 {

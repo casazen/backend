@@ -1,9 +1,5 @@
 namespace Casazen.Web.DTOs.Users;
 
-/// <summary>
-/// Caller-facing projection of the current user's <c>Org</c> (AC9). Read-only; carries no
-/// secrets — Stripe identifiers and contact email are intentionally excluded.
-/// </summary>
 public class OrgSummaryDto
 {
     public bool IsAgency { get; set; }

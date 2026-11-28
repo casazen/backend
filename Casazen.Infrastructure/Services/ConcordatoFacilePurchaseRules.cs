@@ -13,22 +13,12 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public static class ConcordatoFacilePurchaseRules
 {
-    /// <summary>
-    /// How long a Checkout Session of the service stays open, set at its creation (<c>expires_at</c>). Stripe accepts 30 minutes to 24
-    /// hours and, left alone, uses 24 hours.
-    /// </summary>
     public static readonly TimeSpan CheckoutSessionLifetime = TimeSpan.FromHours(2);
 
-    /// <summary>The time added to the lifetime before a purchase still pending counts as closed (clocks, the delay of the expiry event).</summary>
     public static readonly TimeSpan ClosingMargin = TimeSpan.FromMinutes(10);
 
-    /// <summary>A purchase created before this instant and still <c>Pending</c> is closed.</summary>
     public static DateTime PendingClosedBefore(DateTime utcNow) => utcNow - (CheckoutSessionLifetime + ClosingMargin);
 
-    /// <summary>
-    /// The purchases that still count (EF-translatable): not <c>Failed</c>, and not a <c>Pending</c> older than
-    /// <see cref="PendingClosedBefore"/>. Completed and refunded purchases count whatever their age.
-    /// </summary>
     public static Expression<Func<ConcordatoFacilePurchase, bool>> IsOpen(DateTime utcNow)
     {
         var closedBefore = PendingClosedBefore(utcNow);

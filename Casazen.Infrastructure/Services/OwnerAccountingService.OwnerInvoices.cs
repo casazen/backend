@@ -14,7 +14,6 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public sealed partial class OwnerAccountingService
 {
-    /// <summary>The prefix of the key of a line of an owner invoice: <c>invoicevat:{documentId:N}</c>, once per document.</summary>
     internal const string OwnerInvoiceVatKeyPrefix = "invoicevat:";
 
     public async Task<OwnerLedgerPosting?> PostOwnerInvoiceVatAsync(FiscalDocument invoice, decimal vat, string? userId, CancellationToken ct = default)
@@ -157,7 +156,6 @@ public sealed partial class OwnerAccountingService
         return await GenerateVersionAsync(orgId, ownerId, year, month, userId, ct);
     }
 
-    /// <summary>The month a line of an owner invoice goes in: <paramref name="period"/> while it is open for the owner, else the month of today (Rome).</summary>
     private async Task<Period> OpenPeriodForAsync(Guid orgId, Guid ownerId, Period period, CancellationToken ct)
     {
         var closed = await ClosedMonthsAsync(orgId, [ownerId], ct);

@@ -2,20 +2,15 @@ using System.Text.RegularExpressions;
 
 namespace Casazen.Core.SiteProfile;
 
-/// <summary>The provider of a video or a tour of a house (DB-D17): the only ones the page embeds, always after the visitor's click.</summary>
 public enum SiteEmbedProvider
 {
-    /// <summary>YouTube, embedded from <c>www.youtube-nocookie.com</c> (no cookies before the click).</summary>
     YouTube = 0,
 
-    /// <summary>Vimeo, embedded from <c>player.vimeo.com</c>.</summary>
     Vimeo = 1,
 
-    /// <summary>Matterport, embedded from <c>my.matterport.com</c> (the 360° tour).</summary>
     Matterport = 2,
 }
 
-/// <summary>A video or a tour address in its canonical, embeddable form, with the provider it belongs to.</summary>
 public sealed record SiteEmbed(string Url, SiteEmbedProvider Provider);
 
 /// <summary>
@@ -31,14 +26,9 @@ public static partial class SiteEmbedUrls
     private const string VimeoEmbed = "https://player.vimeo.com/video/";
     private const string MatterportShow = "https://my.matterport.com/show/?m=";
 
-    /// <summary>The hosts the page frame must allow (<c>frame-src</c>) for the embeds of this class.</summary>
     public static IReadOnlyList<string> FrameHosts { get; } =
         ["https://www.youtube-nocookie.com", "https://player.vimeo.com", "https://my.matterport.com"];
 
-    /// <summary>
-    /// The canonical embed of a video address (YouTube or Vimeo); <c>null</c> when the address is neither, is not <c>https</c>, or does
-    /// not carry an identifier of the provider.
-    /// </summary>
     public static SiteEmbed? NormalizeVideo(string? address) =>
         TryParse(address) is { } uri ? FromYouTube(uri) ?? FromVimeo(uri) : null;
 
@@ -46,10 +36,6 @@ public static partial class SiteEmbedUrls
     public static SiteEmbed? NormalizeTour(string? address) =>
         TryParse(address) is { } uri ? FromMatterport(uri) : null;
 
-    /// <summary>
-    /// The embed of an address already stored in canonical form, for the page to read: the same recognition as the one that stored it,
-    /// so a value somebody wrote straight into the column is never passed on if it is not one of ours.
-    /// </summary>
     public static SiteEmbed? Recognize(string? stored) => NormalizeVideo(stored) ?? NormalizeTour(stored);
 
     private static Uri? TryParse(string? address)
@@ -60,7 +46,6 @@ public static partial class SiteEmbedUrls
         if (!Uri.TryCreate(address.Trim(), UriKind.Absolute, out var uri))
             return null;
 
-        // https only, the default port, no credentials: nothing a person could hide a different destination in.
         if (uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort || !string.IsNullOrEmpty(uri.UserInfo))
             return null;
 
@@ -99,7 +84,6 @@ public static partial class SiteEmbedUrls
         string? hash = null;
         if (host == "player.vimeo.com")
         {
-            // https://player.vimeo.com/video/123456789?h=abcdef0123
             if (segments is ["video", var videoId])
             {
                 id = videoId;
@@ -108,12 +92,10 @@ public static partial class SiteEmbedUrls
         }
         else if (segments is [var plainId])
         {
-            // https://vimeo.com/123456789
             id = plainId;
         }
         else if (segments is [var unlistedId, var unlistedHash])
         {
-            // https://vimeo.com/123456789/abcdef0123 (an unlisted video carries a hash)
             id = unlistedId;
             hash = unlistedHash;
         }
@@ -146,7 +128,6 @@ public static partial class SiteEmbedUrls
     private static string? FirstSegment(Uri uri) =>
         uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries) is [var first, ..] ? first : null;
 
-    // The parameters of the query by hand: HttpUtility lives in a web assembly and Core has none.
     private static string? QueryValue(Uri uri, string name)
     {
         foreach (var pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))

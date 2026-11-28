@@ -40,16 +40,12 @@ public static class ServiceCategories
     /// </summary>
     public const string Electrical = "electrical";
 
-    /// <summary>Stable error code (API <c>code</c>, HTTP 422) for a category that is not one of <see cref="All"/>.</summary>
     public const string InvalidCategoryCode = "invalid_service_category";
 
-    /// <summary>SharedResources key of the "invalid service category" message.</summary>
     public const string InvalidCategoryMessageKey = "ServiceCategoryInvalid";
 
-    /// <summary>Longest part of a rejected value echoed back in the error message.</summary>
     private const int MaxEchoedLength = 50;
 
-    /// <summary>Every category code, in the order the clients show them.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
         Cleaning,
@@ -74,13 +70,8 @@ public static class ServiceCategories
     public static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
 
-    /// <summary>True when <paramref name="code"/> is exactly one of <see cref="All"/> (already normalized).</summary>
     public static bool IsKnown(string? code) => code is not null && Known.Contains(code);
 
-    /// <summary>
-    /// Normalized code of <paramref name="value"/>, or a <see cref="DomainRuleException"/> (HTTP 422,
-    /// <see cref="InvalidCategoryCode"/>) when it is empty or not a known category.
-    /// </summary>
     public static string Require(string? value)
     {
         var code = Normalize(value);
@@ -93,10 +84,6 @@ public static class ServiceCategories
         throw new DomainRuleException(InvalidCategoryCode, InvalidCategoryMessageKey, echoed);
     }
 
-    /// <summary>
-    /// Normalized, de-duplicated codes (first occurrence order), or a <see cref="DomainRuleException"/> for the first
-    /// value that is not a known category.
-    /// </summary>
     public static IReadOnlyList<string> RequireAll(IEnumerable<string?> values)
     {
         ArgumentNullException.ThrowIfNull(values);

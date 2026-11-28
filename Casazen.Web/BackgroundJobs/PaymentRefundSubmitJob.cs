@@ -16,7 +16,6 @@ public sealed class PaymentRefundSubmitJob(IPaymentRefundService refundService)
     public Task SubmitAsync(Guid refundId) => refundService.SubmitPendingAsync(refundId);
 }
 
-/// <summary>Schedules <see cref="PaymentRefundSubmitJob"/> one minute after a transient failure.</summary>
 public sealed class PaymentRefundRetryScheduler(
     IBackgroundJobClient backgroundJobClient,
     ILogger<PaymentRefundRetryScheduler> logger) : IPaymentRefundRetryScheduler
@@ -31,7 +30,6 @@ public sealed class PaymentRefundRetryScheduler(
         }
         catch (Exception ex)
         {
-            // The refund stays pending and visible; its refund.* webhook, if Stripe created it, still completes it.
             logger.LogError(ex, "Retry of refund {RefundId} could not be scheduled", refundId);
         }
     }

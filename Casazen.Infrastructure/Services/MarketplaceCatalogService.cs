@@ -28,10 +28,6 @@ public sealed class MarketplaceCatalogService(
     IMarketplaceTexts texts,
     IHostEnvironment hostEnvironment) : IMarketplaceCatalogService
 {
-    /// <summary>
-    /// The activation statuses a card shows as <see cref="MarketplaceCardStatus.Active"/>, derived from the one rule of the cards
-    /// (<see cref="MarketplaceCardRules.CardStatusOf"/>) and never written out, so a new status is one here as soon as the rule says so.
-    /// </summary>
     private static readonly MarketplaceActivationStatus[] OnStatuses =
         [.. Enum.GetValues<MarketplaceActivationStatus>().Where(status => MarketplaceCardRules.CardStatusOf(status) == MarketplaceCardStatus.Active)];
 
@@ -46,7 +42,6 @@ public sealed class MarketplaceCatalogService(
         var octorate = await MarketplaceReads.OctorateStateAsync(db, featureFlags, hostEnvironment, orgId, ct);
         var states = await MarketplaceCardStates.LoadAsync(db, orgId, scope, propertyId, ct);
 
-        // Preferred portals first, then by name: the order of the page, decided here and not by the database's collation.
         var portals = (await db.MarketplacePortals.AsNoTracking().Where(p => p.IsListed && p.Enabled).ToListAsync(ct))
             .OrderByDescending(p => p.Preferred)
             .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
@@ -98,7 +93,6 @@ public sealed class MarketplaceCatalogService(
             .ThenBy(integration => integration.Property?.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // The suppliers the host already asked for a job, in the same scope: together with the integrations they are the Active tab.
         var providers = await suppliers.ListAsync(scope, ct);
         return new MarketplaceActive(integrations, providers);
     }
@@ -107,15 +101,9 @@ public sealed class MarketplaceCatalogService(
     {
         MarketplaceReads.EnsureSameOrg(orgId, scope);
 
-        // The rows of the Active tab for this scope, asked only whether one is on or declared: no name, no property and no supplier is read.
         return await ActiveRows(orgId, scope, null).AnyAsync(a => a.IsDeclared || OnStatuses.Contains(a.Status), ct);
     }
 
-    /// <summary>
-    /// The org's own rows of the Active tab (not the deactivated ones), the one query of <see cref="GetActiveAsync"/> and
-    /// <see cref="HasActiveIntegrationAsync"/>: the properties inside the caller's scope, and the org-level ones only for a caller who reaches the whole org.
-    /// With a <paramref name="propertyId"/> only that property's rows and the org-level ones.
-    /// </summary>
     private IQueryable<MarketplaceActivation> ActiveRows(Guid orgId, HostScope scope, Guid? propertyId)
     {
         var orgWide = scope.IsOrgWide;
@@ -187,7 +175,6 @@ public sealed class MarketplaceCatalogService(
     private async Task<IReadOnlyList<MarketplaceCatalogEntry>> PartnerEntriesAsync(
         MarketplaceReads.OrgFacts org, string lang, MarketplaceCardStates states, CancellationToken ct)
     {
-        // Hidden partners never leave the database; of the visible ones, only those the plan and the country of the org allow.
         var shown = (await db.MarketplacePartners.AsNoTracking().Where(p => p.IsVisible).ToListAsync(ct))
             .Where(p => MarketplaceVisibility.IsVisible(p, org.PlanTier, org.BillingCountry))
             .OrderBy(p => p.Job)

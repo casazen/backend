@@ -3,67 +3,41 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// The things a portal asks of a person to be connected, as the stable codes the activation wizard translates (the same codes as the detail card of
-/// the marketplace): they come from the flags of the portal in the daily cache, never from a name written in the code.
-/// </summary>
 public static class MarketplaceActivationRequirements
 {
-    /// <summary>The identifier of the property on the portal (<c>requiresHotelId</c>).</summary>
     public const string HotelId = "hotelId";
 
-    /// <summary>The username and password of the portal (<c>requiresPassword</c>).</summary>
     public const string Credentials = "credentials";
 
-    /// <summary>The access given by the person on the channel manager's own panel (<c>requiresTokenAuthentication</c>).</summary>
     public const string PanelAccess = "panelAccess";
 }
 
-/// <summary>
-/// The stable codes of the activation of a channel or a tool (E09/F02/US01/T02, NF-56). The first six are the ones of the brief; each is a
-/// <c>DomainRuleException</c> (422), a <c>DomainConflictException</c> (409) or a <c>NotFoundException</c> (404) with a message in
-/// <c>SharedResources.resx</c>, Italian and English. The last two are not answers: they are the codes kept in
-/// <c>MarketplaceActivation.LastErrorCode</c> when the connection is found not to work.
-/// </summary>
 public static class MarketplaceActivationErrorCodes
 {
-    /// <summary>409: the Octorate connector is off, or the org has no connected account in this environment.</summary>
     public const string OctorateNotConnected = "marketplace_octorate_not_connected";
 
-    /// <summary>422: the property has no confirmed listing on the channel manager (the mapping of the connect wizard).</summary>
     public const string PropertyNotLinked = "marketplace_property_not_linked";
 
-    /// <summary>404: the code is not a channel (or a tool) of the catalog, or the catalog does not offer it.</summary>
     public const string PortalUnknown = "marketplace_portal_unknown";
 
-    /// <summary>422: Octorate does not let a connection to the portal be created through its API.</summary>
     public const string PortalNotCreatable = "marketplace_portal_not_creatable";
 
-    /// <summary>422: the portal needs the identifier of the property, or the username and password, and they are missing.</summary>
     public const string CredentialsRequired = "marketplace_credentials_required";
 
-    /// <summary>409: the property already has a connection to the channel on the channel manager that CasaZen did not make.</summary>
     public const string ConnectionExists = "marketplace_connection_exists";
 
-    /// <summary>404: the activation is not one of the org inside the caller's scope.</summary>
     public const string ActivationNotFound = "marketplace_activation_not_found";
 
-    /// <summary>409: the activation has no connection on the channel manager (never made, or removed there): start it again.</summary>
     public const string ConnectionMissing = "marketplace_connection_missing";
 
-    /// <summary>409: the channel needs the access given on the channel manager's panel, and the person has not given it yet.</summary>
     public const string PanelAccessPending = "marketplace_panel_access_pending";
 
-    /// <summary>422: no room of the channel was chosen (an empty choice is never «all of them»), or none is mapped yet when the activation asks for it.</summary>
     public const string MappingRequired = "marketplace_mapping_required";
 
-    /// <summary>422: a room chosen is not a room of the channel, or a product chosen is not a product of the property's listing.</summary>
     public const string MappingInvalid = "marketplace_mapping_invalid";
 
-    /// <summary>Kept on the activation: after «mark connected» the channel manager does not show the connection as working.</summary>
     public const string ConnectionNotEnabled = "connection_not_enabled";
 
-    /// <summary>Kept on the activation: after «mark connected» the channel manager no longer lists the connection.</summary>
     public const string ConnectionLost = "connection_missing";
 }
 
@@ -150,9 +124,6 @@ public sealed record MarketplaceActivationState(
     string? LastErrorCode,
     DateTime? ConnectionLastUpdate);
 
-/// <summary>A room of the channel the person chose to map to a product of the listing.</summary>
-/// <param name="ChannelRoomId">The id of the room on the channel as the mapping read gives it.</param>
-/// <param name="ProductId">The product (room) of the property's listing on the channel manager.</param>
 public sealed record MarketplaceRoomChoice(string ChannelRoomId, string ProductId);
 
 /// <summary>A room of the listing on the channel, with what it is mapped to and the proposal of CasaZen.</summary>
@@ -170,9 +141,6 @@ public sealed record MarketplaceChannelRoom(
     string? MappedProductId,
     string? ProposedProductId);
 
-/// <summary>A product (room) of the property's listing on the channel manager.</summary>
-/// <param name="ProductId">The product id.</param>
-/// <param name="Name">Its name, when the channel manager gives one.</param>
 public sealed record MarketplaceProduct(string ProductId, string? Name);
 
 /// <summary>The rooms of the channel and the products of the listing, for the mapping step.</summary>

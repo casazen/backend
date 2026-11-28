@@ -22,7 +22,6 @@ public sealed class BiometricsHealthCheck(IBiometricModelStatusReader statusRead
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A configuration that cannot even be read is a reason to look, not to stop serving: the operator path does not need the models.
             return Task.FromResult(HealthCheckResult.Degraded(
                 "The state of the identity verification models could not be read (check the Biometrics__* and MrzOcr__* variables): every verification goes to the operator."));
         }

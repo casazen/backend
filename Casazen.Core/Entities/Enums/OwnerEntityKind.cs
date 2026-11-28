@@ -8,9 +8,7 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum OwnerEntityKind
 {
-    /// <summary>A natural person.</summary>
     NaturalPerson = 1,
 
-    /// <summary>A legal entity: a company, an association, any subject that is not a natural person.</summary>
     LegalEntity = 2,
 }

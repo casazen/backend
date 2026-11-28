@@ -21,38 +21,20 @@ public sealed class SupplierPaymentsOptions
 {
     public const string SectionName = "SupplierPayments";
 
-    /// <summary>Highest commission the configuration or a supplier's override may carry (percent).</summary>
     public const decimal MaxCommissionPercent = 50m;
 
-    /// <summary>Shortest and longest times, in days, of the settings below.</summary>
     public const int MinDays = 1;
 
-    /// <inheritdoc cref="MinDays"/>
     public const int MaxDays = 365;
 
-    /// <summary>
-    /// The commission CasaZen keeps, as a percentage of the price the payer pays (0 to 50). <b>Provisional</b>: the figure is the
-    /// product owner's decision (the hypothesis is 10). Env var <c>SupplierPayments__CommissionPercent</c>. Required.
-    /// </summary>
     public decimal? CommissionPercent { get; set; }
 
-    /// <summary>Days after the payment was requested after which it is flagged as late (7). Used by the reminder job (SP-15b). Env var <c>SupplierPayments__LateAfterDays</c>.</summary>
     public int LateAfterDays { get; set; } = 7;
 
-    /// <summary>
-    /// Days after the payment was requested on which the reminder job sends a reminder (2 and 7). Empty means those two. Duplicates
-    /// and order do not matter (see <see cref="EffectiveReminderDays"/>). Env var <c>SupplierPayments__ReminderDays__0</c>, <c>__1</c>…
-    /// </summary>
     public int[] ReminderDays { get; set; } = [];
 
-    /// <summary>Days a payment link stays valid, from the email that carries it (30). Env var <c>SupplierPayments__PaymentLinkValidityDays</c>.</summary>
     public int PaymentLinkValidityDays { get; set; } = 30;
 
-    /// <summary>
-    /// The smallest amount, in cents, that is charged inside CasaZen (50: the minimum Stripe accepts for a charge in euro). A
-    /// completed request below it is not charged online: it falls back to the manual flow. Env var
-    /// <c>SupplierPayments__MinAmountCents</c>.
-    /// </summary>
     public int MinAmountCents { get; set; } = 50;
 
     /// <summary>
@@ -64,11 +46,7 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public decimal? CommissionVatPercent { get; set; }
 
-    /// <summary>Highest VAT rate the configuration may carry (percent).</summary>
     public const decimal MaxVatPercent = 100m;
-
-    // ─── The payment held by CasaZen (SP-15c-a, decision VT-D1). Every time below is configuration: Stripe's own limits are not ───
-    // ─── guaranteed by this code, and the product owner decides the ones that depend on the answers of Stripe (VT-D22). ──────────
 
     /// <summary>
     /// Longest a card block may last, in hours, that the configuration allows: Stripe keeps a block for 7 days for most cards but for
@@ -77,7 +55,6 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public const int MaxAuthorizationValidityHours = 96;
 
-    /// <summary>Longest wait between the work and the release, in minutes, that the configuration allows (one week).</summary>
     public const int MaxReleaseAfterMinutes = 7 * 24 * 60;
 
     /// <summary>
@@ -88,10 +65,6 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public int AuthorizationValidityHours { get; set; } = 48;
 
-    /// <summary>
-    /// Minutes between the completion of the work and the release of the money to the supplier if the payer says nothing (60: the
-    /// rule of the product owner, VT-D1). Env var <c>SupplierPayments__ReleaseAfterMinutes</c>, 0 to <see cref="MaxReleaseAfterMinutes"/>.
-    /// </summary>
     public int ReleaseAfterMinutes { get; set; } = 60;
 
     /// <summary>
@@ -103,7 +76,6 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public int MaxHoldDays { get; set; } = 60;
 
-    /// <summary>Days before <see cref="MaxHoldDays"/> on which the admins are warned about a payment still held (7). Env var <c>SupplierPayments__HoldWarningDays</c>, 0 to <see cref="MaxHoldDays"/>.</summary>
     public int HoldWarningDays { get; set; } = 7;
 
     /// <summary>
@@ -113,13 +85,8 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public int TransferRetryBaseMinutes { get; set; } = 15;
 
-    /// <summary>The longest wait between two tries of a transfer, in minutes (720 = 12 hours). Env var <c>SupplierPayments__TransferRetryMaxMinutes</c>, <see cref="TransferRetryBaseMinutes"/> to 10080.</summary>
     public int TransferRetryMaxMinutes { get; set; } = 720;
 
-    /// <summary>
-    /// After this many failed tries of a transfer the admins are told (once) that a supplier is not being paid (5). Env var
-    /// <c>SupplierPayments__TransferAlertAfterAttempts</c>, 1 to 100.
-    /// </summary>
     public int TransferAlertAfterAttempts { get; set; } = 5;
 
     /// <summary>
@@ -132,66 +99,35 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public bool HeldForHosts { get; set; } = true;
 
-    /// <summary>Apply D21 to newly created host requests after the fiscal rollout is approved.</summary>
     public bool AddMarketplaceFeeToNewHostRequests { get; set; }
 
-    // ─── The complaint and the dispute (SP-15c-c, decision VT-D16). The times are configuration: they are the product owner's to change. ───
-
-    /// <summary>Longest the times of a dispute may be set to, in hours (30 days).</summary>
     public const int MaxDisputeHours = 30 * 24;
 
-    /// <summary>
-    /// Hours the supplier has to reply to a complaint, from the moment it is opened (48, VT-D16). When they pass the dispute goes to the admins
-    /// without the reply; a reply that comes later is still taken while the dispute is open. Env var
-    /// <c>SupplierPayments__DisputeSupplierReplyHours</c>, 1 to <see cref="MaxDisputeHours"/>.
-    /// </summary>
     public int DisputeSupplierReplyHours { get; set; } = 48;
 
-    /// <summary>
-    /// Hours the admins aim to decide a dispute in, from the moment it reaches them (72, VT-D16). It decides nothing and moves no money: when it
-    /// passes the admins are told once. Env var <c>SupplierPayments__DisputeDecisionTargetHours</c>, 1 to <see cref="MaxDisputeHours"/>.
-    /// </summary>
     public int DisputeDecisionTargetHours { get; set; } = 72;
 
-    /// <summary>
-    /// Hours after the end of the time agreed for the work after which, if the supplier never marked it completed, CasaZen itself opens the complaint
-    /// for the payer (the no-show: 48, VT-D16). The payer can complain from the end of that time, without waiting. Env var
-    /// <c>SupplierPayments__DisputeNoShowHours</c>, 1 to <see cref="MaxDisputeHours"/>.
-    /// </summary>
     public int DisputeNoShowHours { get; set; } = 48;
 
-    /// <summary>
-    /// Minutes after a decision for the customer after which, if the refund it decided has not succeeded and none is waiting for Stripe, the admins
-    /// are told once (30). Env var <c>SupplierPayments__DisputeRefundAlertMinutes</c>, 1 to 1440.
-    /// </summary>
     public int DisputeRefundAlertMinutes { get; set; } = 30;
 
-    /// <summary>The time the supplier has to reply to a complaint as a time span.</summary>
     public TimeSpan DisputeSupplierReply => TimeSpan.FromHours(DisputeSupplierReplyHours);
 
-    /// <summary>The time the admins aim to decide a dispute in as a time span.</summary>
     public TimeSpan DisputeDecisionTarget => TimeSpan.FromHours(DisputeDecisionTargetHours);
 
-    /// <summary>The time after the end of the work after which CasaZen opens the no-show complaint as a time span.</summary>
     public TimeSpan DisputeNoShow => TimeSpan.FromHours(DisputeNoShowHours);
 
-    /// <summary>The authorization validity as a time span: how long a card block is treated as usable.</summary>
     public TimeSpan AuthorizationValidity => TimeSpan.FromHours(AuthorizationValidityHours);
 
-    /// <summary>The wait between the completion of the work and the release as a time span.</summary>
     public TimeSpan ReleaseAfter => TimeSpan.FromMinutes(ReleaseAfterMinutes);
 
-    /// <summary>The days of the reminders: <see cref="ReminderDays"/> without duplicates, ascending; 2 and 7 when none is set.</summary>
     public IReadOnlyList<int> EffectiveReminderDays =>
         ReminderDays is { Length: > 0 } ? ReminderDays.Distinct().Order().ToArray() : [2, 7];
 
-    /// <summary>The configured commission; the options are validated at startup, so a missing value cannot get here in the running application.</summary>
-    /// <exception cref="InvalidOperationException">The commission is not configured.</exception>
     public decimal RequireCommissionPercent() =>
         CommissionPercent
         ?? throw new InvalidOperationException("SupplierPayments__CommissionPercent is not configured (validated at startup).");
 
-    /// <summary>Configuration errors, empty when the section is valid.</summary>
     public IReadOnlyList<string> Validate()
     {
         var failures = new List<string>();
@@ -217,8 +153,6 @@ public sealed class SupplierPaymentsOptions
         if (CommissionVatPercent is { } vat && (vat is < 0m or > MaxVatPercent || decimal.Round(vat, 2) != vat))
             failures.Add($"{SectionName}__CommissionVatPercent must be empty or between 0 and {MaxVatPercent} with at most two decimals.");
 
-        // The held payment (SP-15c-a). A block that outlives what the card networks guarantee would let a booking be accepted with no
-        // money behind it, so the limit is part of the startup check, not of the code that uses it.
         if (AuthorizationValidityHours is < 1 or > MaxAuthorizationValidityHours)
         {
             failures.Add(
@@ -239,7 +173,6 @@ public sealed class SupplierPaymentsOptions
         if (TransferAlertAfterAttempts is < 1 or > 100)
             failures.Add($"{SectionName}__TransferAlertAfterAttempts must be between 1 and 100.");
 
-        // The dispute (SP-15c-c): a time of zero would let a payer's complaint, or a supplier's reply, expire before it is read.
         if (DisputeSupplierReplyHours is < 1 or > MaxDisputeHours)
             failures.Add($"{SectionName}__DisputeSupplierReplyHours must be between 1 and {MaxDisputeHours} hours.");
         if (DisputeDecisionTargetHours is < 1 or > MaxDisputeHours)
@@ -252,7 +185,6 @@ public sealed class SupplierPaymentsOptions
     }
 }
 
-/// <summary>Refuses a <c>SupplierPayments</c> section that is not valid at startup, so a typo never changes a commission silently.</summary>
 public sealed class SupplierPaymentsOptionsValidator : IValidateOptions<SupplierPaymentsOptions>
 {
     public ValidateOptionsResult Validate(string? name, SupplierPaymentsOptions options)

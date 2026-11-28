@@ -8,9 +8,7 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum ServiceFeeVatMode
 {
-    /// <summary>The commission percentage is the amount with VAT inside.</summary>
     Included = 1,
 
-    /// <summary>VAT is added on top of the commission.</summary>
     Added = 2,
 }

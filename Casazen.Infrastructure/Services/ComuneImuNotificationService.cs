@@ -84,11 +84,6 @@ public class ComuneImuNotificationService(
         return new ImuNotificationStatusDto(true, true, null, city, channelDto);
     }
 
-    /// <summary>
-    /// The lease, when <paramref name="userId"/> is the holder of its org (S5, AM-03): the communication to the Comune is the
-    /// landlord's, so the org's owner or an administrator marks it sent, not whoever created the property. The creator of the
-    /// property is the holder only for an account in no org team (see <see cref="IOrgHolderService"/>).
-    /// </summary>
     private async Task<LeaseContract?> LoadOwnedLeaseAsync(Guid leaseId, string userId, CancellationToken cancellationToken)
     {
         var lease = await leases.GetByIdWithDetailsAsync(leaseId);
@@ -115,10 +110,6 @@ public class ComuneImuNotificationService(
 
     private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
 
-    /// <summary>
-    /// The recipient and rate come from <see cref="ComuneImuChannel"/> (LT-13, A7-22): no comune name is ever literal
-    /// here. A comune with no row falls back to "verify with the ufficio tributi".
-    /// </summary>
     private static string BuildBody(LeaseContract lease, string city, ComuneImuChannel? channel)
     {
         var sb = new StringBuilder();

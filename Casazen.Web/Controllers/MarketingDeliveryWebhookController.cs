@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>Resend sends signed Svix events for all messages. Only tagged campaign deliveries contribute to marketing metrics.</summary>
 [ApiController]
 [Route("api/webhooks/marketing/resend")]
 [AllowAnonymous]
@@ -35,7 +34,6 @@ public sealed class MarketingDeliveryWebhookController(AppDbContext db, IConfigu
             if (!data.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Object ||
                 !tags.TryGetProperty("campaign_delivery", out var tag) || tag.ValueKind != JsonValueKind.String ||
                 !Guid.TryParseExact(tag.GetString(), "N", out var id)) return NoContent();
-            // The server-issued random tag is authenticated by the provider. This public callback has no tenant context.
             var deliveries = db.CampaignDeliveries.IgnoreQueryFilters().Where(d => d.Id == id);
             switch (type.GetString())
             {

@@ -21,61 +21,38 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IIdentityVerificationMetricsService
 {
-    /// <summary>
-    /// The counters of the identity steps opened between <paramref name="fromUtc"/> (included) and <paramref name="toUtc"/> (excluded) for the org and the properties of
-    /// <paramref name="scope"/>. No step opened gives a result with zeros, null rates and the interval (0, 1): no measurement is not a rate of 0.
-    /// </summary>
     Task<IdentityVerificationMetrics> GetAsync(HostScope scope, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The category an opened identity step falls in (E73/F01/US03/T01): the terminal codes of <see cref="IdentityOutcomeCodes"/> plus the one a step has while it is open,
-/// <see cref="InProgress"/>. A closed verification has the category of its code; an open one is <see cref="Abandoned"/> once it is older than
-/// <c>IdentityVerification:Retention:AbandonedAfterHours</c>, <see cref="InProgress"/> before. Every opened step falls in exactly one.
-/// </summary>
 public enum IdentityOutcomeCategory
 {
-    /// <summary>The policy approved the guest in a qualified segment.</summary>
     AutoApproved,
 
-    /// <summary>A person reviews the verification (also the category of a closed verification whose code is missing or unknown: a hand-off is always a person).</summary>
     Review,
 
-    /// <summary>The guest chose the assisted path or asked for a person.</summary>
     Assisted,
 
-    /// <summary>The guest refused the biometric consent.</summary>
     ConsentRefused,
 
-    /// <summary>The document is of a format the registry does not hold.</summary>
     FormatUnsupported,
 
-    /// <summary>A model failed or timed out: a person decides.</summary>
     TechnicalError,
 
-    /// <summary>The automatic verification was not offered.</summary>
     Unavailable,
 
-    /// <summary>The guest who must be verified is a minor: never processed.</summary>
     MinorExcluded,
 
-    /// <summary>Closed as abandoned, or still open and older than the abandonment time of the retention.</summary>
     Abandoned,
 
-    /// <summary>Open, not yet old enough to be abandoned.</summary>
     InProgress,
 }
 
-/// <summary>The codes of <see cref="IdentityOutcomeCategory"/> (the snake case ones of the export of the pilot) and how a stored terminal code maps to a category.</summary>
 public static class IdentityOutcomeCategories
 {
-    /// <summary>The code of a verification that is open and not abandoned (it has no terminal code yet).</summary>
     public const string InProgressCode = "in_progress";
 
-    /// <summary>Every category, in the order of the counters.</summary>
     public static IReadOnlyList<IdentityOutcomeCategory> All { get; } = Enum.GetValues<IdentityOutcomeCategory>();
 
-    /// <summary>The code of a category: the one of <see cref="IdentityOutcomeCodes"/> for a terminal outcome, <see cref="InProgressCode"/> for an open one.</summary>
     public static string CodeOf(IdentityOutcomeCategory category)
     {
         return category switch
@@ -138,7 +115,6 @@ public sealed record IdentityVerificationMetrics(
     IdentityPercentiles ReviewSeconds,
     IReadOnlyList<IdentityCoverageCell> Coverage);
 
-/// <summary>The opened steps by category (<see cref="IdentityOutcomeCategory"/>); <see cref="Total"/> is the denominator they add up to.</summary>
 public sealed record IdentityOutcomeCounts(
     int AutoApproved,
     int Review,
@@ -151,10 +127,8 @@ public sealed record IdentityOutcomeCounts(
     int Abandoned,
     int InProgress)
 {
-    /// <summary>The sum of the categories.</summary>
     public int Total => AutoApproved + Review + Assisted + ConsentRefused + FormatUnsupported + TechnicalError + Unavailable + MinorExcluded + Abandoned + InProgress;
 
-    /// <summary>The count of one category.</summary>
     public int Of(IdentityOutcomeCategory category)
     {
         return category switch
@@ -172,7 +146,6 @@ public sealed record IdentityOutcomeCounts(
         };
     }
 
-    /// <summary>The counts of <paramref name="categories"/>, one category per opened step.</summary>
     public static IdentityOutcomeCounts From(IEnumerable<IdentityOutcomeCategory> categories)
     {
         ArgumentNullException.ThrowIfNull(categories);
@@ -196,13 +169,8 @@ public sealed record IdentityOutcomeCounts(
     }
 }
 
-/// <summary>
-/// A count out of <paramref name="N"/> with its Wilson 95% interval (<see cref="IdentityStatistics.Wilson"/>). <paramref name="Value"/> is null when nothing was measured
-/// (<paramref name="N"/> is 0): that is not a rate of 0, and the interval is then (0, 1), as the statistics say.
-/// </summary>
 public sealed record IdentityRate(double? Value, double WilsonLow, double WilsonHigh, int N)
 {
-    /// <summary><paramref name="count"/> out of <paramref name="n"/> with the interval of <see cref="IdentityStatistics.Wilson"/>.</summary>
     public static IdentityRate Of(int count, int n)
     {
         var (low, high) = IdentityStatistics.Wilson(count, n);
@@ -210,22 +178,14 @@ public sealed record IdentityRate(double? Value, double WilsonLow, double Wilson
     }
 }
 
-/// <summary>
-/// The critical table of the pilot: what the policy would have decided (its shadow outcome) against what the person decided later, for the verifications with both. The
-/// critical cell is <see cref="ApproveReject"/>: a would-be false approval.
-/// </summary>
 public sealed record IdentityShadowVsHuman(int ApproveApprove, int ApproveReject, int ReviewApprove, int ReviewReject);
 
-/// <summary>The median and the 95th percentile (nearest rank, <see cref="IdentityStatistics.Percentile"/>) of <paramref name="N"/> values; both null when there is none.</summary>
 public sealed record IdentityPercentiles(double? P50, double? P95, int N)
 {
-    /// <summary>The percentile of the median.</summary>
     public const double MedianPercent = 50;
 
-    /// <summary>The percentile of the tail (p95).</summary>
     public const double TailPercent = 95;
 
-    /// <summary>The percentiles of <paramref name="values"/>; the list is neither changed nor retained.</summary>
     public static IdentityPercentiles Of(IReadOnlyList<double> values)
     {
         ArgumentNullException.ThrowIfNull(values);
@@ -233,11 +193,6 @@ public sealed record IdentityPercentiles(double? P50, double? P95, int N)
     }
 }
 
-/// <summary>
-/// One cell of the coverage: the steps opened for a format of the registry (<see cref="UnknownFormat"/> when the document was not read as one) on a channel (a code of
-/// <see cref="IdentityChannels"/>), how many closed with an automatic approval, how many the policy would have approved (the shadow outcome), and the automation rate of
-/// the cell with its Wilson 95% interval. <paramref name="Opened"/> is at least 1: a cell with no step is not listed.
-/// </summary>
 public sealed record IdentityCoverageCell(
     string FormatId,
     string Channel,
@@ -248,6 +203,5 @@ public sealed record IdentityCoverageCell(
     double WilsonLow,
     double WilsonHigh)
 {
-    /// <summary>The format of a step whose document was not read as one of the registry (a refusal, an abandonment, a format the registry does not hold).</summary>
     public const string UnknownFormat = "unknown";
 }

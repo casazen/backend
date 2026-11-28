@@ -32,14 +32,11 @@ public class MeController(
         var user = await GetCurrentUserAsync(sub);
         if (!user.IsActive)
         {
-            // Normally refused earlier by InactiveAccountMiddleware (PL-03); same answer if the account was deactivated meanwhile.
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.AccountInactive, "AccountInactive");
         }
 
         var contexts = await contextAuthorizationService.GetUserContextsAsync(sub, cancellationToken);
 
-        // UI-13a: the last used context is told only while the caller can still enter it (an access taken away): a stale key
-        // would make the client open an area that refuses it.
         var lastUsed = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, user.LastUsedContextKey, StringComparison.OrdinalIgnoreCase));
 
         var response = new UserContextsResponse(
@@ -100,7 +97,6 @@ public class MeController(
         return Ok(new LastContextResponse(context.ContextKey));
     }
 
-    /// <summary>The caller's row, created from the token when it is the first request (the claims fill what the row lacks).</summary>
     private Task<Casazen.Core.Entities.User> GetCurrentUserAsync(string sub)
     {
         var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);

@@ -29,7 +29,6 @@ public sealed class OctorateConnectService(
     TimeProvider timeProvider,
     ILogger<OctorateConnectService> logger) : IOctorateConnectService
 {
-    /// <summary>What is left of the quota, as a share of it, under which the status warns.</summary>
     public const double QuotaWarningShare = 0.10;
 
     private const string TokenPath = "/rest/v1/identity/token";
@@ -73,8 +72,6 @@ public sealed class OctorateConnectService(
         var exchanged = await ExchangeAsync(settings, code, ct);
         await tokens.SaveTokensAsync(orgId, exchanged, ct);
 
-        // The refresh token arrives only with the first authorization: a reconnection reuses the stored one. With neither, the
-        // connection could not outlive its access token, so it is not opened.
         var connection = await db.OctorateConnections.FirstOrDefaultAsync(c => c.OrgId == orgId && c.Environment == environment, ct);
         if (connection is not { Status: OctorateConnectionStatus.Connected })
         {
@@ -92,7 +89,6 @@ public sealed class OctorateConnectService(
             var expectedApiEnvironment = OctorateEnvironments.ExpectedApiEnvironment(environment, options.Value.AllowProductionApiInTest);
             if (!OctorateEnvironments.Matches(expectedApiEnvironment, configuration.Environment))
             {
-                // Only log a closed set of classifications, never the upstream response or an arbitrary value.
                 var reportedEnvironment = string.IsNullOrWhiteSpace(configuration.Environment) ? "missing"
                     : OctorateEnvironments.Matches(OctorateEnvironment.Test, configuration.Environment) ? "sandbox"
                     : OctorateEnvironments.Matches(OctorateEnvironment.Production, configuration.Environment) ? "production"
@@ -149,11 +145,9 @@ public sealed class OctorateConnectService(
             }
             catch (OctorateException ex)
             {
-                // The status still answers: the quota is simply not known now.
                 logger.LogInformation("Octorate quota of org {OrgId} not read ({Code})", orgId, ex.Code);
             }
 
-            // Reading the quota may have refreshed the token, or found the refresh token refused and disconnected the org.
             connection = await FindAsync(orgId, environment, ct) ?? connection;
         }
 
@@ -183,7 +177,6 @@ public sealed class OctorateConnectService(
         return value is null || value.Length <= OctorateConnection.AccountIdMaxLength ? value : value[..OctorateConnection.AccountIdMaxLength];
     }
 
-    /// <summary>The code exchange, server to server. Any failure is <see cref="OctorateExchangeFailedException"/> (502).</summary>
     private async Task<OctorateTokenResponse> ExchangeAsync(ConnectSettings settings, string code, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, OctorateHttp.Address(settings.ApiBaseUrl, TokenPath))
@@ -249,8 +242,6 @@ public sealed class OctorateConnectService(
     private Task<OctorateConnection?> FindAsync(Guid orgId, OctorateEnvironment environment, CancellationToken ct) =>
         db.OctorateConnections.AsNoTracking().FirstOrDefaultAsync(c => c.OrgId == orgId && c.Environment == environment, ct);
 
-    /// <summary>The settings of the consent, all required: without them no consent can start or complete.</summary>
-    /// <exception cref="InvalidOperationException">A setting is missing (startup validation covers the environments with the flag on).</exception>
     private ConnectSettings Settings()
     {
         var value = options.Value;

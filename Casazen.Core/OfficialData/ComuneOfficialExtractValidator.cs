@@ -4,10 +4,6 @@ using System.Text.RegularExpressions;
 
 namespace Casazen.Core.OfficialData;
 
-/// <summary>
-/// Rejects an extract that is missing the act identity or the downloaded PDF URL: no amounts are written in that case.
-/// Extra JSON properties are ignored; missing required fields fail.
-/// </summary>
 public static partial class ComuneOfficialExtractValidator
 {
     public static readonly JsonSerializerOptions JsonOptions = new()

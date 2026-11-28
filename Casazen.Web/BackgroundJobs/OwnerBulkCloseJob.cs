@@ -24,7 +24,6 @@ public sealed class OwnerBulkCloseJob(
     IBackgroundTenantScope tenantScope,
     ILogger<OwnerBulkCloseJob> logger)
 {
-    /// <summary>The Hangfire job parameter that holds the progress of a run (<see cref="OwnerBulkProgressState"/> as JSON).</summary>
     public const string ProgressParameter = "owner-bulk-progress";
 
     /// <param name="orgId">The org the run is for.</param>
@@ -65,12 +64,10 @@ public sealed class OwnerBulkCloseJob(
         }
         catch (OperationCanceledException)
         {
-            // The server is shutting down: Hangfire runs the job again, and every owner done is found done.
             throw;
         }
         catch (Exception ex)
         {
-            // The run itself failed: what was done stays in the results, the job is a failed one, and the step can be run again.
             var code = ex is DomainException domain ? domain.Code : OwnerAccountingErrors.BulkFailed;
             logger.LogError("Bulk {Action} of {Year}-{Month} of org {OrgId} failed after {Done} owners ({Error}, {Code})", action, year, month, orgId, latest.Count, ex.GetType().Name, code);
             Save(context, OwnerBulkRunStatus.Failed, latest, code);
@@ -78,7 +75,6 @@ public sealed class OwnerBulkCloseJob(
         }
     }
 
-    /// <summary>Writes the progress to the job; without a Hangfire context (a run by hand) nothing is kept.</summary>
     private static void Save(PerformContext? context, OwnerBulkRunStatus status, IReadOnlyList<OwnerBulkOwnerResult> results, string? errorCode)
     {
         if (context?.BackgroundJob?.Id is not { } jobId)

@@ -19,14 +19,8 @@ public class AppDbContext(
     ITenantContext? tenantContext = null,
     IDataProtectionProvider? dataProtectionProvider = null) : DbContext(options), IDataProtectionKeyContext
 {
-    // Resolves the caller's OrgId for the global tenant query filter (AC7). Falls back to a
-    // no-op (filter disabled) for design-time, background jobs, and unit tests.
     private readonly ITenantContext _tenant = tenantContext ?? NullTenantContext.Instance;
 
-    /// <summary>
-    /// Provider of the encrypted columns' converters; part of the model cache key
-    /// (<see cref="DataProtectionModelCacheKeyFactory"/>), so a context never encrypts with another context's provider.
-    /// </summary>
     internal IDataProtectionProvider? EncryptionProvider { get; } = dataProtectionProvider;
 
     /// <summary>
@@ -39,16 +33,13 @@ public class AppDbContext(
     public DbSet<Org> Orgs { get; set; } = null!;
     public DbSet<OrgSlugAlias> OrgSlugAliases { get; set; } = null!;
 
-    // Operator privacy notice and booking terms of the public site, versioned (BK-14, A3-21)
     public DbSet<OrgSiteDocument> OrgSiteDocuments { get; set; } = null!;
 
     /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
     public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
 
-    /// <summary>The one-time codes of the connection of a site to the org (S022, PLG-BE-CONNECT): hashes only, five minutes each.</summary>
     public DbSet<SiteConnectionCode> SiteConnectionCodes { get; set; } = null!;
 
-    /// <summary>The sites connected to the org, the credentials of their WordPress plugin (S022, PLG-BE-CONNECT): hashes only, revocable.</summary>
     public DbSet<SiteConnection> SiteConnections { get; set; } = null!;
     public DbSet<PropertyActivationCredential> PropertyActivationCredentials => Set<PropertyActivationCredential>();
 
@@ -84,20 +75,15 @@ public class AppDbContext(
     public DbSet<OtaSyncLog> OtaSyncLogs { get; set; } = null!;
     public DbSet<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = null!;
 
-    // Stages of the host alerts already sent per stay (CO-10)
     public DbSet<StayAlertState> StayAlertStates { get; set; } = null!;
 
-    // Check-out of a stay: wizard progress and what the host declared (CO-17)
     public DbSet<StayCheckout> StayCheckouts { get; set; } = null!;
 
-    // Stage of the CIN alert already sent per property (CO-20)
     public DbSet<CinAlertState> CinAlertStates { get; set; } = null!;
 
-    // D.L. 145/2023 safety checklist of a short-stay property (CO-07)
     public DbSet<PropertySafetyChecklist> PropertySafetyChecklists { get; set; } = null!;
     public DbSet<PropertySafetyChecklistItem> PropertySafetyChecklistItems { get; set; } = null!;
 
-    // Guests of a stay and official Alloggiati code tables (CO-12)
     public DbSet<StayGuest> StayGuests { get; set; } = null!;
     public DbSet<AlloggiatiCodeEntry> AlloggiatiCodeEntries { get; set; } = null!;
     public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
@@ -109,8 +95,6 @@ public class AppDbContext(
     public DbSet<AlloggiatiSendAttempt> AlloggiatiSendAttempts { get; set; } = null!;
     public DbSet<AlloggiatiReceipt> AlloggiatiReceipts { get; set; } = null!;
 
-    // The compliance dashboard "am I compliant?" (E03/F02/US01/T01, NF-52, NF-47): the stage of the period and connection alerts, the monthly
-    // summary already sent to an org, the log of what was sent and by whom, and the proofs a host uploads (ids, codes and keys: no guest data)
     public DbSet<ComplianceAlertState> ComplianceAlertStates { get; set; } = null!;
     public DbSet<ComplianceMonthlySummaryLog> ComplianceMonthlySummaryLogs { get; set; } = null!;
     public DbSet<ComplianceSendLogEntry> ComplianceSendLogEntries { get; set; } = null!;
@@ -119,8 +103,6 @@ public class AppDbContext(
     // The flats a receipt covers: one row for each flat of the org an Alloggiati receipt is about (E20/F02/US01/T01, decision O3)
     public DbSet<ManualComplianceProofProperty> ManualComplianceProofProperties { get; set; } = null!;
 
-    // The tracking of the police notification of the Swiss properties (E30/F02/US02/T01, NF-128): the declaration «I uploaded the file» of an arrival day and the audit of the files
-    // generated for it (no guest data)
     public DbSet<SwissNotificationDeclaration> SwissNotificationDeclarations { get; set; } = null!;
     public DbSet<SwissNotificationFileEvent> SwissNotificationFileEvents { get; set; } = null!;
 
@@ -131,11 +113,9 @@ public class AppDbContext(
     public DbSet<ComuneOfficialProfile> ComuneOfficialProfiles { get; set; } = null!;
     public DbSet<ComuneOfficialProfileVersion> ComuneOfficialProfileVersions { get; set; } = null!;
 
-    // Swiss municipalities and localities of the official directory of swisstopo (NF-02, E29/F01/US01/T01, NF-124)
     public DbSet<SwissMunicipality> SwissMunicipalities { get; set; } = null!;
     public DbSet<SwissLocality> SwissLocalities { get; set; } = null!;
 
-    // Swiss compliance receipts (Ticino police notifications, OTR tax reports, ADR-016)
     public DbSet<SwissComplianceReceipt> SwissComplianceReceipts { get; set; } = null!;
 
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
@@ -146,11 +126,9 @@ public class AppDbContext(
     public DbSet<PropertyFloorPlan> PropertyFloorPlans { get; set; } = null!;
     public DbSet<PropertyPoi> PropertyPois { get; set; } = null!;
 
-    // The content of a property on the channels of the channel manager: the state on each channel and the sending of its photos (NF-27, NF-32, NF-38)
     public DbSet<ListingChannelState> ListingChannelStates { get; set; } = null!;
     public DbSet<PhotoUploadTask> PhotoUploadTasks { get; set; } = null!;
 
-    // The listing data of a unit the channels ask for: its rooms with their beds and its length-of-stay discounts (NF-34, NF-35)
     public DbSet<PropertyRoom> PropertyRooms { get; set; } = null!;
     public DbSet<PropertyStayDiscount> PropertyStayDiscounts { get; set; } = null!;
     public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
@@ -164,21 +142,11 @@ public class AppDbContext(
     public DbSet<PlatformInvoice> PlatformInvoices { get; set; } = null!;
     public DbSet<ProcessedStripeEvent> ProcessedStripeEvents { get; set; } = null!;
 
-    // Supplier console (US-022 / #292)
     public DbSet<SupplierProfile> SupplierProfiles { get; set; } = null!;
     public DbSet<SupplierAvailability> SupplierAvailability { get; set; } = null!;
 
-    /// <summary>
-    /// Price catalog of the suppliers (SP-02). Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2
-    /// allow-list): only <c>SupplierServiceCatalogService</c> reads and writes it, always with an explicit
-    /// <c>OrgId</c> predicate.
-    /// </summary>
     public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
 
-    /// <summary>
-    /// Trusted supplier relationships for agency tier orgs (NF-21, ADR-020): an agency's preferred suppliers
-    /// with manual payment mode, 0% commission, and statement integration.
-    /// </summary>
     public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
     public DbSet<GuestSupplierOffer> GuestSupplierOffers => Set<GuestSupplierOffer>();
     public DbSet<GuestSupplierOrderDocument> GuestSupplierOrderDocuments => Set<GuestSupplierOrderDocument>();
@@ -190,10 +158,6 @@ public class AppDbContext(
     /// </summary>
     public DbSet<SupplierVatDefault> SupplierVatDefaults { get; set; } = null!;
 
-    /// <summary>
-    /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
-    /// Staff sees only activities within their perimeter (PropertyMemberAccess).
-    /// </summary>
     public DbSet<InternalActivity> InternalActivities { get; set; } = null!;
 
     /// <summary>
@@ -228,11 +192,6 @@ public class AppDbContext(
     /// </summary>
     public DbSet<SupplierShowcaseContent> SupplierShowcaseContents { get; set; } = null!;
 
-    /// <summary>
-    /// The inventory of the images a supplier uploaded for its showcase (SP-13b). Keyed by the supplier org like the content and not tenant-filtered
-    /// for the same reason; only <c>SupplierShowcaseMediaService</c> (and the content service, which reads the keys of the supplier's own rows)
-    /// uses it, always with an explicit <c>OrgId</c> predicate, or as a system job over the rows that have to go (the cleanup).
-    /// </summary>
     public DbSet<SupplierShowcaseMedia> SupplierShowcaseMedia { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
@@ -256,13 +215,10 @@ public class AppDbContext(
     public DbSet<ShowcaseInquiry> ShowcaseInquiries { get; set; } = null!;
     public DbSet<ServiceRequestMessage> ServiceRequestMessages { get; set; } = null!;
 
-    // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
     public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
 
-    // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
     public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
 
-    // The complaint about a job paid through CasaZen and its dispute (SP-15c-c): it belongs to the payment, so it is not tenant-filtered either.
     public DbSet<ServicePaymentDispute> ServicePaymentDisputes { get; set; } = null!;
 
     /// <summary>
@@ -272,59 +228,43 @@ public class AppDbContext(
     /// </summary>
     public DbSet<ServiceRequestGroup> ServiceRequestGroups { get; set; } = null!;
 
-    // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
     public DbSet<PropertyICalExport> PropertyICalExports { get; set; } = null!;
 
-    // Scheduled changes of the rental mode of a property, and their history (PM-02)
     public DbSet<PropertyModeChange> PropertyModeChanges { get; set; } = null!;
 
-    // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
 
-    // Where the check-in link of a booking stands on its way to the guest: the portal chat, the e-mail, the host (E23/F01/US01/T01, T02, NF-122)
     public DbSet<CheckInLinkDelivery> CheckInLinkDeliveries { get; set; } = null!;
 
-    /// <summary>The messages of the routines planned for each booking (E05/F07/US01/T01, NF-71).</summary>
     public DbSet<ScheduledMessage> ScheduledMessages { get; set; } = null!;
 
-    // Guest identity document images for OCR (NF-10, ADR-013-R3)
     public DbSet<DocumentImage> DocumentImages { get; set; } = null!;
 
-    // Biometric verification settings and audit logs (NF-11, ADR-013)
     public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
 
-    // Which steps of a stay CasaZen does by itself and which the host does (casazen/backend#978): one row per org.
     public DbSet<BookingFlowSettings> BookingFlowSettings { get; set; } = null!;
     public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
 
-    // The self-hosted identity verification (E70/F01/US01/T02, NF-194, NF-195): the segments (property × format × channel) and the evidence kept for the reviewer.
     public DbSet<IdentitySegmentSetting> IdentitySegmentSettings { get; set; } = null!;
     public DbSet<IdentityReviewEvidence> IdentityReviewEvidences { get; set; } = null!;
 
-    // Property access codes and release logs (NF-13, E06/F03/US01/T01)
     public DbSet<PropertyAccessCode> PropertyAccessCodes { get; set; } = null!;
     public DbSet<AccessCodeReleaseLog> AccessCodeReleaseLogs { get; set; } = null!;
 
-    // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
-    // Push messages per event and device, with their Expo ticket (MO-04)
     public DbSet<PushDelivery> PushDeliveries { get; set; } = null!;
 
-    // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
     public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
 
-    // The popup alerts of a user (shown outside the wizard, «Do now» / «Remind me later») and the quiet hours that hold them back (NF-08, NF-22, ADR-025)
     public DbSet<PopupAlert> PopupAlerts { get; set; } = null!;
     public DbSet<UserNotificationPreferences> UserNotificationPreferences { get; set; } = null!;
 
-    // What each user chose for each kind of event, and the slot of the one-email-every-ten-minutes rule (E05/F03, NF-65)
     public DbSet<UserNotificationChannelSetting> UserNotificationChannelSettings { get; set; } = null!;
     public DbSet<NotificationEmailSlot> NotificationEmailSlots { get; set; } = null!;
 
-    // Approval queue for items requiring human decision before taking effect (NF-06)
     public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
 
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
@@ -334,7 +274,6 @@ public class AppDbContext(
     public DbSet<ComuneImuChannel> ComuneImuChannels { get; set; } = null!;
     public DbSet<RegulatoryDataAuditEntry> RegulatoryDataAuditEntries { get; set; } = null!;
 
-    // Long-term lease
     public DbSet<LeaseDocument> LeaseDocuments { get; set; } = null!;
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
@@ -368,11 +307,9 @@ public class AppDbContext(
     public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
     public DbSet<BankLinkPayment> BankLinkPayments { get; set; } = null!;
 
-    // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
     public DbSet<ConcordatoFacileGift> ConcordatoFacileGifts { get; set; } = null!;
 
-    // Practices of the simulated ConcordatoFacile module: test environments only (CF-SIM)
     public DbSet<CfSimulatedPractice> CfSimulatedPractices { get; set; } = null!;
 
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
@@ -381,20 +318,16 @@ public class AppDbContext(
     public DbSet<MarketingConsentRecord> MarketingConsentRecords { get; set; } = null!;
     public DbSet<SuppressionListEntry> SuppressionListEntries { get; set; } = null!;
 
-    // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
     public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
 
-    // CRM contacts with origin, double opt-in, legal basis and suppression, the proposed merges of duplicate profiles and the welcome QR link of a property (NF-88, NF-89, NF-90)
     public DbSet<GuestContact> GuestContacts { get; set; } = null!;
     public DbSet<GuestMergeCandidate> GuestMergeCandidates { get; set; } = null!;
     public DbSet<PropertyWelcomeLink> PropertyWelcomeLinks { get; set; } = null!;
 
-    // The personal stay link of a booking, the address of the guest portal (E50/F01/US01/T01, NF-152)
     public DbSet<GuestStayChange> GuestStayChanges { get; set; } = null!;
 
     public DbSet<GuestPortalLink> GuestPortalLinks { get; set; } = null!;
 
-    // Marketing campaigns and segments (NF-24, ADR-014)
     public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
     public DbSet<MarketingStudioSettings> MarketingStudioSettings => Set<MarketingStudioSettings>();
     public DbSet<MarketingAiUsage> MarketingAiUsage => Set<MarketingAiUsage>();
@@ -403,11 +336,9 @@ public class AppDbContext(
     public DbSet<CampaignDelivery> CampaignDeliveries => Set<CampaignDelivery>();
     public DbSet<Campaign> Campaigns { get; set; } = null!;
 
-    // Automation routines and execution log (NF-26, ADR-022)
     public DbSet<Routine> Routines { get; set; } = null!;
     public DbSet<RoutineExecution> RoutineExecutions { get; set; } = null!;
 
-    // Transactional outbox of the domain events, published on the event bus by the dispatcher (ADR-022-R1, R2)
     public DbSet<OutboxEvent> OutboxEvents { get; set; } = null!;
 
     // The progress of the wizards, saved on the server so that a person resumes it on any device (ADR-024)
@@ -416,61 +347,45 @@ public class AppDbContext(
     // The connection of an org to its Octorate account, one per environment, with its OAuth tokens encrypted (ADR-023, E02/F01/US01/T01)
     public DbSet<OctorateConnection> OctorateConnections { get; set; } = null!;
 
-    // The listings found on the channel manager and their mapping to the CasaZen properties, and the single-use OAuth states of the
-    // consent (ADR-023, ADR-027, E02/F01/US02/T02)
     public DbSet<OctorateListingMapping> OctorateListingMappings { get; set; } = null!;
     public DbSet<OctorateOAuthState> OctorateOAuthStates { get; set; } = null!;
 
-    // The import of the listings that already exist on OTAs or in another channel manager (D6, E02/F01/US03): what a person declared about where the
-    // listings of a property are, the import batches, their channels and the external items done for each
     public DbSet<OctorateInventoryIntent> OctorateInventoryIntents { get; set; } = null!;
     public DbSet<OctorateInventoryImportBatch> OctorateInventoryImportBatches { get; set; } = null!;
     public DbSet<OctorateInventoryImportChannel> OctorateInventoryImportChannels { get; set; } = null!;
     public DbSet<OctorateInventoryImportItem> OctorateInventoryImportItems { get; set; } = null!;
 
-    // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
     public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
 
     // Who an invoice of a booking is made out to, one row for each booking, personal data encrypted (FIS-01, NF-81, E06/F02/US01/T01)
     public DbSet<BookingInvoiceData> BookingInvoiceData { get; set; } = null!;
 
-    // Who issues the documents of an organization (one profile for each org) and the single issuer of each booking (FIS-02, NF-82, E06/F02/US02/T01)
     public DbSet<OrgFiscalIssuerProfile> OrgFiscalIssuerProfiles { get; set; } = null!;
     public DbSet<BookingDocumentIssuer> BookingDocumentIssuers { get; set; } = null!;
 
-    // The fiscal documents issued by CasaZen or imported from Octorate, their lines and the counters of their numbers (NF-83, NF-84, E06/F01/US02/T01)
     public DbSet<FiscalDocument> FiscalDocuments { get; set; } = null!;
     public DbSet<FiscalDocumentLine> FiscalDocumentLines { get; set; } = null!;
     public DbSet<FiscalNumberSequence> FiscalNumberSequences { get; set; } = null!;
 
-    // How the package of the accountant is sent to the accountant, one row for each org, the address encrypted (NF-101, E15/F01/US02/T01)
     public DbSet<AccountantPackageSettings> AccountantPackageSettings { get; set; } = null!;
 
-    // The owner accounting of the agencies: the approved rule sets and the effective-dated fiscal profiles of the owners (NF-109, NF-110, E06/F05/US02/T01)
     public DbSet<OwnerAccountingPolicy> OwnerAccountingPolicies { get; set; } = null!;
     public DbSet<OwnerFiscalProfile> OwnerFiscalProfiles { get; set; } = null!;
 
-    // The owner ledger and the month-end close (NF-110, E06/F05/US02/T02): the append-only lines, the statement versions, the months, the charges and the exchange rates
     public DbSet<OwnerLedgerEntry> OwnerLedgerEntries { get; set; } = null!;
     public DbSet<OwnerStatementVersion> OwnerStatementVersions { get; set; } = null!;
     public DbSet<OwnerClosePeriod> OwnerClosePeriods { get; set; } = null!;
     public DbSet<OwnerCharge> OwnerCharges { get; set; } = null!;
     public DbSet<OwnerFxRate> OwnerFxRates { get; set; } = null!;
 
-    // The commission rules of the channels of an agency, when a reservation brings none (E13/F01/US01/T01, ⚖ R2)
     public DbSet<OrgChannelCommissionRule> OrgChannelCommissionRules { get; set; } = null!;
 
-    // Who holds the account of a listing on a portal when it is not the organization default (E14/F01/US01/T01, ⚖ I10)
     public DbSet<PropertyChannelAccountHolder> PropertyChannelAccountHolders { get; set; } = null!;
 
-    // The links from the owner statement versions to the invoices of the agency's external fiscal system (E06/F01/US02/T05): ids, numbers, hashes
     public DbSet<OwnerExternalDocumentReference> OwnerExternalDocumentReferences { get; set; } = null!;
 
-    // The payouts to the owners, their append-only withholding evidence and the annual tax datasets (E06/F05/US02/T03, NF-110)
     public DbSet<OwnerPayout> OwnerPayouts { get; set; } = null!;
 
-    // The owner portal operations (E07/F07/US01, NF-111): the rules and the requests of the owner stays; the shared documents, their versions and
-    // downloads, the delegated contacts and the inbox.
     public DbSet<OwnerStayRule> OwnerStayRules { get; set; } = null!;
     public DbSet<OwnerStayRequest> OwnerStayRequests { get; set; } = null!;
     public DbSet<OwnerDocument> OwnerDocuments { get; set; } = null!;
@@ -483,10 +398,8 @@ public class AppDbContext(
     public DbSet<TaxObligationEvidence> TaxObligationEvidence { get; set; } = null!;
     public DbSet<TaxReportingDataset> TaxReportingDatasets { get; set; } = null!;
 
-    // What a person decided about the tax regime of the stay of a company tenant in the property of a private owner: append only (E18/F01/US03/T01, ⚖ I7)
     public DbSet<ShortLetTaxDecision> ShortLetTaxDecisions { get; set; } = null!;
 
-    // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
 
@@ -499,19 +412,15 @@ public class AppDbContext(
     public DbSet<OrgMember> OrgMembers { get; set; } = null!;
     public DbSet<OrgInvitation> OrgInvitations { get; set; } = null!;
 
-    // The properties a «Solo alcuni» collaborator will reach once it accepts its invitation (AM-02c)
     public DbSet<OrgInvitationProperty> OrgInvitationProperties { get; set; } = null!;
     public DbSet<PropertyMemberAccess> PropertyMemberAccesses { get; set; } = null!;
 
-    // Who did what in an org, as ids and codes (AM-02b)
     public DbSet<OrgActivityEntry> OrgActivityEntries { get; set; } = null!;
 
-    // The verified reviews of the stays, the reports of the hosts about them and the mark that a guest was asked to write one (DB-12a)
     public DbSet<Review> Reviews { get; set; } = null!;
     public DbSet<ReviewReport> ReviewReports { get; set; } = null!;
     public DbSet<ReviewInvite> ReviewInvites { get; set; } = null!;
 
-    // The messages between the guest of a direct booking and the host: one thread per booking (DB-14a)
     public DbSet<StorefrontChatThread> StorefrontChatThreads { get; set; } = null!;
     public DbSet<StorefrontChatMessage> StorefrontChatMessages { get; set; } = null!;
 
@@ -540,12 +449,8 @@ public class AppDbContext(
     public DbSet<AssistantDecisionLog> AssistantDecisionLogs { get; set; } = null!;
     public DbSet<AssistantTrustProposal> AssistantTrustProposals { get; set; } = null!;
 
-    // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
 
-    // The tourist tax per guest (NF-46, ADR-037, E03/F01/US07/T01): the exemption reasons and the channel rules (platform reference data),
-    // the rate a host declares for a comune with no official one and the confirmed tax of a stay (tenant-owned; its lines are reached only
-    // through it)
     public DbSet<TouristTaxExemptionReason> TouristTaxExemptionReasons { get; set; } = null!;
     public DbSet<TouristTaxChannelRule> TouristTaxChannelRules { get; set; } = null!;
     public DbSet<OrgTouristTaxRate> OrgTouristTaxRates { get; set; } = null!;
@@ -562,8 +467,6 @@ public class AppDbContext(
     public DbSet<MarketplacePartnerText> MarketplacePartnerTexts { get; set; } = null!;
     public DbSet<MarketplaceActivation> MarketplaceActivations { get; set; } = null!;
 
-    // The activation of CasaZen with Octorate: what the host chose to do later for each part of the plan, the flows activated on each property, the
-    // guided steps of the Octorate panel, the «Do it for me» requests, the pilot group of an agency and the per-property data (E10/F01/US01/T01, NF-104..NF-107)
     public DbSet<OnboardingPartState> OnboardingPartStates { get; set; } = null!;
     public DbSet<PropertyFlowActivation> PropertyFlowActivations { get; set; } = null!;
     public DbSet<OnboardingPanelStep> OnboardingPanelSteps { get; set; } = null!;
@@ -577,8 +480,6 @@ public class AppDbContext(
     public DbSet<SupportVaultAccess> SupportVaultAccesses { get; set; } = null!;
     public DbSet<PropertyIstatCredentials> PropertyIstatCredentials { get; set; } = null!;
 
-    // The price and the rules of each night of a property, and the changes of the calendar the host sent to the channel manager with their chunks
-    // (E08/F05/US01/T01, NF-36): dates, numbers, states and stable codes, no personal data
     public DbSet<PropertyDayRule> PropertyDayRules { get; set; } = null!;
     public DbSet<CalendarChangeProcess> CalendarChangeProcesses { get; set; } = null!;
     public DbSet<CalendarChangeChunk> CalendarChangeChunks { get; set; } = null!;
@@ -587,7 +488,6 @@ public class AppDbContext(
     {
         base.ConfigureConventions(configurationBuilder);
 
-        // FD-06: every DateTime is UTC in and out of PostgreSQL timestamptz columns.
         configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeValueConverter>();
         configurationBuilder.Properties<DateTime?>().HaveConversion<UtcDateTimeValueConverter>();
     }
@@ -595,14 +495,12 @@ public class AppDbContext(
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) =>
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, DataProtectionModelCacheKeyFactory>();
 
-    /// <summary>Refuses a change of the evidence before anything is written (<see cref="AppendOnlyGuard"/>, E06/F05/US02/T02).</summary>
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         AppendOnlyGuard.Check(ChangeTracker);
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
-    /// <inheritdoc cref="SaveChanges(bool)"/>
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         AppendOnlyGuard.Check(ChangeTracker);
@@ -625,49 +523,34 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new AlloggiatiWebReportConfiguration());
         modelBuilder.ApplyConfiguration(new StayAlertStateConfiguration());
 
-        // CO-17: the check-out of a stay goes with it; its cleaning request survives it as a plain request.
         modelBuilder.ApplyConfiguration(new StayCheckoutConfiguration());
         modelBuilder.ApplyConfiguration(new CinAlertStateConfiguration());
 
-        // CO-12: the guests of a stay follow their booking; the booker link survives the booker's deletion as null.
         modelBuilder.ApplyConfiguration(new StayGuestConfiguration());
 
-        // CO-15: privacy history of a guest (notice presented, marketing consent), removed with the guest record.
         modelBuilder.ApplyConfiguration(new GuestConsentRecordConfiguration());
 
-        // CO-15: audit of the operations on guest data; no foreign key to the guest, so it outlives a removed guest.
         modelBuilder.ApplyConfiguration(new GuestPrivacyAuditEntryConfiguration());
 
-        // NF-05: marketing suppression list with SHA-256 blind index for one-click unsubscribe (ADR-007-R18, R22).
         modelBuilder.ApplyConfiguration(new SuppressionListEntryConfiguration());
 
-        // NF-88, NF-89, NF-90: the CRM contacts (value encrypted at rest, found by its keyed hash), the proposed merges of two profiles (one row for
-        // each pair) and the welcome QR link of a property (one active link for each property); each carries its org (TN-2).
         modelBuilder.ApplyConfiguration(new GuestContactConfiguration());
         modelBuilder.ApplyConfiguration(new GuestMergeCandidateConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyWelcomeLinkConfiguration());
 
-        // E50/F01/US01/T01 (NF-152): the stay link of a booking (the guest portal), one active link for each booking; it carries the org of the booking (TN-2).
         modelBuilder.ApplyConfiguration(new GuestPortalLinkConfiguration());
         modelBuilder.ApplyConfiguration(new GuestStayChangeConfiguration());
 
-        // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
-        // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
         modelBuilder.ApplyConfiguration(new PropertySafetyChecklistConfiguration());
 
         modelBuilder.ApplyConfiguration(new PropertySafetyChecklistItemConfiguration());
 
-        // DB-11a: the floor plan levels and the points of interest of a property, going with it; each carries the org of its property (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyFloorPlanConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyPoiConfiguration());
 
-        // NF-27, NF-32, NF-38: the state of a property on each channel of the channel manager (unique per property and channel) and the sending
-        // of its photos (unique per property and photo address); each carries the org of its property (TN-2) and goes with it.
         modelBuilder.ApplyConfiguration(new ListingChannelStateConfiguration());
         modelBuilder.ApplyConfiguration(new PhotoUploadTaskConfiguration());
 
-        // NF-34, NF-35: the rooms of a unit with their beds and its length-of-stay discounts (one tier for each minimum of nights); each carries
-        // the org of its property (TN-2) and goes with it.
         modelBuilder.ApplyConfiguration(new PropertyRoomConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyStayDiscountConfiguration());
         modelBuilder.ApplyConfiguration(new AlloggiatiCodeEntryConfiguration());
@@ -692,18 +575,13 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new AlloggiatiSendAttemptConfiguration());
         modelBuilder.ApplyConfiguration(new AlloggiatiReceiptConfiguration());
 
-        // NF-52, NF-47 (E03/F02/US01/T01): the alerts of a period or a connection sent once (unique per property, kind and reference), the monthly
-        // summary sent once per org and month, the log of the sends and the proofs a host uploads; tenant rows (TN-2).
         modelBuilder.ApplyConfiguration(new ComplianceAlertStateConfiguration());
         modelBuilder.ApplyConfiguration(new ComplianceMonthlySummaryLogConfiguration());
         modelBuilder.ApplyConfiguration(new ComplianceSendLogEntryConfiguration());
         modelBuilder.ApplyConfiguration(new ManualComplianceProofConfiguration());
 
-        // E20/F02/US01/T01 (decision O3): the flats a receipt covers, one row for each, with the unique pair (proof, flat); a tenant row (TN-2).
         modelBuilder.ApplyConfiguration(new ManualComplianceProofPropertyConfiguration());
 
-        // E30/F02/US02/T01 (NF-128): the declaration «I uploaded the file» of an arrival day (one for each property, day and regime: two partial unique indexes, a null regime is the
-        // notification to the Ticino police) and the audit of the files generated for the police (a format and a number of rows, never a guest); tenant rows (TN-2).
         modelBuilder.ApplyConfiguration(new SwissNotificationDeclarationConfiguration());
         modelBuilder.ApplyConfiguration(new SwissNotificationFileEventConfiguration());
         modelBuilder.Entity<Booking>(BookingConfiguration.ConfigureLeMiePrenotazioni);
@@ -731,11 +609,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new PricingAdapterConfigConfiguration());
         modelBuilder.ApplyConfiguration(new PricingHistoryConfiguration());
 
-        // PC-15: one seasonal suggestion per property and stay date, regenerated in place (upsert by date).
         modelBuilder.ApplyConfiguration(new SeasonalPriceSuggestionConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyDocumentConfiguration());
 
-        // Demo environment: one platform row, and one marker per invented row so a reset never touches host data.
         modelBuilder.ApplyConfiguration(new DemoEnvironmentSettingConfiguration());
         modelBuilder.ApplyConfiguration(new TestDataMarkerConfiguration());
         modelBuilder.ApplyConfiguration(new LeaseDocumentConfiguration());
@@ -771,7 +647,6 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new CondominiumStatementProposalConfiguration());
         modelBuilder.ApplyConfiguration(new RentBankMovementConfiguration());
 
-        // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
         modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
         modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
         modelBuilder.ApplyConfiguration(new CfSimulatedPracticeConfiguration());
@@ -813,33 +688,22 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new RolePermissionConfiguration());
         modelBuilder.ApplyConfiguration(new UserContextMembershipConfiguration());
 
-        // ─── Org membership (AM-01) ─────────────────────────────────────────────
         modelBuilder.ApplyConfiguration(new OrgMemberConfiguration());
 
-        // ─── Org invitations (AM-02) ────────────────────────────────────────────
         modelBuilder.ApplyConfiguration(new OrgInvitationConfiguration());
 
-        // ─── The properties an invitation carries (AM-02c) ──────────────────────
         modelBuilder.ApplyConfiguration(new OrgInvitationPropertyConfiguration());
 
-        // ─── Property scope of the org members (AM-03) ──────────────────────────
         modelBuilder.ApplyConfiguration(new PropertyMemberAccessConfiguration());
 
-        // ─── Activity log of the org (AM-02b) ───────────────────────────────────────────────────────────────
         modelBuilder.ApplyConfiguration(new OrgActivityEntryConfiguration());
         modelBuilder.Entity<Property>(PropertyConfiguration.ConfigureMemberChargeProperty);
         modelBuilder.ApplyConfiguration(new ConsentRecordConfiguration());
 
-        // ─── Signup attribution (SE-03 / A8-03) ─────────────────────────────────
         modelBuilder.ApplyConfiguration(new SignupAttributionConfiguration());
 
-        // SEO funnel events (SE-04): platform data without an org or a person; the report groups by comune over a window,
-        // the nightly retention deletes by date.
         modelBuilder.ApplyConfiguration(new SeoEventConfiguration());
         modelBuilder.ApplyConfiguration(new SupplierProfileConfiguration());
-
-        // One profile per email (SU-14): the unique index on lower(btrim("Email")) is an expression index that EF cannot
-        // model; it is created by the migration SupplierProfileEmailUnique (see SupplierProfileEmailIndex).
 
         modelBuilder.ApplyConfiguration(new SupplierAvailabilityConfiguration());
 
@@ -849,9 +713,6 @@ public class AppDbContext(
         // SupplierServiceListingRules (looser where the rule is a product bound, e.g. the shortest duration).
         modelBuilder.ApplyConfiguration(new SupplierServiceListingConfiguration());
 
-        // SP-03: the supplier's agenda. Children of the supplier profile in cascade, like the availability days and the
-        // catalog: the repair moves them to the keeper before it deletes a duplicate profile. The checks mirror
-        // SupplierAgendaRules / SupplierAgendaLimits (the rules refuse first; the database is the last guard).
         modelBuilder.ApplyConfiguration(new SupplierWorkingHoursConfiguration());
 
         modelBuilder.ApplyConfiguration(new SupplierTimeOffConfiguration());
@@ -862,7 +723,6 @@ public class AppDbContext(
 
         modelBuilder.ApplyConfiguration(new SupplierSettingsConfiguration());
 
-        // SP-REL: the events of the reliability of a supplier, a child of its profile like the agenda.
         modelBuilder.ApplyConfiguration(new SupplierReliabilityEventConfiguration());
 
         // SP-13a: the content of the supplier's showcase (draft, published, previous). A child of the supplier profile in cascade, like
@@ -872,15 +732,11 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new SupplierInviteRecordConfiguration());
         modelBuilder.ApplyConfiguration(new SupplierAdminAuditEntryConfiguration());
 
-        // ─── Host invites (invitation of new independent hosts) ──────────────────
         modelBuilder.ApplyConfiguration(new HostInviteRecordConfiguration());
 
-        // Audit trail and source of the daily quota: read by host org and time window. No foreign key: it outlives a purged invite.
         modelBuilder.ApplyConfiguration(new HostInviteAuditEntryConfiguration());
         modelBuilder.ApplyConfiguration(new ServiceRequestConfiguration());
 
-        // The JSON columns are added to a table that already has rows: the database gives those the empty list (an empty string
-        // is not valid jsonb), the entity gives it to the new ones.
         modelBuilder.ApplyConfiguration(new ServiceRequestPricingConfiguration());
         modelBuilder.Entity<ServiceRequest>(ServiceRequestConfiguration.ConfigureChecksMirrorServiceRequestLimits);
 
@@ -892,12 +748,9 @@ public class AppDbContext(
         // requests leave empty. The check holds for every row that exists before this migration.
         modelBuilder.ApplyConfiguration(new ServiceRequestShowcaseConfiguration());
 
-        // ─── Backup suppliers (SP-BKP) ───────────────────────────────────────────────────────────────────────────────
-        // A request and the backups it was sent to with it are tied by a group; the group's windows decide who has the job.
         modelBuilder.ApplyConfiguration(new ServiceRequestGroupConfiguration());
         modelBuilder.ApplyConfiguration(new ServiceRequestGroupMembershipConfiguration());
 
-        // The lease a long-rent request is about (LR-03c): a link, set only when the landlord asks from the sheet of the contract.
         modelBuilder.ApplyConfiguration(new ServiceRequestLeaseConfiguration());
 
         // The VAT of the company of a cleaning recharged to the owner (FIX/BE-CLEANING-VAT): the answer on the request, and what an organization remembers of a company.
@@ -905,15 +758,12 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new SupplierVatDefaultConfiguration());
         modelBuilder.Entity<Org>(OrgConfiguration.ConfigureSupplierBackupsEnabled);
 
-        // ─── Quote with the customer's approval (SP-04b) ──────────────────────────────────────────────────────────────
-        // The offer a supplier makes on a request still waiting for its answer: its columns, and the checks that keep it true.
         modelBuilder.ApplyConfiguration(new ServiceRequestQuoteConfiguration());
 
         modelBuilder.ApplyConfiguration(new ServiceCustomerConfiguration());
 
         modelBuilder.ApplyConfiguration(new ShowcaseBookingHoldConfiguration());
 
-        // The request on measure (SP-10b): the inquiry that waits for the e-mail check and the messages of its thread.
         modelBuilder.ApplyConfiguration(new ShowcaseInquiryConfiguration());
         modelBuilder.ApplyConfiguration(new ServiceRequestMessageConfiguration());
         modelBuilder.Entity<SupplierProfile>(SupplierProfileConfiguration.ConfigureTable);
@@ -928,15 +778,12 @@ public class AppDbContext(
         // idempotency key and is unique within the payment; a Stripe refund and a key belong to one refund each.
         modelBuilder.ApplyConfiguration(new ServiceRequestPaymentRefundConfiguration());
 
-        // ─── The complaint and the dispute about a job paid through CasaZen (SP-15c-c) ─────────────
-        // One open dispute per payment (unique partial index); a payment, a request and a supplier with a dispute are never deleted.
         modelBuilder.ApplyConfiguration(new ServicePaymentDisputeConfiguration());
         modelBuilder.ApplyConfiguration(new CalendarBlockConfiguration());
         modelBuilder.Entity<Booking>(BookingConfiguration.ConfigureICalFeedIdIndex);
         modelBuilder.ApplyConfiguration(new PropertyICalFeedConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyICalExportConfiguration());
 
-        // ─── Scheduled change of rental mode (PM-02) ────────────────────────────
         modelBuilder.ApplyConfiguration(new PropertyModeChangeConfiguration());
         modelBuilder.Entity<PropertyICalExport>(PropertyICalExportConfiguration.ConfigureExportTokenIndex);
         modelBuilder.ApplyConfiguration(new ApprovalQueueItemConfiguration());
@@ -947,17 +794,12 @@ public class AppDbContext(
         modelBuilder.Entity<Role>(RoleConfiguration.ConfigureSeedData2);
         modelBuilder.Entity<RolePermission>(RolePermissionConfiguration.ConfigureSeedData2);
 
-        // Guest check-in session (US-020 / #296)
         modelBuilder.ApplyConfiguration(new GuestCheckInSessionConfiguration());
 
-        // E23/F01/US01/T01, T02 (NF-122): one delivery record per booking for the link of a stay that has no e-mail address; the raw token of the link is encrypted
-        // (EncryptedColumns) and the row goes with its booking.
         modelBuilder.ApplyConfiguration(new CheckInLinkDeliveryConfiguration());
         modelBuilder.ApplyConfiguration(new ScheduledMessageConfiguration());
         modelBuilder.ApplyConfiguration(new BiometricVerificationLogConfiguration());
 
-        // E70/F01/US01/T02 (NF-194, NF-195): the segments and the evidence of the self-hosted verification; the tenant query filter is applied below, as to every
-        // ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new IdentitySegmentSettingConfiguration());
         modelBuilder.ApplyConfiguration(new IdentityReviewEvidenceConfiguration());
 
@@ -966,38 +808,24 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new ComuneImuChannelConfiguration());
         modelBuilder.ApplyConfiguration(new RegulatoryDataAuditEntryConfiguration());
 
-        // Native host app push tokens (US-025 / #299)
         modelBuilder.ApplyConfiguration(new DeviceRegistrationConfiguration());
 
-        // ─── In-app notifications (UI-12a) ──────────────────────────────────────
         modelBuilder.ApplyConfiguration(new InAppNotificationConfiguration());
 
-        // ─── Popup alerts and the quiet hours of the users (NF-08, NF-22, ADR-025) ──────
-        // Both go with the user and with the org (ON DELETE CASCADE); the preferences are unique per (org, user).
         modelBuilder.ApplyConfiguration(new PopupAlertConfiguration());
         modelBuilder.ApplyConfiguration(new UserNotificationPreferencesConfiguration());
 
-        // ─── What each user chose for each kind of event, and the email slot of a conversation (E05/F03, NF-65) ──────
-        // Both go with the user and with the org (ON DELETE CASCADE); unique per (org, user, event type) and per (org, user, conversation).
         modelBuilder.ApplyConfiguration(new UserNotificationChannelSettingConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationEmailSlotConfiguration());
 
-        // ─── Verified reviews (DB-12a) ──────────────────────────────────────────
-        // A review goes with its booking and its property (a property is soft-deleted, so in practice it stays for good): the host has no
-        // way to delete one, and no foreign key stops the platform's own cleanups (the reset of the demo deletes bookings in bulk).
         modelBuilder.ApplyConfiguration(new ReviewConfiguration());
 
         // The report goes with its review. One per review: the second one loses the race on UIX_ReviewReports_ReviewId (23505, 409).
         // Two staff users deciding the same report at once: the state is the concurrency token, the second decision is a 409.
         modelBuilder.ApplyConfiguration(new ReviewReportConfiguration());
 
-        // The mark of the email asked by the host, once per booking: it goes with the booking.
         modelBuilder.ApplyConfiguration(new ReviewInviteConfiguration());
 
-        // ─── Messages between the guest and the host (DB-14a) ───────────────────
-        // A thread goes with its booking (and its property, which is soft-deleted, so in practice it stays): the reset of the demo deletes
-        // bookings in bulk and the erasure of a guest deletes its threads, so no foreign key may stop either. The messages go with the thread.
-        // Two first messages at the same moment: the loser gets 23505 on UIX_GuestThreads_BookingId and reads the thread the winner made.
         modelBuilder.ApplyConfiguration(new GuestThreadConfiguration());
 
         // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
@@ -1034,8 +862,6 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OctorateConnectionConfiguration());
         modelBuilder.ApplyConfiguration(new OctorateListingMappingConfiguration());
 
-        // The import of existing OTA inventory (D6, E02/F01/US03): one current intent for each property (partial unique indexes), batches with their
-        // channels and the external items done for each connection; every row carries its org (restrict) and the tenant filter applies to all.
         modelBuilder.ApplyConfiguration(new OctorateInventoryIntentConfiguration());
         modelBuilder.ApplyConfiguration(new OctorateInventoryImportBatchConfiguration());
         modelBuilder.ApplyConfiguration(new OctorateInventoryImportChannelConfiguration());
@@ -1049,8 +875,6 @@ public class AppDbContext(
         // ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new BookingInvoiceDataConfiguration());
 
-        // The profile of the issuer of an org (unique OrgId) and the single issuer of a booking (unique BookingId, cascade with the booking):
-        // the database itself refuses a second one of either (FIS-02, NF-82).
         modelBuilder.ApplyConfiguration(new OrgFiscalIssuerProfileConfiguration());
         modelBuilder.ApplyConfiguration(new BookingDocumentIssuerConfiguration());
 
@@ -1061,19 +885,14 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new FiscalDocumentLineConfiguration());
         modelBuilder.ApplyConfiguration(new FiscalNumberSequenceConfiguration());
 
-        // How the package of the accountant is sent (NF-101, E15/F01/US02/T01): one row for each org (unique OrgId), the address encrypted by EncryptedColumns, the day, the folders and
-        // the result bounded by check constraints. The tenant query filter is applied below, as to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new AccountantPackageSettingsConfiguration());
 
-        // The owner accounting (NF-109, NF-110, E06/F05/US02): the rule sets of the agency and the effective-dated fiscal profiles of the owners.
         modelBuilder.ApplyConfiguration(new OwnerAccountingPolicyConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerFiscalProfileConfiguration());
 
-        // The versioned mandates of the owners and the commission rules of the channels (E13/F01/US01/T01).
         modelBuilder.ApplyConfiguration(new OwnerMandateConfiguration());
         modelBuilder.ApplyConfiguration(new OrgChannelCommissionRuleConfiguration());
 
-        // Who holds the account of a listing on a portal (E14/F01/US01/T01, ⚖ I10): one row for each property and portal, gone with the property.
         modelBuilder.ApplyConfiguration(new PropertyChannelAccountHolderConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerLedgerEntryConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerStatementVersionConfiguration());
@@ -1083,10 +902,8 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new OwnerExternalDocumentReferenceConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerPayoutConfiguration());
 
-        // The payouts a wire batch pays (E16/F01/US01/T01): a payout is in one batch only (unique on the payout), the batch holds its rows.
         modelBuilder.ApplyConfiguration(new WireBatchPayoutConfiguration());
 
-        // The owner portal operations (E07/F07/US01, NF-111). The tenant query filter is applied below, to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new OwnerStayRuleConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerStayRequestConfiguration());
         modelBuilder.ApplyConfiguration(new OwnerDocumentConfiguration());
@@ -1098,7 +915,6 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new TaxObligationEvidenceConfiguration());
         modelBuilder.ApplyConfiguration(new TaxReportingDatasetConfiguration());
 
-        // The decisions about the regime of the stays of a company tenant (E18/F01/US03/T01, ⚖ I7): the tenant query filter is applied below, to every ITenantOwned entity.
         modelBuilder.ApplyConfiguration(new ShortLetTaxDecisionConfiguration());
         modelBuilder.ApplyConfiguration(new AgencyInvoiceConfiguration());
         modelBuilder.Entity<Payment>(PaymentConfiguration.ConfigureOrgIdIndex2);
@@ -1155,7 +971,6 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new SupportVaultAccessConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyIstatCredentialsConfiguration());
 
-        // The key an agency gives its owners (E10/F02/US02/T01): unique in the org, for the owners that have one.
         modelBuilder.ApplyConfiguration(new PropertyOwnerConfiguration());
 
         // ─── Per-date prices and restrictions (NF-36, E08/F05/US01/T01) ─────────────────────────────────────────────
@@ -1177,7 +992,6 @@ public class AppDbContext(
         // (fiscal/compliance reporting) still respects tenant isolation.
         modelBuilder.Entity<Property>().HasQueryFilter(SoftDeleteQueryFilter, p => !p.IsDeleted);
 
-        // UI-13a: the stored search keys and their indexes (global search, docs/runbooks/global-search.md).
         SearchKeyModel.Configure(modelBuilder);
 
         modelBuilder.ApplyConfiguration(new GuestHostExtraOrderConfiguration());
@@ -1188,7 +1002,6 @@ public class AppDbContext(
         ApplyTenantQueryFilters(modelBuilder);
     }
 
-    /// <summary>Key of the global tenant query filter, for <c>IgnoreQueryFilters([TenantQueryFilter])</c>.</summary>
     public const string TenantQueryFilter = "Tenant";
     public const string TrustedSupplierActiveFilter = "ActiveTrustedSupplier";
 
@@ -1222,7 +1035,6 @@ public class AppDbContext(
         }
     }
 
-    // The lambda reads _tenant through this context instance, so EF re-evaluates it for every query.
     private void ApplyTenantQueryFilter<TEntity>(ModelBuilder modelBuilder)
         where TEntity : class, ITenantOwned =>
         modelBuilder.Entity<TEntity>()

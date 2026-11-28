@@ -50,7 +50,6 @@ public sealed partial class HostDashboardService
             scope, query.From, query.To, query.PropertyId, query.PropertyIds, query.CompareYear, cancellationToken);
         var period = data.Current.Period;
 
-        // The weeks or months of the Home's chart, cut at the edges of the period, and the same days one year earlier.
         var (unit, buckets) = HostReportRules.TrendBucketsOf(period, query.Bucket, data.Previous is not null);
         var windows = buckets.Select(bucket => (bucket.From, bucket.To)).ToList();
         var previousWindows = data.Previous is null
@@ -79,14 +78,10 @@ public sealed partial class HostDashboardService
         return new HostTrendReport(period, data.Previous?.Period, buckets, series) { Unit = unit };
     }
 
-    // ---------------------------------------------------------------- what is read
-
-    // A property of the report: the active short-rent ones of the scope and the others that have revenue in a period.
     private sealed record PerformanceProperty(Guid Id, string Name, DateTime CreatedAt);
 
     private sealed record PerformanceStay(Guid PropertyId, HostRevenueStay Stay);
 
-    // The stays and the nights of one period.
     private sealed record PerformancePeriod(
         HostDashboardPeriod Period,
         IReadOnlyList<PerformanceStay> Stays,
@@ -112,8 +107,6 @@ public sealed partial class HostDashboardService
         var period = HostReportRules.PeriodOf(firstDay, lastDay);
         var previousPeriod = compareYear ? HostReportRules.PreviousYearPeriodOf(firstDay, lastDay) : null;
 
-        // One 404 for a property that is missing, another org's, not reached by the caller, or not one of the properties this read is
-        // narrowed to: nothing tells them apart.
         await EnsurePropertyInScopeAsync(scope, propertyId, cancellationToken);
         if (propertyId is { } asked && onlyThese is not null && !onlyThese.Contains(asked))
             throw new NotFoundException($"Property {asked} not found") { MessageKey = "PropertyNotFound" };
@@ -137,7 +130,6 @@ public sealed partial class HostDashboardService
             ? null
             : await LoadPeriodAsync(scope, propertyId, ids, activeIds, previousPeriod, nowUtc, cancellationToken);
 
-        // A paused or deleted property still has its stays and its money: it is a row of its own, by the name it had.
         var known = activeIds.ToHashSet();
         var others = current.Stays
             .Concat(previous?.Stays ?? [])
@@ -189,11 +181,6 @@ public sealed partial class HostDashboardService
             nights);
     }
 
-    // ---------------------------------------------------------------- the figures
-
-    // The figures of some stays and of the nights of some properties, for the days from `from` (included) to `to` (excluded). The
-    // revenue is the Home's: the stays with a night there, priced pro rata by StayKpiRules and rounded once, on the sum. Without
-    // nights (a channel) the figures say so: a night available belongs to a property.
     private static HostPerformanceFigures FiguresOf(
         IEnumerable<HostRevenueStay> stays,
         IReadOnlyCollection<PropertyNights>? nights,
@@ -220,12 +207,9 @@ public sealed partial class HostDashboardService
         return new HostPerformanceFigures(occupied, available, closed, revenue, counted.Count, revenueNights);
     }
 
-    // The figures of a year before, or nothing when there was nothing to compare with: a property that did not exist yet, a channel
-    // without a stay, a scope with nothing available. Zeros would pass for a result.
     private static HostPerformanceFigures? PreviousYearFigures(HostPerformanceFigures figures, bool existed) =>
         figures.StayCount == 0 && (figures.AvailableNights == 0 || !existed) ? null : figures;
 
-    // The property existed by the last day of the window ending (excluded) at `to`: it was created on that day or before, in Rome.
     private static bool ExistedBefore(DateTime createdAt, DateTime to) =>
         RomeCalendar.DateInRome(createdAt) < DateOnly.FromDateTime(to);
 
@@ -286,7 +270,6 @@ public sealed partial class HostDashboardService
             .ToList();
     }
 
-    // The whole scope: all the stays at once and the nights of every active property, which is what the Home counts.
     private static HostPerformanceRow TotalRow(PerformanceData data)
     {
         var current = data.Current;
@@ -303,9 +286,6 @@ public sealed partial class HostDashboardService
         return new HostPerformanceRow(HostPerformanceRules.TotalKey, null, HostPerformanceRules.TotalKey, figures, before);
     }
 
-    // ---------------------------------------------------------------- the trend
-
-    // The stays and the nights of one line of a trend, in both years. `CreatedAt` is set for a line that is one property.
     private sealed record TrendSource(
         string Key,
         string Label,
@@ -371,7 +351,6 @@ public sealed partial class HostDashboardService
         }
     }
 
-    // What does not fit in the lines of a trend, as one more line.
     private static TrendSource MergedSource(IReadOnlyList<TrendSource> sources) => new(
         HostPerformanceRules.OtherSeriesKey,
         HostPerformanceRules.OtherSeriesKey,
@@ -398,7 +377,6 @@ public sealed partial class HostDashboardService
             var before = FiguresByWindow(source.PreviousStays, source.PreviousNights, previous.Period, previousWindows);
             for (var index = 0; index < before.Count; index++)
             {
-                // A line that is one property had nothing to compare with in a bucket when it did not exist yet.
                 var existed = source.CreatedAt is not { } created || ExistedBefore(created, previousWindows[index].To);
                 previousPoints.Add(PreviousYearFigures(before[index], existed) is { } kept
                     ? new HostTrendPoint(buckets[index].Label, kept)
@@ -425,8 +403,6 @@ public sealed partial class HostDashboardService
         return figures;
     }
 
-    // A window of no days (the day of the leap year with no twin in the year before) has no revenue: the cents left by the rounding
-    // land on the last window that has days.
     private static decimal[] DistributeRevenue(
         IReadOnlyList<HostRevenueStay> stays,
         IReadOnlyList<(DateTime From, DateTime To)> windows,

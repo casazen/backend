@@ -41,7 +41,6 @@ public static class TouristTaxLombardyPilotSeed
     public const string MaccagnoUrl = MefDownload + "key=0900f23080ad0471&nome=393337_DIMUNIC-09va26m339d.pdf";
     public const string RhoUrl = MefDownload + "key=0900f23080ac9971&nome=393331_DIMUNIC-09mi26h264d.pdf";
 
-    /// <summary>New instances of the rows on every call (entities are mutable).</summary>
     public static IReadOnlyList<TouristTaxRate> NewRates() =>
     [
         Rate(

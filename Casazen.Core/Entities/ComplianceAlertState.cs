@@ -16,17 +16,14 @@ namespace Casazen.Core.Entities;
 [Index(nameof(PropertyId), nameof(Type), nameof(ReferenceKey), IsUnique = true)]
 public class ComplianceAlertState : ITenantOwned
 {
-    /// <summary>Longest <see cref="ReferenceKey"/>.</summary>
     public const int ReferenceKeyMaxLength = 32;
 
-    /// <summary>The <see cref="ReferenceKey"/> of the alerts about the connection of a property (<see cref="ComplianceAlertType.ConnectionInactive"/>).</summary>
     public const string ConnectionReferenceKey = "connection";
 
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row, copied from the property (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     [ForeignKey(nameof(Property))]
@@ -43,43 +40,26 @@ public class ComplianceAlertState : ITenantOwned
     [Required, MaxLength(ReferenceKeyMaxLength)]
     public string ReferenceKey { get; set; } = string.Empty;
 
-    /// <summary>Last stage sent for <see cref="ReferenceKey"/> (0 = none yet). Meaning per type: see <see cref="ComplianceAlertType"/>.</summary>
     public int Stage { get; set; }
 
-    /// <summary>Messages sent for this property, type and reference.</summary>
     public int AlertCount { get; set; }
 
-    /// <summary>UTC instant of the last message.</summary>
     public DateTime? LastAlertAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>Kinds of alert on a property that have their own sequence of stages (stored as an integer, never renumbered).</summary>
 public enum ComplianceAlertType
 {
     /// <summary>The ISTAT communication of a period is not archived: deadline approaching, overdue, then the limited reminders.</summary>
     IstatPeriod = 1,
 
-    /// <summary>The tourist tax of a period is not declared and paid: deadline approaching, overdue, then the limited reminders.</summary>
     TouristTaxPeriod = 2,
 
-    /// <summary>The police send of the channel manager is not active while a stay is coming: detection, then one more reminder.</summary>
     ConnectionInactive = 3,
 
-    /// <summary>
-    /// The guests of an arrival day of a Ticino property are not notified to the cantonal police yet (E30/F02/US01/T01, NF-127, D9): the file to prepare on
-    /// the arrival day, the deadline (24 hours from the arrival) approaching, then overdue and at most two reminders. The reference is the arrival day
-    /// (<c>yyyy-MM-dd</c>); the stages are <see cref="ComplianceAlertStage.TicinoFileToPrepare"/> to <see cref="ComplianceAlertStage.TicinoOverdueReminder"/>.
-    /// </summary>
     TicinoNotification = 4,
 
-    /// <summary>
-    /// The guests of an arrival day of a property in a canton other than Ticino are not notified to the cantonal authority yet (E31/F02/US01/T01, NF-131): the same three stages as
-    /// <see cref="TicinoNotification"/>, measured against the deadline of the regime of the canton (<see cref="Services.ComplianceAlertSchedule.DueSwissStep"/>), only where the duty is
-    /// <c>Required</c> and the regime has a deadline. The reference is the arrival day (<c>yyyy-MM-dd</c>), like the Ticino one: the unique key (property, type, reference) tells them apart
-    /// by the type.
-    /// </summary>
     SwissNotification = 5,
 }

@@ -32,12 +32,11 @@ public sealed class ConcordatoFacileCheckoutService(
     Stripe.IStripeClient? stripeClient = null,
     TimeProvider? timeProvider = null) : IConcordatoFacileCheckoutService
 {
-    /// <summary>409 code of a lease that already has the service: paid, given as a gift, or paid and not yet recorded.</summary>
     public const string AlreadyPurchasedCode = "concordatofacile_already_purchased";
 
     private const string AlreadyPurchasedKey = "ConcordatoFacileAlreadyPurchased";
     private const string PaymentMode = "payment";
-    private const int AmountCents = 11900; // EUR 119,00
+    private const int AmountCents = 11900;
     private const string Currency = "eur";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -67,8 +66,6 @@ public sealed class ConcordatoFacileCheckoutService(
         }
         catch (DomainConflictException)
         {
-            // A 409 is an answer, not a failure: what was saved before it stays (a purchase completed from its paid Session, the
-            // purchases closed on the way).
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
             throw;
@@ -98,8 +95,6 @@ public sealed class ConcordatoFacileCheckoutService(
 
         var sessions = new SessionService(Client);
 
-        // ADR-005-R2 and CF-FIX: what became of the sessions of the pending purchases decides whether to reuse one, to refuse a
-        // second payment (a session paid whose webhook has not arrived) or to open a new one.
         var reusable = await ResolvePendingPurchasesAsync(sessions, leaseId, orgId, cancellationToken);
         if (reusable is not null)
         {
@@ -112,7 +107,6 @@ public sealed class ConcordatoFacileCheckoutService(
             return reusable;
         }
 
-        // Create new checkout session (ADR-005-R1)
         var baseUrl = options.Value.BaseUrl ?? throw new InvalidOperationException("ConcordatoFacile:BaseUrl not configured");
         var priceId = options.Value.StripePriceId ?? throw new InvalidOperationException("ConcordatoFacile:StripePriceId not configured");
 
@@ -135,8 +129,6 @@ public sealed class ConcordatoFacileCheckoutService(
                     Quantity = 1
                 }
             },
-            // CF-END: the page of the guided route (the old address, which the frontend keeps only as a redirect for the Sessions already
-            // created, named the supplier in the address bar).
             SuccessUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=success",
             CancelUrl = $"{baseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=cancelled",
             Metadata = PaymentMetadata(orgId, leaseId, userId),
@@ -148,7 +140,6 @@ public sealed class ConcordatoFacileCheckoutService(
 
         var newSession = await sessions.CreateAsync(createOptions, cancellationToken: cancellationToken);
 
-        // Insert new purchase record (the closed ones, if any, are saved with it)
         var purchase = new ConcordatoFacilePurchase
         {
             Id = Guid.NewGuid(),
@@ -176,10 +167,6 @@ public sealed class ConcordatoFacileCheckoutService(
             Reused: false);
     }
 
-    /// <summary>
-    /// The access rule of <see cref="ConcordatoFacileAccessService"/> for a member of the org: a completed purchase of the lease or a
-    /// gift consumed for it (the platform admin's access is not a payment and does not stop a checkout).
-    /// </summary>
     private async Task<bool> HasAccessAsync(Guid leaseId, Guid orgId, CancellationToken cancellationToken)
     {
         var paid = await dbContext.ConcordatoFacilePurchases
@@ -230,7 +217,6 @@ public sealed class ConcordatoFacileCheckoutService(
                     throw await RecordCompletedSessionAsync(purchase, session, cancellationToken);
 
                 default:
-                    // Expired, unknown, or no longer on Stripe: the purchase is closed and a new one takes its place.
                     purchase.Status = ConcordatoFacilePurchaseStatus.Failed;
                     break;
             }
@@ -250,7 +236,6 @@ public sealed class ConcordatoFacileCheckoutService(
         }
         catch (Stripe.StripeException ex) when (ex.StripeError?.Code == "resource_missing")
         {
-            // Session no longer exists on Stripe, a new one will be created
             logger.LogInformation(
                 "Previous session {SessionId} not found on Stripe, closing purchase {PurchaseId}",
                 purchase.StripeCheckoutSessionId,
@@ -259,12 +244,6 @@ public sealed class ConcordatoFacileCheckoutService(
         }
     }
 
-    /// <summary>
-    /// A completed session: when it is paid for exactly the price of the service the purchase is completed now (the same transition
-    /// as <see cref="ConcordatoFacilePaymentHandler.HandlePaymentIntentSucceededAsync"/>; the webhook that arrives later finds it
-    /// completed and does nothing). A session completed but not yet paid is a payment in flight (delayed payment method), and a
-    /// payment of another amount is an error for the operators: in both cases the customer is not charged a second time.
-    /// </summary>
     private async Task<DomainConflictException> RecordCompletedSessionAsync(
         ConcordatoFacilePurchase purchase,
         Session session,
@@ -302,7 +281,6 @@ public sealed class ConcordatoFacileCheckoutService(
                 session.PaymentIntentId);
         }
 
-        // Also saves the purchases closed earlier in the same pass.
         await dbContext.SaveChangesAsync(cancellationToken);
         return AlreadyPurchased();
     }

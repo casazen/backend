@@ -12,13 +12,10 @@ public static partial class IdentityVerificationServiceCollectionExtensions
 {
     static partial void AddFoundationServices(IServiceCollection services)
     {
-        // The policy file is read once, at the first use (IdentityVerification:PolicyFile, pinned by IdentityVerification:PolicySha256).
         services.AddSingleton<IdentityPolicyProvider>();
 
-        // The policy hash and the weight hashes of the models the store has loaded: null while any of them is missing.
         services.AddSingleton<IdentityConfigurationFingerprint>();
 
-        // The formats of the documents: every file of IdentityVerification:FormatsDirectory, read once at the first use.
         services.AddSingleton<DocumentFormatRegistry>();
     }
 }

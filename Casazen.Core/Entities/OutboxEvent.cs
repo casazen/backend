@@ -26,27 +26,21 @@ public class OutboxEvent : ITenantOwned
     /// <summary>Longest <see cref="DedupKey"/> the column takes.</summary>
     public const int DedupKeyMaxLength = 200;
 
-    /// <summary>Longest <see cref="LastError"/> the column takes; a longer text is cut.</summary>
     public const int LastErrorMaxLength = 2000;
 
-    /// <summary>The payload of an event that carries nothing, and of a dead letter once anonymized (ADR-022-R21).</summary>
     public const string EmptyPayload = "{}";
 
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant: the org the event belongs to; the handlers work for this org only (ADR-022-R6, R17).</summary>
     public Guid OrgId { get; set; }
 
     public DomainEventType EventType { get; set; }
 
-    /// <summary>The entity the event is about (booking, service request, payment...).</summary>
     public Guid EntityId { get; set; }
 
-    /// <summary>When the event was recorded (UTC); the dispatcher publishes in this order.</summary>
     public DateTime OccurredAt { get; set; }
 
-    /// <summary>The event's data as JSON (ids and codes, no personal data in clear: ADR-022-R21).</summary>
     [Required]
     public string PayloadJson { get; set; } = EmptyPayload;
 
@@ -57,19 +51,12 @@ public class OutboxEvent : ITenantOwned
     [MaxLength(DedupKeyMaxLength)]
     public string? DedupKey { get; set; }
 
-    /// <summary>When every handler returned for this event (UTC); <c>null</c> while it waits for the dispatcher.</summary>
     public DateTime? DispatchedAt { get; set; }
 
-    /// <summary>Failed deliveries so far (ADR-022-R5).</summary>
     public int Attempts { get; set; }
 
-    /// <summary>What the last failed delivery said (exception type and message), cut to <see cref="LastErrorMaxLength"/>.</summary>
     [MaxLength(LastErrorMaxLength)]
     public string? LastError { get; set; }
 
-    /// <summary>
-    /// The event failed every attempt: the dispatcher no longer delivers it and the cleanup job never deletes it (ADR-022-R5,
-    /// R15); after the retention it keeps only its audit fields (ADR-022-R21).
-    /// </summary>
     public bool DeadLettered { get; set; }
 }

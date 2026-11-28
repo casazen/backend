@@ -31,10 +31,8 @@ public sealed record IdentityFingerprint(string PolicyVersion, string PolicyHash
 /// </summary>
 public sealed class IdentityConfigurationFingerprint(IdentityPolicyProvider policy, IBiometricModelStore models)
 {
-    /// <summary>The roles of the models in the order their hashes are joined (the order of <see cref="BiometricModelRoles"/>).</summary>
     private static readonly string[] RoleOrder = [BiometricModelRoles.FaceDetector, BiometricModelRoles.AntiSpoofing, BiometricModelRoles.FaceRecognition];
 
-    /// <summary>The fingerprint of the policy and the models in force now; null when there is none (see the remarks of the class).</summary>
     public IdentityFingerprint? Current()
     {
         var snapshot = policy.Snapshot;
@@ -70,7 +68,6 @@ public sealed class IdentityConfigurationFingerprint(IdentityPolicyProvider poli
         return IdentityConfigurationJson.Sha256Hex(string.Join(':', hashes));
     }
 
-    /// <summary>The fingerprint of a policy hash and a weights hash: the SHA-256 of <c>policyHash:weightsHash</c>, both in lower case.</summary>
     public static string ComputeFingerprint(string policyHash, string weightsHash)
     {
         return IdentityConfigurationJson.Sha256Hex(string.Concat(policyHash.ToLowerInvariant(), ":", weightsHash.ToLowerInvariant()));

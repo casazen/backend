@@ -13,16 +13,11 @@ namespace Casazen.Core.Octorate;
 /// <param name="Type">What the entry is (<c>regionType</c>, <c>CITY</c> in the sandbox); <c>null</c> when the answer does not say.</param>
 public sealed record OctoratePlaceEntry(string Name, string PoliceCode, string? Type);
 
-/// <summary>
-/// Octorate's table of places, ready to be asked: the exact name of a police code, or of a name typed by a guest when exactly one place carries it.
-/// Pure and immutable: it is built once from the answer of the client and shared (cached) by every send.
-/// </summary>
 public sealed class OctoratePlaceTable
 {
     private readonly Dictionary<string, string> _nameByCode = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> _codesByName = new(StringComparer.Ordinal);
 
-    /// <summary>Builds the table. An entry with no name or no code is left out; the first name of a code stands.</summary>
     public OctoratePlaceTable(IEnumerable<OctoratePlaceEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
@@ -44,17 +39,11 @@ public sealed class OctoratePlaceTable
         }
     }
 
-    /// <summary>How many places the table holds.</summary>
     public int Count => _nameByCode.Count;
 
-    /// <summary>The exact name Octorate uses for a police code; <c>null</c> when the table has no such place.</summary>
     public string? NameOf(string? policeCode) =>
         AlloggiatiRecordRules.NormalizeCode(policeCode) is { } code && _nameByCode.TryGetValue(code, out var name) ? name : null;
 
-    /// <summary>
-    /// The exact name of the place a guest typed, for a guest who has no code: the one place whose name matches it (case, accents, spaces and signs
-    /// ignored). <c>null</c> when none matches or when two different places carry the same name: a name that is not unique is never guessed.
-    /// </summary>
     public string? NameOfUnique(string? typedName)
     {
         var key = AlloggiatiRecordRules.NormalizeDescription(typedName);
@@ -79,10 +68,8 @@ public sealed record OctorateGuestPlaces(
     string? DocumentIssuePlace,
     IReadOnlyList<string> UnrecognizedFields)
 {
-    /// <summary>Every place the guest needs is known to Octorate.</summary>
     public bool IsRecognized => UnrecognizedFields.Count == 0;
 
-    /// <summary>The unrecognized fields as the link keeps them (comma separated); <c>null</c> when every place is known.</summary>
     public string? FieldsText => IsRecognized ? null : string.Join(',', UnrecognizedFields);
 }
 
@@ -100,7 +87,6 @@ public static class OctoratePlaceRules
     /// <summary>The field of the comune of birth (the name of the Alloggiati record field).</summary>
     public const string BirthComuneField = AlloggiatiRecordRules.FieldBirthComune;
 
-    /// <summary>The field of the comune of residence (the name the check-in readiness rules use).</summary>
     public const string ResidenceComuneField = CheckInReadinessRules.FieldResidenceComune;
 
     /// <summary>The field of the place of issue of the document (the name of the Alloggiati record field).</summary>
@@ -112,10 +98,6 @@ public static class OctoratePlaceRules
     /// </summary>
     private const string StateCodePrefix = "100";
 
-    /// <summary>
-    /// True when the guest has a place that has to be found in the table of Italian places: a comune of birth or residence, or a place of issue whose
-    /// code is a comune's. A guest with none (a foreign guest with a foreign document) never needs the table, so it never waits for it.
-    /// </summary>
     public static bool NeedsItalianPlaces(StayGuest guest)
     {
         ArgumentNullException.ThrowIfNull(guest);

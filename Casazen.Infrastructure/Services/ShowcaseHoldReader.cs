@@ -23,10 +23,6 @@ public sealed class ShowcaseHoldReader(AppDbContext db) : IShowcaseHoldReader
         CancellationToken cancellationToken = default) =>
         await LiveIntervalsOf(db, supplierOrgId, fromUtc, toUtc, nowUtc).ToListAsync(cancellationToken);
 
-    /// <summary>
-    /// <see cref="LiveHoldsOf"/> reduced to what the planner needs: the hours and the expiry, three columns of the table (the
-    /// payload and the e-mail index are not selected). Static and internal so a test can read the SQL it becomes.
-    /// </summary>
     internal static IQueryable<ShowcaseHoldInterval> LiveIntervalsOf(
         AppDbContext db,
         Guid supplierOrgId,

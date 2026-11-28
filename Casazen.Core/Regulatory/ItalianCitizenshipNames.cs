@@ -9,7 +9,6 @@ public static class ItalianCitizenshipNames
 {
     private readonly record struct Entry(string DescriptionKey, string Label, string[] Aliases);
 
-    /// <summary>Description key is <see cref="AlloggiatiRecordRules.NormalizeDescription"/> of the country name.</summary>
     private static readonly Entry[] Table =
     [
         new("ITALIA", "Italiano", ["ITALIANA", "ITALIANO", "ITALIAN"]),
@@ -69,16 +68,11 @@ public static class ItalianCitizenshipNames
         .GroupBy(pair => pair.alias)
         .ToDictionary(group => group.Key, group => group.First().DescriptionKey);
 
-    /// <summary>Adjective to show for an official state description, or null when this country has none.</summary>
     public static string? LabelFor(string? normalizedDescription) =>
         normalizedDescription is not null && LabelByDescription.TryGetValue(normalizedDescription, out var label)
             ? label
             : null;
 
-    /// <summary>
-    /// Official description key of a citizenship the guest typed ("italiana", "italiano"), or null when the text is
-    /// already a country name or is unknown.
-    /// </summary>
     public static string? OfficialNormalizedKey(string? text)
     {
         var key = AlloggiatiRecordRules.NormalizeDescription(text);

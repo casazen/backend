@@ -4,10 +4,6 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace Casazen.Infrastructure.Octorate;
 
-/// <summary>
-/// The places Octorate's check-in recognizes (E20/F01/US01/T01, decision O2): its table of cities with the police codes, read through the client
-/// and kept in memory, so a guest's comuni can be sent with the exact names of that table.
-/// </summary>
 public interface IOctoratePlaceNames
 {
     /// <summary>
@@ -28,7 +24,6 @@ public interface IOctoratePlaceNames
 /// </remarks>
 public sealed class OctoratePlaceNames(IOctorateApiClient client, IMemoryCache cache) : IOctoratePlaceNames
 {
-    /// <summary>How long a table is kept: 24 hours.</summary>
     public static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
 
     private static readonly SemaphoreSlim ReadGate = new(1, 1);
@@ -43,7 +38,6 @@ public sealed class OctoratePlaceNames(IOctorateApiClient client, IMemoryCache c
         await ReadGate.WaitAsync(ct);
         try
         {
-            // Another send may have read it while this one waited.
             if (cache.TryGetValue(key, out cached) && cached is not null)
                 return cached;
 
@@ -57,6 +51,5 @@ public sealed class OctoratePlaceNames(IOctorateApiClient client, IMemoryCache c
         }
     }
 
-    /// <summary>The key of the table of a country in the memory cache.</summary>
     internal static string CacheKey(string country) => $"octorate-checkin-places:{country.Trim().ToUpperInvariant()}";
 }

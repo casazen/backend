@@ -20,10 +20,8 @@ public class AssistantTrustProposal : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row. Never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property the proposal is about; <c>null</c> = the organization's setting of the situation.</summary>
     public Guid? PropertyId { get; set; }
 
     public AssistantSituation Situation { get; set; }
@@ -32,19 +30,15 @@ public class AssistantTrustProposal : ITenantOwned
 
     public AssistantMode ToMode { get; set; }
 
-    /// <summary>The drafts measured in the period.</summary>
     public int DraftsMeasured { get; set; }
 
-    /// <summary>The share of them a person approved without editing, in percent.</summary>
     [Precision(5, 2)]
     public decimal ApprovedWithoutEditPercent { get; set; }
 
-    /// <summary>The start of the period measured (UTC): the <see cref="AssistantSituationSetting.ModeSince"/> of the setting.</summary>
     public DateTime PeriodStart { get; set; }
 
     public TrustProposalStatus Status { get; set; } = TrustProposalStatus.Proposed;
 
-    /// <summary>The user who accepted or dismissed it (<c>User.Id</c>), an opaque id with no foreign key.</summary>
     [MaxLength(DecidedByUserIdMaxLength)]
     public string? DecidedByUserId { get; set; }
 

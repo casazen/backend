@@ -38,10 +38,6 @@ public sealed record SupplierPaymentsAccount(
 /// </remarks>
 public interface ISupplierPaymentsAccountService
 {
-    /// <summary>
-    /// The account state read from the database; with <paramref name="refreshFromStripe"/> read again from Stripe first (one
-    /// call, and only when an account is linked).
-    /// </summary>
     Task<SupplierPaymentsAccount> GetAccountAsync(Guid supplierOrgId, bool refreshFromStripe, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -50,10 +46,6 @@ public interface ISupplierPaymentsAccountService
     /// </summary>
     Task<SupplierPaymentsAccount> EnsureAccountAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Account Link of the onboarding (creates the account when missing). The URLs are built by the server, never taken from
-    /// the client. The link is single-use: never log it.
-    /// </summary>
     Task<string> CreateOnboardingLinkAsync(
         Guid supplierOrgId,
         string returnUrl,

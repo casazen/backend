@@ -21,13 +21,8 @@ public interface IGuestService
         int pageSize,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Creates a guest in <paramref name="orgId"/>. Throws <c>DomainConflictException</c>
-    /// (<c>guest_email_exists</c>) only when the same org already has a guest with that e-mail.
-    /// </summary>
     Task<Guest> CreateGuestAsync(Guid orgId, Guest guest, CancellationToken cancellationToken = default);
 
-    /// <summary>Stores a per-booking guest snapshot; <see cref="Guest.OrgId"/> must be set.</summary>
     Task<Guest> CreateGuestSnapshotAsync(Guest guest);
 
     Task<Guest> UpdateGuestAsync(Guest guest);
@@ -48,9 +43,7 @@ public interface IGuestService
 
 public enum GuestDeletionResult
 {
-    /// <summary>The row was removed: no booking or Alloggiati report referenced it.</summary>
     Deleted,
 
-    /// <summary>The row is kept for its bookings, marked deleted and anonymized.</summary>
     Anonymized,
 }

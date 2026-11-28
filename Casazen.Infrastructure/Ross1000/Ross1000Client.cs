@@ -10,7 +10,6 @@ namespace Casazen.Infrastructure.Ross1000;
 public sealed record Ross1000RecordOutcome(string Key, string State);
 public sealed record Ross1000Result(string State, int Accepted = 0, int Rejected = 0)
 {
-    // Only keys matched against this payload leave the parser. Remote text may include personal data.
     public IReadOnlyList<Ross1000RecordOutcome> Records { get; init; } = [];
 }
 public sealed class Ross1000Client(HttpClient http)
@@ -41,7 +40,6 @@ public sealed class Ross1000Client(HttpClient http)
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException or OperationCanceledException or XmlException)
         {
-            // The remote server may have committed before the caller lost the response.
             return new("unknown");
         }
     }
@@ -59,8 +57,6 @@ public sealed class Ross1000Client(HttpClient http)
             return new("unknown");
 
         var day = days[0];
-        // Italy's current XSD defines day errors at the parent levels only. Treat explicit error extensions and unknown
-        // children as unconfirmed as well, especially for a day with no guest records to corroborate acceptance.
         if (day.Elements().Any(e => e.Name != "arrivi" && e.Name != "partenze" && e.Name != "prenotazioni" && e.Name != "retifiche"))
             return new("unknown");
         var expected = movement.RecordKeys.ToHashSet(StringComparer.Ordinal);

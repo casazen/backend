@@ -16,7 +16,6 @@ public class MarketingConsentRecord : ITenantOwned
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>Tenant of the row: the org of the booking (TN-2).</summary>
     public Guid OrgId { get; set; }
 
     public Guid BookingId { get; set; }
@@ -25,27 +24,16 @@ public class MarketingConsentRecord : ITenantOwned
     public Guid GuestId { get; set; }
     public virtual Guest Guest { get; set; } = null!;
 
-    /// <summary>
-    /// Marketing email address (may differ from booking contact email).
-    /// Used for marketing campaigns when EmailConfirmed is true.
-    /// </summary>
     [Required]
     [MaxLength(255)]
     public string MarketingEmail { get; set; } = string.Empty;
 
-    /// <summary>Consent to receive marketing emails (art. 6.1.a GDPR).</summary>
     public bool ConsentEmail { get; set; }
 
-    /// <summary>Consent to receive marketing WhatsApp messages (art. 6.1.a GDPR).</summary>
     public bool ConsentWhatsApp { get; set; }
 
-    /// <summary>
-    /// Double opt-in confirmation status: true when the guest clicked the confirmation link in the
-    /// verification email (ADR-007-R17, R21). Marketing sends are blocked until this is true.
-    /// </summary>
     public bool EmailConfirmed { get; set; }
 
-    /// <summary>When the guest submitted the consent on the booking checkout.</summary>
     public DateTime ConsentTimestamp { get; set; } = DateTime.UtcNow;
 
     /// <summary>

@@ -25,10 +25,6 @@ internal sealed class EmbeddedFontResolver : IFontResolver
 
     public static EmbeddedFontResolver Instance { get; } = new();
 
-    /// <summary>
-    /// Makes <see cref="Instance"/> the font resolver of PDFsharp. PDFsharp keeps one resolver per process and accepts
-    /// it only before the first font is used, so every renderer calls this before rendering.
-    /// </summary>
     public static void EnsureRegistered()
     {
         if (ReferenceEquals(GlobalFontSettings.FontResolver, Instance))

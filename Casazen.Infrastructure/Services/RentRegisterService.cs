@@ -160,7 +160,6 @@ public sealed class RentRegisterService(
         if (wanted.Count == 0)
             return [];
 
-        // The tenant filter keeps other orgs' installments out: an id that is not the caller's is simply not here.
         return await db.RentLedgerEntries
             .AsNoTracking()
             .Where(e => wanted.Contains(e.Id))
@@ -168,10 +167,6 @@ public sealed class RentRegisterService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// A line with no components yet (written before the breakdown existed) is all rent. SQL <c>SUM</c> of no rows is null,
-    /// which is that case.
-    /// </summary>
     private static (decimal Rent, decimal Advance, decimal Settlement, decimal Other) ComponentAmounts(
         decimal amountDue, decimal? rent, decimal? advance, decimal? settlement, decimal? other) =>
         rent is null && advance is null && settlement is null && other is null
@@ -190,11 +185,9 @@ internal static class RentRegisterAggregates
     private const int PendingBucket = 1;
     private const int OverdueBucket = 2;
 
-    /// <summary>The installments of the month (by due date) that are still part of the rent: not cancelled.</summary>
     public static IQueryable<RentLedgerEntry> OfMonth(IQueryable<RentLedgerEntry> entries, DateOnly first, DateOnly last) =>
         entries.Where(e => e.DueDate >= first && e.DueDate <= last && e.Status != RentLedgerStatus.Cancelled);
 
-    /// <summary>One statement: the three buckets of the month with their count and amount.</summary>
     public static async Task<RentRegisterCounters> CountersAsync(
         IQueryable<RentLedgerEntry> month, DateOnly today, CancellationToken cancellationToken)
     {

@@ -19,7 +19,6 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public interface IServiceRequestAutoCancelService
 {
-    /// <summary>One run: the due requests are cancelled and their parties told. Never throws for a request it cannot handle: it counts it.</summary>
     Task<ServiceRequestAutoCancelRun> CancelUnansweredAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -42,12 +41,9 @@ public interface IServiceRequestAutoCancelService
 /// <param name="Failed">Requests that could not be cancelled because of an error: retried by the next run.</param>
 public sealed record ServiceRequestAutoCancelRun(bool Disabled, bool Skipped, int Cancelled, int Conflicts, int Failed)
 {
-    /// <summary>The flag is off.</summary>
     public static ServiceRequestAutoCancelRun FlagOff { get; } = new(Disabled: true, Skipped: false, 0, 0, 0);
 
-    /// <summary>Another run is in progress.</summary>
     public static ServiceRequestAutoCancelRun LockTaken { get; } = new(Disabled: false, Skipped: true, 0, 0, 0);
 
-    /// <summary>Nothing was due.</summary>
     public static ServiceRequestAutoCancelRun Empty { get; } = new(Disabled: false, Skipped: false, 0, 0, 0);
 }

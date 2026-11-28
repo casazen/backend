@@ -7,12 +7,6 @@ namespace Casazen.Web.Authorization;
 
 public sealed class AgencyTierRequirement : IAuthorizationRequirement;
 
-/// <summary>
-/// Agency tier authorization (ADR-010-R2, ADR-010-R5): all <c>agency.*</c> policies require
-/// <c>Org.PlanTier == PlanTier.Agency</c>. Returns 403 <c>feature_requires_agency_tier</c> if not.
-/// When tier is Agency but <see cref="Casazen.Core.Entities.Org.IsAgencyTierDowngraded"/> is true,
-/// mutations (POST/PUT/PATCH/DELETE) return 403 <c>tier_insufficient</c> while reads (GET) succeed.
-/// </summary>
 public class AgencyTierAuthorizationHandler(
     IOrgContextResolver orgContextResolver,
     IOrgService orgService,
@@ -33,17 +27,14 @@ public class AgencyTierAuthorizationHandler(
         if (org is null)
             return;
 
-        // Non-agency org: deny with feature_requires_agency_tier
         if (org.PlanTier != PlanTier.Agency)
         {
             context.Fail(new AuthorizationFailureReason(this, "feature_requires_agency_tier"));
             return;
         }
 
-        // Agency tier, but check if downgraded
         if (org.IsAgencyTierDowngraded)
         {
-            // Downgraded agency: mutations are denied, reads are allowed
             var httpContext = httpContextAccessor.HttpContext;
             if (httpContext is not null)
             {
@@ -58,7 +49,6 @@ public class AgencyTierAuthorizationHandler(
             }
         }
 
-        // Agency tier and not downgraded, or downgraded but read operation
         context.Succeed(requirement);
     }
 }

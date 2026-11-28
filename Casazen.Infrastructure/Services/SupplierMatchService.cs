@@ -55,8 +55,6 @@ public class SupplierMatchService(
                 MessageKey = "PropertyNotFound",
             };
 
-        // Who may match for this property is decided by the caller (policy + host resource handler, TN-3);
-        // the org boundary is enforced here too.
         if (property.OrgId != orgId)
             throw new UnauthorizedAccessException("Proprietà non appartiene all'organizzazione.");
 
@@ -119,13 +117,6 @@ public class SupplierMatchService(
         return scored.ToDictionary(x => x.Profile.OrgId, x => x.Score);
     }
 
-    /// <summary>
-    /// The suppliers with their score, best first (<see cref="SupplierRanking"/>, SP-REL): the base score of 70, minus 8 for each open
-    /// request up to 40, plus the urgency, plus 5 for a bio, plus what the supplier earned by answering in time and doing its jobs
-    /// without disputes, minus what it lost by missing deadlines and by disputes. The same score decides who is recommended, in which
-    /// order the suppliers are listed and who is called as a backup (SP-BKP). A tie goes to the supplier with less work. The open requests
-    /// are the ones the supplier holds or may hold: a backup that only waits for its primary, and has not accepted, is not load.
-    /// </summary>
     private async Task<List<(Casazen.Core.Entities.SupplierProfile Profile, int Score, int Load)>> ScoreAsync(
         IReadOnlyList<Casazen.Core.Entities.SupplierProfile> suppliers,
         ServiceRequestUrgency urgency,
@@ -163,11 +154,6 @@ public class SupplierMatchService(
             .ToList();
     }
 
-    /// <summary>
-    /// The reason of the recommendation. <c>GeneratedByAi</c> only when a provider really answered (or a cached answer of
-    /// this org did): a static fallback, an empty answer and the placeholder of the stub provider are not AI text, so the
-    /// client shows no AI notice for them (A8-27).
-    /// </summary>
     private async Task<(string Reason, bool GeneratedByAi)> BuildMatchReasonAsync(
         Guid orgId,
         Casazen.Core.Entities.SupplierProfile profile,
@@ -178,7 +164,6 @@ public class SupplierMatchService(
     {
         try
         {
-            // Data minimization (A8-15): only fixed codes and a count reach the provider, nothing typed by the host.
             var prompt = BuildMatchReasonPrompt(category, urgency, openLoad);
             var cacheKey = $"supplier-match:{category}:{urgency}:{openLoad}";
             AiGenerationResult? ai = null;
@@ -199,13 +184,11 @@ public class SupplierMatchService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Budget exhausted or provider failure: the ranking does not depend on the AI, the reason falls back.
             logger.LogWarning(ex, "AI match reason failed for supplier {OrgId}", profile.OrgId);
             return (BuildStaticReason(profile, openLoad), false);
         }
     }
 
-    /// <summary>The whole prompt of the AI match reason: category code, urgency and open load only.</summary>
     public static string BuildMatchReasonPrompt(string category, ServiceRequestUrgency urgency, int openLoad) =>
         $"""
         Spiega perché un fornitore è adatto a una richiesta di servizio per un affitto breve.

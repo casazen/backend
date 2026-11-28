@@ -8,13 +8,10 @@ namespace Casazen.Core.Services;
 /// </summary>
 public enum AmountSource
 {
-    /// <summary>The booking site: the price the guest was quoted and the card payments Stripe collected for it (a direct booking).</summary>
     Stripe,
 
-    /// <summary>The channel manager: the figures of a booking that came from a channel, or from the booking engine of the agency, are the ones Octorate gives.</summary>
     ChannelManager,
 
-    /// <summary>The host: a price, or a payment (cash, bank transfer), that the host entered by hand.</summary>
     Manual,
 }
 
@@ -63,10 +60,6 @@ public static class BookingAmountSourceRules
                    && !string.IsNullOrWhiteSpace(booking.OctorateReservationId));
     }
 
-    /// <summary>
-    /// The sources of the figures of <paramref name="booking"/>, whose payments are <paramref name="payments"/>; <paramref name="pushedByCasaZen"/> is
-    /// whether it has a row of the mirror on Octorate (see <see cref="HoldsChannelManagerMoney"/>).
-    /// </summary>
     public static BookingAmountSources Of(Booking booking, IEnumerable<Payment> payments, bool pushedByCasaZen)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -82,16 +75,10 @@ public static class BookingAmountSourceRules
                 FromChannel(booking.OtaNetAmount));
         }
 
-        // Only a booking made on the booking site, at the price of its quote, is priced there (one CasaZen sent to Octorate included: its price stays
-        // CasaZen's); every other one (entered by the host, a stay from an iCal feed) has the price the host gave it.
         var total = booking.Source == BookingSource.Direct && !booking.PriceOverridden ? AmountSource.Stripe : AmountSource.Manual;
         return new BookingAmountSources(total, PaidSourceOf(payments), null, null, null);
     }
 
-    /// <summary>
-    /// Where what came in comes from: the collected payments (completed or partly refunded, as <see cref="BookingListRules.PaidAmount"/> counts them)
-    /// that still hold money. <c>null</c> when there is none, so a booking with nothing collected shows a zero with no source.
-    /// </summary>
     public static AmountSource? PaidSourceOf(IEnumerable<Payment> payments)
     {
         ArgumentNullException.ThrowIfNull(payments);

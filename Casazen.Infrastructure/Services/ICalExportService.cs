@@ -24,22 +24,14 @@ namespace Casazen.Infrastructure.Services;
 /// </summary>
 public class ICalExportService
 {
-    // The OTA channels of a booking: the single list of FiscalCopy.IsOtaBookingSource, as a collection EF sends to SQL
-    // (not an array: in an expression tree C# 14 would bind array.Contains to the span overload).
     private static readonly IReadOnlyList<BookingSource> OtaSources =
         Enum.GetValues<BookingSource>().Where(FiscalCopy.IsOtaBookingSource).ToList();
 
-    /// <summary>
-    /// A booking that belongs to CasaZen (direct checkout, host booking, ...), not one that came from an OTA channel
-    /// (Airbnb, Booking.com, ...): those are the OTA's own reservations, sending them back would be an echo.
-    /// </summary>
     public static Expression<Func<Booking, bool>> ExportsBooking { get; } = b => !OtaSources.Contains(b.Source);
 
-    /// <summary>A manual block of the host; never a block imported from an iCal feed (no echo).</summary>
     public static Expression<Func<CalendarBlock, bool>> ExportsBlock { get; } =
         b => b.Source == CalendarBlockSource.Manual && b.FeedId == null;
 
-    // Declared after the expressions: static fields are initialized in the order they are written.
     private static readonly Func<Booking, bool> ExportsBookingCompiled = ExportsBooking.Compile();
     private static readonly Func<CalendarBlock, bool> ExportsBlockCompiled = ExportsBlock.Compile();
 
@@ -72,10 +64,8 @@ public class ICalExportService
     /// <summary>UID of a booking's event; unchanged since #294, so the events already read by the OTAs keep their identity.</summary>
     public static string BookingUid(Guid bookingId) => $"booking-{bookingId}";
 
-    /// <summary>UID of a manual block's event: its id (before PC-12 a block without UID got a new random one at every download).</summary>
     public static string BlockUid(Guid blockId) => $"block-{blockId}";
 
-    // Nights are calendar dates, as in PropertyOccupancy: [start date, end date).
     private static void AddEvent(List<ICalFeedEvent> events, string uid, DateTime start, DateTime end, string summary, string currency)
     {
         var startDate = DateOnly.FromDateTime(start.Date);

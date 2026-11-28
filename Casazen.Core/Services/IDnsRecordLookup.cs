@@ -6,9 +6,7 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IDnsRecordLookup
 {
-    /// <summary>The CNAME targets of <paramref name="host"/>, lower case and without the trailing dot; empty on miss or timeout.</summary>
     Task<IReadOnlyList<string>> LookupCnameAsync(string host, CancellationToken cancellationToken = default);
 
-    /// <summary>The IPv4 addresses <paramref name="host"/> resolves to (a CNAME chain is followed by the resolver); empty on miss or timeout.</summary>
     Task<IReadOnlyList<string>> LookupAddressesAsync(string host, CancellationToken cancellationToken = default);
 }

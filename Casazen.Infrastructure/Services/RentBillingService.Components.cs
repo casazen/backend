@@ -125,7 +125,6 @@ public sealed partial class RentBillingService
         return RentLedgerLine.InstallmentTotalAfterTerms(current, rent, previousAdvance, nextAdvance);
     }
 
-    /// <summary>The advance the plan already charged. A clause that does not scale onto the rent cadence charged nothing.</summary>
     private static decimal PreviousUniformAdvance(RentCondominiumTerms terms, RentCadence rentCadence)
     {
         try
@@ -145,8 +144,6 @@ public sealed partial class RentBillingService
 
         try
         {
-            // The amount accepted in the wizard is the starting advance until a confirmed
-            // fiscal budget replaces it on the individual ledger entries.
             if (snapshot.AdvanceMode == CondominiumAdvanceMode.BudgetAllocation && snapshot.AdvanceAmount is > 0m)
                 snapshot = snapshot with { AdvanceMode = CondominiumAdvanceMode.FixedContractAmount };
             return snapshot.UniformAdvanceFor(rentCadence);
@@ -192,16 +189,12 @@ public sealed partial class RentBillingService
         if (entry.AmountDue != RentLedgerLine.Sum(drafts) + keptSum)
             throw new InvalidOperationException("The installment total does not keep the condominium settlement.");
 
-        // Delete the previous parts, except a settlement already posted. Clearing the collection would null the required
-        // foreign key and the save would fail the next time the plan is written (the installment already has components).
         var remove = entry.Components.Where(c => !keptIds.Contains(c.Id)).ToList();
         if (remove.Count > 0)
             db.RentLedgerComponents.RemoveRange(remove);
 
         foreach (var draft in drafts)
         {
-            // The constructor already sets an id. On an installment EF is tracking, that id is written as an update of a
-            // missing row and the confirm fails. An empty id is a new part and has to be inserted.
             var component = new RentLedgerComponent
             {
                 Id = Guid.Empty,

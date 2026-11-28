@@ -16,11 +16,6 @@ public interface IDemoEnvironmentService
     /// </summary>
     Task<DemoComplianceResult> ApplyTestComplianceAsync(Guid orgId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Deletes the previous showcase of the org and creates it again from <see cref="DemoShowcaseCatalog"/>.
-    /// Host properties are removed only when <paramref name="removeUnpublished"/> is set, and only when they are still
-    /// pending and have no booking.
-    /// </summary>
     Task<DemoResetResult> ResetAsync(
         Guid orgId,
         string? confirmation,

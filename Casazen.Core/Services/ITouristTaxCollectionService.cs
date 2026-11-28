@@ -11,11 +11,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface ITouristTaxCollectionService
 {
-    /// <summary>
-    /// What the guest of the check-in link <paramref name="token"/> pays (no name, no exemption reason: positions and amounts). <c>null</c> (404) for an
-    /// unknown or expired link and for a stay that is not confirmed or in progress; 409 <c>tourist_tax_payment_not_available</c> while the organization does
-    /// not offer the payment or its account does not take payments.
-    /// </summary>
     Task<TouristTaxGuestView?> GetForGuestAsync(string token, CancellationToken ct = default);
 
     /// <summary>
@@ -26,10 +21,6 @@ public interface ITouristTaxCollectionService
     /// </summary>
     Task<TouristTaxPaymentSession?> CreatePaymentIntentAsync(string token, CancellationToken ct = default);
 
-    /// <summary>
-    /// The collection block of the host's view of the tax (through the tenant filter of the caller, who was authorized on the booking).
-    /// <paramref name="tax"/> is the calculation the caller already has, so it is not made twice; <c>null</c> to make it here.
-    /// </summary>
     Task<TouristTaxCollectionView> GetForHostAsync(Guid bookingId, StayTouristTaxView? tax, CancellationToken ct = default);
 
     /// <summary>
@@ -39,10 +30,8 @@ public interface ITouristTaxCollectionService
     /// </summary>
     Task<TouristTaxCollectionView> RecordPaidAtPropertyAsync(Guid bookingId, string userId, CancellationToken ct = default);
 
-    /// <summary>The setting <c>TouristTaxOnlinePayment</c> of the organization and whether its account takes payments.</summary>
     Task<TouristTaxSettingsView?> GetSettingsAsync(Guid orgId, CancellationToken ct = default);
 
-    /// <summary>Saves the setting <c>TouristTaxOnlinePayment</c> of the organization; <c>null</c> when the organization does not exist.</summary>
     Task<TouristTaxSettingsView?> SaveSettingsAsync(
         Guid orgId,
         bool enabled,
@@ -65,24 +54,10 @@ public interface ITouristTaxCollectionService
     /// </summary>
     Task<bool> ApplyChargeRefundedAsync(TouristTaxChargeRefund refund, CancellationToken ct = default);
 
-    /// <summary>
-    /// After the event of a payment is committed: the hosts of the booking are told (the bell, the pop-up and the open pages, through the push), and a
-    /// difference owed back raises the host's «To do». Never throws: what fails is logged with ids.
-    /// </summary>
     Task CompletePaidAsync(TouristTaxPaidNotice notice, CancellationToken ct = default);
 
-    /// <summary>
-    /// A booking was cancelled or marked a no-show (the outbox consumer): an open PaymentIntent is cancelled; when no night was spent the tax is not due
-    /// and what was paid online is refunded in full on the connected account; a stay cancelled after the arrival with the tax paid online raises the
-    /// host's «To do». An intent being paid throws <see cref="TouristTaxCollectionPendingException"/> (the event is delivered again); a failure of the
-    /// payment provider that may pass is thrown again, one that will not raises the «To do» with its code.
-    /// </summary>
     Task ApplyStayEndedAsync(Guid bookingId, DateTime endedAtUtc, CancellationToken ct = default);
 
-    /// <summary>
-    /// The collection of the stay as it is now (the outbox consumer of the check-in, the check-out and a change of the booking): the record keeps the
-    /// effective state, and a difference owed back to the guest raises the host's «To do» once.
-    /// </summary>
     Task ReconcileAsync(Guid bookingId, CancellationToken ct = default);
 
     /// <summary>
@@ -103,10 +78,8 @@ public interface ITouristTaxCollectionService
     Task<bool> IsAccessCodeHeldBackAsync(Guid bookingId, CancellationToken ct = default);
 }
 
-/// <summary>The markers of the PaymentIntent of a tourist tax (its metadata) and the problem codes of the collection.</summary>
 public static class TouristTaxCharges
 {
-    /// <summary>The <c>kind</c> of the metadata: the webhook routes the intent to the collection.</summary>
     public const string Kind = "tourist-tax";
 
     public const string KindMetadataKey = "kind";
@@ -115,7 +88,6 @@ public static class TouristTaxCharges
     public const string OrgMetadataKey = "orgId";
     public const string PropertyMetadataKey = "propertyId";
 
-    /// <summary>The description of the PaymentIntent (no personal data).</summary>
     public const string PaymentDescription = "Tourist tax of a stay";
 
     public const string NotAvailableCode = "tourist_tax_payment_not_available";
@@ -125,7 +97,6 @@ public static class TouristTaxCharges
     public const string NotApplicableCode = "tourist_tax_collection_not_applicable";
 }
 
-/// <summary>The tax of one guest as the guest page shows it: a position of the stay, never a person, and never the reason of an exemption.</summary>
 public sealed record TouristTaxGuestLine(int Position, int TaxableNights, decimal? Amount, bool Exempt);
 
 /// <summary>What the guest of a check-in link sees of the tourist tax of the stay.</summary>
@@ -147,7 +118,6 @@ public sealed record TouristTaxGuestView(
     IReadOnlyList<TouristTaxGuestLine> Guests,
     bool RequiredBeforeAccessCode);
 
-/// <summary>What the Payment Element of the guest page needs: the intent on the connected account, the platform's publishable key and the account.</summary>
 public sealed record TouristTaxPaymentSession(
     string PaymentIntentId,
     string ClientSecret,
@@ -183,7 +153,6 @@ public sealed record TouristTaxCollectionView(
     DateTime? CollectedAt,
     bool OnlinePaymentAvailable);
 
-/// <summary>The setting <c>TouristTaxOnlinePayment</c> of an organization and whether its connected account takes payments.</summary>
 public sealed record TouristTaxSettingsView(bool Enabled, bool RequiredBeforeAccessCode, bool PaymentsReady);
 
 /// <summary>A <c>payment_intent.succeeded</c> of a tourist tax: what the event says, in minor units.</summary>
@@ -201,10 +170,8 @@ public sealed record TouristTaxIntentEvent(
     string? Currency,
     DateTime? OccurredAtUtc);
 
-/// <summary>A <c>charge.refunded</c>: the intent of the charge, the account of the event and what the charge says was refunded in all, in minor units.</summary>
 public sealed record TouristTaxChargeRefund(string PaymentIntentId, string? AccountId, long AmountRefundedMinor);
 
-/// <summary>A tax paid online that was recorded: who to tell once the event is committed (ids and the language of the organization only).</summary>
 public sealed record TouristTaxPaidNotice(Guid StayTouristTaxId, Guid BookingId, Guid OrgId, string PaymentIntentId, string Language);
 
 /// <summary>

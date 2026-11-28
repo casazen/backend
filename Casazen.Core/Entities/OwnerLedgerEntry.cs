@@ -31,100 +31,74 @@ public class OwnerLedgerEntry : ITenantOwned, IAppendOnlyRecord
 
     public Guid OrgId { get; set; }
 
-    /// <summary>The owner the line belongs to.</summary>
     public Guid PropertyOwnerId { get; set; }
 
-    /// <summary>The property of the source; <c>null</c> for a line of the owner as a whole (a correction without a property).</summary>
     public Guid? PropertyId { get; set; }
 
     public OwnerLedgerEntryType EntryType { get; set; }
 
     public OwnerLedgerSourceType SourceType { get; set; }
 
-    /// <summary>The id of the source row (the payment, the booking, the charge, the wire batch).</summary>
     public Guid? SourceId { get; set; }
 
-    /// <summary>A reference within the source: the booking of a payment, the month of a charge, the line of a wire batch.</summary>
     [MaxLength(ReferenceMaxLength)]
     public string? SourceReference { get; set; }
 
-    /// <summary>The fiscal document of the source, when there is one.</summary>
     public Guid? SourceDocumentId { get; set; }
 
-    /// <summary>Where the receipt or the invoice of a charge or a correction is kept.</summary>
     [MaxLength(AttachmentMaxLength)]
     public string? AttachmentReference { get; set; }
 
-    /// <summary>
-    /// Unique in the org: the source, the type, the owner and the amounts the line was computed with. Posting the same facts twice finds it; changed facts
-    /// get a new key, and the line of the old key is reversed.
-    /// </summary>
     [Required]
     [MaxLength(KeyMaxLength)]
     public string IdempotencyKey { get; set; } = string.Empty;
 
-    /// <summary>When the service was rendered (the check-in of a stay, the day of a charge).</summary>
     public DateOnly ServiceDate { get; set; }
 
-    /// <summary>When the line counts for the owner, by the recognition rule of the owner's profile; it decides the period.</summary>
     public DateOnly RecognitionDate { get; set; }
 
-    /// <summary>When the money moved, for a payment.</summary>
     public DateOnly? PaymentDate { get; set; }
 
     public int PeriodYear { get; set; }
 
     public int PeriodMonth { get; set; }
 
-    /// <summary>The ownership the share was read from, effective on the date of the source.</summary>
     public Guid? PropertyOwnershipId { get; set; }
 
-    /// <summary>The share of the owner applied to the source, 100 for a line of the owner alone.</summary>
     [Precision(5, 2)]
     public decimal SharePercent { get; set; }
 
-    /// <summary>The currency of the source.</summary>
     [Required]
     [MaxLength(CurrencyMaxLength)]
     public string OriginalCurrency { get; set; } = string.Empty;
 
-    /// <summary>The whole amount of the source in its currency, before the share.</summary>
     [Precision(18, 2)]
     public decimal SourceAmount { get; set; }
 
-    /// <summary>The owner's part of the source in its currency (the shares of all the owners add up to <see cref="SourceAmount"/>), signed.</summary>
     [Precision(18, 2)]
     public decimal OriginalAmount { get; set; }
 
-    /// <summary>The currency of the owner's statement (the settlement currency of the profile).</summary>
     [Required]
     [MaxLength(CurrencyMaxLength)]
     public string StatementCurrency { get; set; } = string.Empty;
 
-    /// <summary>The multiplier from the original to the statement currency: <c>Amount = round(OriginalAmount × FxRate, 2)</c>; 1 for the same currency.</summary>
     [Precision(18, 8)]
     public decimal FxRate { get; set; } = 1m;
 
-    /// <summary>Where the rate comes from (the reference rate the agency entered).</summary>
     [MaxLength(ReferenceMaxLength)]
     public string? FxSource { get; set; }
 
-    /// <summary>The day of the rate.</summary>
     public DateOnly? FxDate { get; set; }
 
-    /// <summary>The tax code the rule set gives the line, when it has one.</summary>
     [MaxLength(CodeMaxLength)]
     public string? TaxCode { get; set; }
 
-    /// <summary>The approved rule set the line was computed with (<c>{ruleCode}@{version}</c>); <c>null</c> when the owner had none (a readiness issue).</summary>
     [MaxLength(RuleVersionMaxLength)]
     public string? RuleVersion { get; set; }
 
-    /// <summary>The signed amount in the statement currency: positive is owed to the owner.</summary>
     [Precision(18, 2)]
     public decimal Amount { get; set; }
 
-    /// <summary>The line this one reverses (a line is reversed at most once).</summary>
     public Guid? ReversesEntryId { get; set; }
 
     [MaxLength(TextMaxLength)]

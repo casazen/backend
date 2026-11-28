@@ -46,7 +46,6 @@ public class GuestCheckInService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    // NF-132: whether the property is in canton Ticino, the one check of the jurisdiction (the page then asks the Swiss fields and the plate).
     private readonly ITicinoNotificationService _ticino = ticinoNotifications ?? new TicinoNotificationService(db);
 
     // The answer to «Ti serve la fattura?» (FIS-01): the container gives the service that records its event; built by hand it records none.
@@ -54,7 +53,6 @@ public class GuestCheckInService(
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
     private readonly GdprOptions _gdpr = gdprOptions?.Value ?? new GdprOptions();
 
-    // Existing deployments can supply their own text versions across guest portals.
     private string? PrivacyVersion => GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion) ?? GdprOptions.Normalize(_options.PrivacyNoticeVersion);
     private string? MarketingVersion => GdprOptions.Normalize(_gdpr.MarketingConsentVersion) ?? GdprOptions.Normalize(_options.MarketingConsentVersion);
 
@@ -74,7 +72,6 @@ public class GuestCheckInService(
     private const int DocumentNumberVisibleChars = 3;
     private const int DocumentNumberMinLengthForVisibleChars = 6;
 
-    /// <summary>Longest marketing e-mail stored: the column <see cref="MarketingConsentRecord.MarketingEmail"/>.</summary>
     private const int MarketingEmailMaxLength = 255;
 
     private static readonly GuestCheckInSessionStatus[] OpenLinkStatuses =
@@ -128,18 +125,15 @@ public class GuestCheckInService(
         }
         else
         {
-            // The session the guest is working on wins over one that was never opened; of two alike the newest.
             var kept = open
                 .OrderByDescending(s => s.Status == GuestCheckInSessionStatus.InCompilazione)
                 .ThenByDescending(s => s.CreatedAt)
                 .First();
 
-            // Only the token and the expiry change: the consent, the document read, the language and the attempts spent stay on the session.
             var rawToken = GenerateToken();
             kept.TokenHash = ComputeSha256Hex(rawToken);
             kept.ExpiresAt = now.Add(_options.SessionLifetime);
 
-            // The e-mail of the old link, if it had one, carried a link that is dead now: the new one is a link to copy.
             kept.LinkEmailStatus = GuestCheckInLinkEmailStatus.NotRequested;
             kept.LinkEmailError = null;
             kept.SentAt = null;
@@ -182,7 +176,6 @@ public class GuestCheckInService(
         return stale.Count;
     }
 
-    /// <summary>SHA-256 hex of a raw token: the only form stored (<see cref="GuestCheckInSession.TokenHash"/>).</summary>
     public static string HashToken(string token) => ComputeSha256Hex(token);
 
     private async Task<IssuedCheckInLink> AddSessionAsync(Guid bookingId, Guid orgId)
@@ -197,7 +190,6 @@ public class GuestCheckInService(
             TokenHash = ComputeSha256Hex(rawToken),
             ExpiresAt = now.Add(_options.SessionLifetime),
             Status = GuestCheckInSessionStatus.Inviato,
-            // Set when an email is actually handed to the provider (CO-09): a link to copy is not "sent".
             SentAt = null,
             LinkEmailStatus = GuestCheckInLinkEmailStatus.NotRequested,
             CreatedAt = now,
@@ -240,11 +232,9 @@ public class GuestCheckInService(
         if (session is null)
             return null;
 
-        // The slug of the org that owns the stay is public data, not personal data: every usable link carries it, a completed one too, at the cost of this one lookup (NF-140).
         var booking = session.Booking;
         var orgSlug = await GetOrgSlugAsync(booking.OrgId);
 
-        // After submission the link (possibly forwarded) shows only that the check-in is done (A5-28), and the org it belongs to.
         if (IsCompleted(session.Status))
             return new GuestCheckInPublicView { Status = session.Status, IsCompleted = true, OrgSlug = orgSlug };
 
@@ -286,10 +276,6 @@ public class GuestCheckInService(
         };
     }
 
-    /// <summary>
-    /// The current slug of an org, for the anonymous check-in link (NF-140): the link carries no tenant, so the tenant filter does not apply (the same reading as the privacy notice above).
-    /// Null when the org cannot be found.
-    /// </summary>
     private async Task<string?> GetOrgSlugAsync(Guid orgId)
     {
         return await db.Orgs
@@ -355,22 +341,14 @@ public class GuestCheckInService(
         ResidenceCountryCode = guest.ResidenceCountryCode,
         ResidenceCountryName = guest.ResidenceCountryName,
 
-        // NF-132: given back with the rest of the guest, so a page that sends the guests whole does not clear them.
         ResidenceStreet = guest.ResidenceStreet,
         ResidencePostalCode = guest.ResidencePostalCode,
         ResidenceCityName = guest.ResidenceCityName,
         TourismType = guest.TourismType,
         TravelWay = guest.TravelWay,
         EducationLevel = guest.EducationLevel,
-
-        // Never the tourist tax exemption: the host's decision, not shown on the guest page.
     };
 
-    /// <summary>
-    /// Masks a document number for the public prefill: only the last <see cref="DocumentNumberVisibleChars"/>
-    /// characters stay visible, and only when the number is long enough that they do not reveal most of it.
-    /// The number of hidden characters is fixed, so the mask does not leak the length. Null when there is none.
-    /// </summary>
     public static string? MaskDocumentNumber(string? documentNumber)
     {
         var value = documentNumber?.Trim();
@@ -409,7 +387,6 @@ public class GuestCheckInService(
         if (!IsBookingEligibleForPublicCheckIn(session.Booking.Status))
             return null;
 
-        // Advance Inviato->InCompilazione on first open/submit.
         if (session.Status == GuestCheckInSessionStatus.Inviato)
         {
             session.Status = GuestCheckInSessionStatus.InCompilazione;
@@ -465,8 +442,6 @@ public class GuestCheckInService(
         var marketingVersion = MarketingVersion;
         var (consentErrors, marketingEmail) = ValidateMarketingConsent(request, marketingVersion);
 
-        // Every guest: kinds and order, document only for single guests and heads (in Ticino of every guest the police file notifies, NF-132),
-        // shape of the codes.
         var guestErrors = (await _stayGuests.ValidateAsync(session.Booking, request.Guests)).ToList();
         if (request.PrivacyNoticeAcknowledged == false)
             guestErrors.Add(new(null, nameof(request.PrivacyNoticeAcknowledged), "CheckInPrivacyAcknowledgementRequired"));
@@ -510,22 +485,17 @@ public class GuestCheckInService(
         var now = UtcNow();
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
 
-        // Stages the rows (and the plate of the stay, NF-132: null keeps the stored one): the session is completed in the same SaveChanges.
         var saved = await _stayGuests.ReplaceAsync(
             session.Booking, request.Guests, StayGuestAuthor.GuestPortal, save: false, vehiclePlate: request.VehiclePlate);
         if (!saved.Success)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = saved.Errors };
 
-        // The first guest is the booker's own registration (prefilled from the booker): its data stays on the booker's
-        // record as before CO-12, so the guest views keep showing it.
         CopyToBooker(saved.Guests[0], guest);
 
         RecordPrivacyChoices(guest, session.Booking, request, marketingVersion, marketingEmail, now);
         guest.DataProcessingPurpose = "Alloggiati Web guest registration (TULPS Art. 109)";
         guest.UpdatedAt = now;
 
-        // The «yes» and the data, staged in the unit of work of the check-in: they are saved by the same SaveChanges, with the guests and the session.
-        // The data fills what the host did not write and never overwrites it (the source CheckIn is below Host).
         if (invoice is not null)
         {
             if (invoice.Data.HasContent)
@@ -545,8 +515,6 @@ public class GuestCheckInService(
             "Guest check-in submitted for session {SessionId}, booking {BookingId}: {GuestCount} guests",
             session.Id, session.BookingId, saved.Guests.Count);
 
-        // NF-90: the consent the guest ticked becomes a contact of the CRM and its double opt-in e-mail goes out. After the check-in is saved
-        // and never fatal for it: the record of the consent is already in the check-in.
         await RecordCrmConsentsAsync(session.Booking, guest, request, marketingVersion, marketingEmail, now);
 
         PushToHosts(session);
@@ -590,10 +558,6 @@ public class GuestCheckInService(
         }
     }
 
-    /// <summary>
-    /// The guest completed the check-in: the delivery of its link, if the booking had one that waited (E23/F01/US01/T01), is over, and the host's «To do» to carry the link is closed.
-    /// Best effort after the check-in is saved: whatever goes wrong here is logged and never fails the guest's submit.
-    /// </summary>
     private async Task EndLinkDeliveryAsync(GuestCheckInSession session)
     {
         if (linkDeliveries is null)
@@ -631,7 +595,6 @@ public class GuestCheckInService(
     public async Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId) =>
         (await IssueLinkAsync(bookingId, orgId)).Token;
 
-    /// <summary>Expires every open link of the booking: a new link replaces them (the unique index allows one per status).</summary>
     private async Task ExpireOpenSessionsAsync(Guid bookingId)
     {
         var openSessions = await db.GuestCheckInSessions
@@ -744,7 +707,6 @@ public class GuestCheckInService(
         if (channels.Count == 0)
             return (errors, null);
 
-        // Minors are excluded (Q1-05, AC-NF05-3): the consent is the booker's, the first guest of the list.
         if (request.Guests.FirstOrDefault()?.DateOfBirth is { } dateOfBirth
             && AlloggiatiRecordRules.IsMinor(dateOfBirth, _clock.TodayInRome()) == true)
         {
@@ -763,11 +725,6 @@ public class GuestCheckInService(
         return (errors, errors.Count == 0 ? email : null);
     }
 
-    /// <summary>
-    /// The marketing e-mail as it is stored: trimmed and lowercase, the form the suppression list hashes
-    /// (<see cref="ShowcaseBookingRules.NormalizeEmail"/>). Null when it is missing or is not a plain address: no display
-    /// name, no spaces, a host with a dot, at most <see cref="MarketingEmailMaxLength"/> characters.
-    /// </summary>
     public static string? NormalizeMarketingEmail(string? value)
     {
         var email = value?.Trim();
@@ -843,7 +800,6 @@ public class GuestCheckInService(
             guest.MarketingConsentDate = now;
         }
 
-        // NF-05: validated before, so a marketing e-mail means at least one channel ticked and a versioned text.
         if (marketingEmail is not null && marketingVersion is not null)
         {
             db.MarketingConsentRecords.Add(new MarketingConsentRecord
@@ -963,7 +919,6 @@ public class GuestCheckInService(
         return positions;
     }
 
-    /// <summary>Copies the first guest's registration on the booker's record (identity and document, as before CO-12).</summary>
     private static void CopyToBooker(StayGuest first, Guest booker)
     {
         booker.FirstName = first.FirstName;

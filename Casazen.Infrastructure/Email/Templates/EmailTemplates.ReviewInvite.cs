@@ -6,7 +6,6 @@ public static partial class EmailTemplates
 {
     public static partial class Names
     {
-        /// <summary>Invitation to review a stay, to the guest, sent only when the host asks for it, by hand or through a routine (DB-12a, E26/F01/US01/T01).</summary>
         public const string ReviewInvite = "review-invite";
     }
 

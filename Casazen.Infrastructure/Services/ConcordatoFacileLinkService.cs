@@ -51,7 +51,6 @@ public sealed class ConcordatoFacileLinkService(
         ClaimsPrincipal user,
         CancellationToken cancellationToken = default)
     {
-        // ADR-007-R10: Verify access via IConcordatoFacileAccessService
         var accessResult = await accessService.CheckAccessAsync(leaseId, user, cancellationToken);
         if (!accessResult.HasAccess)
         {
@@ -59,11 +58,8 @@ public sealed class ConcordatoFacileLinkService(
                 $"User does not have ConcordatoFacile access for lease {leaseId}.");
         }
 
-        // CF-BE: the form opens only after the current privacy notice is accepted for the lease, for the admin too. 409
-        // concordatofacile_privacy_not_accepted; nothing is signed and no event is written before this point.
         await privacyService.EnsureAcceptedAsync(leaseId, cancellationToken);
 
-        // Load lease with property
         var lease = await db.LeaseContracts
             .Include(l => l.Property)
             .FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken);
@@ -73,7 +69,6 @@ public sealed class ConcordatoFacileLinkService(
             throw new DomainRuleException("lease_not_found", "LeaseNotFound");
         }
 
-        // ADR-007-R7: Retrieve municipality from Comuni table via Property.ComuneIstatCode
         if (string.IsNullOrWhiteSpace(lease.Property.ComuneIstatCode))
         {
             throw new DomainRuleException(
@@ -92,22 +87,16 @@ public sealed class ConcordatoFacileLinkService(
                 "PropertyMunicipalityNotInIstatList");
         }
 
-        // ADR-007-R1: Calculate expiresAt = UtcNow + 15 minutes, format yyyy-MM-ddTHH:mm:ssZ
         var now = _clock.GetUtcNow().UtcDateTime;
         var expiresAt = now.AddMinutes(15).ToString("yyyy-MM-ddTHH:mm:ssZ");
 
-        // ADR-007-R1, ADR-007-R2: Compute HMAC-SHA256 signature
         var signature = ComputeHmacSignature(leaseId, expiresAt);
 
-        // ADR-007-R6: Build URL with URL-encoded parameters (encoding AFTER signature calculation)
         var url = BuildSignedUrl(
             FormBaseUrl(options.Value), leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode, TestModuleBypassSecret(options.Value));
 
-        // CF-DONE: from the first opening of the form the draft is the service's (imported, marked), whatever path made it: the documents
-        // the service delivers are then read into it and it follows the practice up to the registration.
         lease.MarkAsServiceDraft();
 
-        // ADR-007-R8: Record LeaseEvent (NO URL or signature in payload)
         db.LeaseEvents.Add(new LeaseEvent
         {
             LeaseContractId = leaseId,

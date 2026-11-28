@@ -11,10 +11,6 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 internal static class OtaMessageRuns
 {
-    /// <summary>
-    /// The orgs whose connection to this environment of the channel manager is connected, in a stable order. An org that disconnected, or whose
-    /// connection is in error, is not read: it has no token to read with.
-    /// </summary>
     internal static async Task<IReadOnlyList<Guid>> ListConnectedOrgsAsync(AppDbContext db, OctorateEnvironment environment, CancellationToken ct) =>
         await db.OctorateConnections
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])

@@ -12,10 +12,8 @@ public static class PublicSiteFonts
     public const string Moderno = "moderno";
     public const string Classico = "classico";
 
-    /// <summary>Supported font ids, in the order the console offers them.</summary>
     public static IReadOnlyList<string> All { get; } = [Editoriale, Moderno, Classico];
 
-    /// <summary>True when <paramref name="fontId"/> is a supported font id (exact, lower case).</summary>
     public static bool IsSupported(string? fontId) => fontId is not null && All.Contains(fontId, StringComparer.Ordinal);
 
     /// <summary>

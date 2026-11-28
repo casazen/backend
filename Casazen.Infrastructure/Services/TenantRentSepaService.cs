@@ -13,8 +13,6 @@ using Stripe;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>All callers supply a server-authorized org/lease pair; public callers must prove the installment token.
-/// The lease lock is shared with manual payments, termination, offline settlement and webhook processing.</summary>
 public sealed class TenantRentSepaService(AppDbContext db, IStripeRentSepaGateway gateway, IStripeService stripe,
     IConfiguration config, ILogger<TenantRentSepaService> logger, IRentBillingService rent, TimeProvider? timeProvider = null) : ITenantRentSepaService
 {
@@ -51,7 +49,6 @@ public sealed class TenantRentSepaService(AppDbContext db, IStripeRentSepaGatewa
         await using var tx = await Lock(leaseId, ct);
         var lease = await Load(orgId, leaseId, ct);
         var s = Schedule(lease);
-        // Recover a completed setup after a redirect, closed tab or lost browser response. This never enables autopay.
         if (s.SepaAuthorizedAt is null && s.SepaSetupIntentId is not null && s.SepaAuthorizedByUserId == userId
             && s.LandlordStripeAccountId == lease.Org.StripeConnectedAccountId)
         {
@@ -104,7 +101,6 @@ public sealed class TenantRentSepaService(AppDbContext db, IStripeRentSepaGatewa
         var s = Schedule(lease);
         if (s.SepaAuthorizedByUserId != userId)
             throw new DomainConflictException("rent_sepa_other_holder", "RentSepaOtherHolder");
-        // Disabling remains possible after expiry and does not revoke manual payment of valid dues.
         if (enabled || s.SepaAuthorizedAt is null)
         {
             EnsureActive(lease);
@@ -122,7 +118,6 @@ public sealed class TenantRentSepaService(AppDbContext db, IStripeRentSepaGatewa
             s.SepaAuthorizedAt ??= Now;
         }
         s.SepaAutomaticEnabled = enabled;
-        // Do not automatically collect historical arrears when enabling automatic payment.
         s.SepaAutomaticFrom = enabled ? Today : null;
         s.UpdatedAt = Now;
         await db.SaveChangesAsync(ct);
@@ -152,7 +147,6 @@ public sealed class TenantRentSepaService(AppDbContext db, IStripeRentSepaGatewa
         if (entry is null || !CheckoutOutcomes.TokenMatches(entry.PaymentTokenHash, token))
             throw new NotFoundException("Rent payment link invalid") { Code = RentBillingErrorCodes.PaymentLinkInvalid, MessageKey = "RentPaymentLinkInvalid" };
         await using var tx = await Lock(entry.LeaseContractId, ct);
-        // Recheck the token under the payment lock; reminders may rotate it.
         entry = await Entry(entry.OrgId, entry.LeaseContractId, installmentId, ct);
         if (!CheckoutOutcomes.TokenMatches(entry.PaymentTokenHash, token))
             throw new NotFoundException("Rent payment link invalid") { Code = RentBillingErrorCodes.PaymentLinkInvalid, MessageKey = "RentPaymentLinkInvalid" };
@@ -253,7 +247,6 @@ public sealed class TenantRentSepaService(AppDbContext db, IStripeRentSepaGatewa
                     pi = await stripe.GetPaymentIntentAsync(entry.StripePaymentIntentId!, entry.ConnectedAccountId, ct);
                     if (pi.Status == "requires_confirmation")
                     {
-                        // A process may stop after reservation but before confirmation. Resume only while consent is valid.
                         if (!s.SepaAutomaticEnabled || !TenantSepaAuthorization.CanDebit(lease, today)
                             || !s.IsActive || s.LandlordStripeAccountId != lease.Org.StripeConnectedAccountId)
                         {
@@ -297,7 +290,6 @@ public sealed class TenantRentSepaService(AppDbContext db, IStripeRentSepaGatewa
                     if (confirmationLock is not null) await confirmationLock.CommitAsync(ct);
                     continue;
                 }
-                // Durable reservation blocks manual payment; the confirmation key is stable across process restarts.
                 if (pi.Status == "requires_confirmation" || pi.Status == "requires_payment_method" && pi.LastPaymentError is null)
                 {
                     try { pi = await gateway.ConfirmAsync(s.LandlordStripeAccountId!, pi.Id, s.SepaCustomerId!, s.SepaPaymentMethodId!, ct); }

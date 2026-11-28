@@ -55,7 +55,6 @@ public sealed class ReviewReceivedHandler(
 
         if (await KeyOfAsync(orgId, reviewId, ct) is not { } key)
         {
-            // Written in the same save as the review, so it is there when the event is delivered; a review that is gone has nothing to answer.
             logger.LogWarning("Event {EventId} ({EventType}) of org {OrgId} names a review that is not there: nothing is queued", domainEvent.Id, domainEvent.Type, orgId);
             return;
         }
@@ -65,7 +64,6 @@ public sealed class ReviewReceivedHandler(
         logger.LogInformation("Review {ReviewKey} (org {OrgId}) goes to the assistant (job {JobId})", reviewKey, orgId, jobId);
     }
 
-    /// <summary>The key of the review of the event: the one of a channel when the id is a row of the reviews of the channels of the org, else the one of the booking site.</summary>
     private async Task<MessageThreadKey?> KeyOfAsync(Guid orgId, Guid reviewId, CancellationToken ct)
     {
         if (await db.OtaReviews.IgnoreQueryFilters([Tenant]).AsNoTracking().AnyAsync(r => r.OrgId == orgId && r.Id == reviewId, ct))

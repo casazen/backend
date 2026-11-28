@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>Public Open Data Hub event occurrences near properties in South Tyrol. The source record carries the original attribution.</summary>
 public sealed class MarketingOpenEvents(HttpClient client, ILogger<MarketingOpenEvents> logger)
 {
     public async Task<List<LocalEvent>> ReadAsync(Property property, DateOnly from, DateOnly to, CancellationToken ct)

@@ -24,19 +24,14 @@ public class ComuniController(
     IComuneDirectory directory,
     IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
-    /// <summary>Matches returned when <c>limit</c> is not given.</summary>
     public const int DefaultLimit = 10;
 
-    /// <summary>Most matches one request returns.</summary>
     public const int MaxLimit = 25;
 
-    /// <summary>Shortest query (after trimming) that is searched: below it nothing is useful and the whole list would match.</summary>
     public const int MinQueryLength = 2;
 
-    /// <summary>Longest query accepted.</summary>
     public const int MaxQueryLength = 100;
 
-    /// <summary>Whether the official list is imported, and which one (source and reference date).</summary>
     [HttpGet("status")]
     [ProducesResponseType(typeof(ComuneAvailabilityDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
@@ -102,15 +97,12 @@ public class ComuniController(
     }
 }
 
-/// <summary>Answer of <c>GET /api/comuni/status</c>.</summary>
 public sealed class ComuneAvailabilityDto
 {
     /// <summary>False until the official ISTAT list is imported: the pickers then say so.</summary>
     public bool DatasetAvailable { get; init; }
 
-    /// <summary>Date the imported list is valid at, when there is one.</summary>
     public DateOnly? ReferenceDate { get; init; }
 
-    /// <summary>Source and edition of the imported list.</summary>
     public string? SourceVersion { get; init; }
 }

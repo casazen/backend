@@ -30,7 +30,6 @@ public class OwnerStatementVersion : ITenantOwned
 
     public int PeriodMonth { get; set; }
 
-    /// <summary>1 for the first version of the month, then +1.</summary>
     public int VersionNumber { get; set; }
 
     public OwnerStatementVersionStatus Status { get; set; } = OwnerStatementVersionStatus.Draft;
@@ -39,10 +38,8 @@ public class OwnerStatementVersion : ITenantOwned
     [MaxLength(CurrencyMaxLength)]
     public string Currency { get; set; } = string.Empty;
 
-    /// <summary>The ledger cut-off: the version is made of the lines of the month posted up to this instant.</summary>
     public DateTime CutoffAt { get; set; }
 
-    /// <summary>The balance of the lines of the months before, posted up to the cut-off.</summary>
     [Precision(18, 2)]
     public decimal OpeningBalance { get; set; }
 
@@ -55,29 +52,24 @@ public class OwnerStatementVersion : ITenantOwned
     [Precision(18, 2)]
     public decimal Commission { get; set; }
 
-    /// <summary>The charges and the expenses.</summary>
     [Precision(18, 2)]
     public decimal Charges { get; set; }
 
-    /// <summary>The payments to and from the owner.</summary>
     [Precision(18, 2)]
     public decimal Payments { get; set; }
 
     [Precision(18, 2)]
     public decimal Corrections { get; set; }
 
-    /// <summary>What the agency owes the owner at the end of the month: the opening balance plus the lines of the month.</summary>
     [Precision(18, 2)]
     public decimal ClosingBalance { get; set; }
 
     public int EntryCount { get; set; }
 
-    /// <summary>SHA-256 of the ids and amounts of the lines of the version, in order: the proof they are the ones it was made of.</summary>
     [Required]
     [MaxLength(HashLength)]
     public string EntriesSha256 { get; set; } = string.Empty;
 
-    /// <summary>The readiness issues found at the generation (JSON array of codes and ids), <c>null</c> without any.</summary>
     public string? IssuesJson { get; set; }
 
     public DateTime? ApprovedAt { get; set; }
@@ -90,7 +82,6 @@ public class OwnerStatementVersion : ITenantOwned
     [MaxLength(UserIdMaxLength)]
     public string? PublishedByUserId { get; set; }
 
-    /// <summary>The published file: the JSON of the version and of its lines, as the owner received it.</summary>
     public string? PublishedSnapshot { get; set; }
 
     [MaxLength(HashLength)]
@@ -107,6 +98,5 @@ public class OwnerStatementVersion : ITenantOwned
     [MaxLength(UserIdMaxLength)]
     public string? CreatedByUserId { get; set; }
 
-    /// <summary>The PostgreSQL <c>xmin</c> of the row: two writers that read the same version cannot both change it.</summary>
     public uint RowVersion { get; set; }
 }

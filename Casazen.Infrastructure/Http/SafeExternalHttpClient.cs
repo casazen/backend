@@ -8,23 +8,13 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Http;
 
-/// <summary>
-/// Downloads URLs chosen by users (iCal feeds) without letting them reach the internal network (SSRF):
-/// see <see cref="SafeExternalHttpClient"/>.
-/// </summary>
 public interface ISafeExternalHttpClient
 {
-    /// <summary>True when <paramref name="url"/> passes <see cref="ExternalUrlPolicy.TryParse"/> with the configured ports.</summary>
     bool TryValidateUrl(string? url, [NotNullWhen(true)] out Uri? uri);
 
-    /// <summary>
-    /// GET of <paramref name="url"/> as text. Throws <see cref="ExternalFetchException"/> when the URL, a redirect or
-    /// the resolved address is not allowed, on network errors, non-success status, timeout or a body over the limit.
-    /// </summary>
     Task<string> GetStringAsync(string url, CancellationToken cancellationToken = default);
 }
 
-/// <summary>DNS lookup used by <see cref="SafeExternalHttpClient"/> (replaced in tests).</summary>
 public interface IExternalHostResolver
 {
     Task<IPAddress[]> ResolveAsync(string host, CancellationToken cancellationToken);
@@ -66,7 +56,6 @@ public sealed class SafeExternalHttpClient : ISafeExternalHttpClient, IDisposabl
     {
     }
 
-    /// <summary>For tests: <paramref name="handler"/> replaces the network (redirects, large bodies).</summary>
     internal SafeExternalHttpClient(
         SafeExternalHttpOptions options,
         HttpMessageHandler handler,
@@ -76,7 +65,6 @@ public sealed class SafeExternalHttpClient : ISafeExternalHttpClient, IDisposabl
         _logger = logger;
         _httpClient = new HttpClient(handler, disposeHandler: true)
         {
-            // The time budget is enforced by GetStringAsync over the whole download, body included.
             Timeout = System.Threading.Timeout.InfiniteTimeSpan,
         };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
@@ -152,10 +140,6 @@ public sealed class SafeExternalHttpClient : ISafeExternalHttpClient, IDisposabl
         };
     }
 
-    /// <summary>
-    /// Connection step of the handler: resolves the host, refuses blocked addresses and connects to the checked
-    /// address itself, then checks the connected peer again.
-    /// </summary>
     internal static async ValueTask<Stream> ConnectAsync(
         DnsEndPoint endPoint,
         IReadOnlyCollection<int> allowedPorts,
@@ -233,7 +217,6 @@ public sealed class SafeExternalHttpClient : ISafeExternalHttpClient, IDisposabl
         }
         catch (HttpRequestException ex)
         {
-            // Errors of ConnectAsync reach us wrapped in the HttpRequestException of the handler.
             for (Exception? inner = ex.InnerException; inner is not null; inner = inner.InnerException)
             {
                 if (inner is ExternalFetchException refused)
@@ -252,7 +235,6 @@ public sealed class SafeExternalHttpClient : ISafeExternalHttpClient, IDisposabl
         var location = response.Headers.Location
             ?? throw new ExternalFetchException(ExternalFetchFailure.RedirectRejected, $"Redirect without Location from {current.IdnHost}");
 
-        // On Unix a relative "/path" parses as an absolute file URI: resolve it against the current URL.
         var target = location.IsAbsoluteUri && !location.IsFile ? location : new Uri(current, location.OriginalString);
         if (!ExternalUrlPolicy.TryValidate(target, _options.EffectiveAllowedPorts, out var next))
             throw new ExternalFetchException(ExternalFetchFailure.RedirectRejected, $"Redirect from {current.IdnHost} to a URL that is not allowed");

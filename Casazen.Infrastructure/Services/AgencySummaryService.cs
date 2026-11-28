@@ -47,14 +47,12 @@ public sealed class AgencySummaryService(
         var ownerAccounting = access.AllowsOwnerAccounting(scope);
         var query = period.ReportQuery;
 
-        // The figures of the services that already compute them, as they answer them.
         var performance = await dashboard.GetPerformanceAsync(scope, new HostPerformanceQuery(period.From, period.To), cancellationToken);
         var collected = await collections.GetCollectionsAsync(scope, query, cancellationToken);
         var balances = await collections.GetBalancesToCollectAsync(scope, new HostBalancesQuery(), cancellationToken);
         var costs = await channelCosts.GetChannelCostsAsync(scope, query, cancellationToken);
         var tax = await touristTax.GetSummaryAsync(scope, period.FiscalPeriod, cancellationToken);
 
-        // What the fiscal documents say, for the properties the caller reaches.
         var fallback = await AccountantPackageFacts.CurrentIssuerAsync(db, scope.OrgId, cancellationToken);
         var guestDocuments = await AccountantPackageFacts.ReadAsync(db, scope, period, FiscalDocumentPurpose.GuestStay, cancellationToken);
         var swissTax = await AccountantPackageFacts.SwissTouristTaxAsync(db, scope.OrgId, guestDocuments, cancellationToken);
@@ -79,7 +77,6 @@ public sealed class AgencySummaryService(
         return ownerAccounting ? await WithOwnerAccountingAsync(summary, scope, period, cancellationToken) : summary;
     }
 
-    /// <summary>The owner part of the summary: the commissions and the invoices of the agency to the owners, the payouts, the wires, the portal commissions it bears, the margin and the report by owner.</summary>
     private async Task<AgencySummary> WithOwnerAccountingAsync(AgencySummary summary, HostScope scope, AccountantPackagePeriod period, CancellationToken cancellationToken)
     {
         var orgId = scope.OrgId;
@@ -102,9 +99,6 @@ public sealed class AgencySummaryService(
         };
     }
 
-    // ---------------------------------------------------------------- documents
-
-    /// <summary>The documents of the guests for each issuer, kind and currency: how many and their stored amounts (a credit note negative).</summary>
     internal static IReadOnlyList<AgencyGuestDocumentRow> GuestDocumentRows(IReadOnlyList<PackageDocument> documents, FiscalIssuerSnapshot fallback) =>
         documents
             .Select(d => (Document: d, Issuer: AccountantPackageFacts.IssuerOf(d.IssuerSnapshot, fallback)))
@@ -153,7 +147,6 @@ public sealed class AgencySummaryService(
             lines.Sum(x => x.Document.Sign * AccountantPackageFacts.VatOfLine(x.Line)));
     }
 
-    /// <summary>The owner invoices issued in the period: how many invoices and credit notes for each currency, and the totals for each currency and rate (credit notes taken away).</summary>
     internal static AgencyOwnerInvoices OwnerInvoicesOf(IReadOnlyList<PackageDocument> invoices)
     {
         var counts = invoices
@@ -176,9 +169,6 @@ public sealed class AgencySummaryService(
         return new AgencyOwnerInvoices(counts, rates);
     }
 
-    // ---------------------------------------------------------------- the owner ledger side: payouts, wires, margin
-
-    /// <summary>The payouts to the owners paid on a day of the period and not reversed, for each currency.</summary>
     private async Task<IReadOnlyList<AgencyPayoutRow>> PayoutsAsync(Guid orgId, AccountantPackagePeriod period, CancellationToken cancellationToken)
     {
         var from = period.From;
@@ -194,7 +184,6 @@ public sealed class AgencySummaryService(
             .ToList();
     }
 
-    /// <summary>The wire batches made on a day of the period, for each currency and state. The file of a batch, its IBAN and its owners' names are never read.</summary>
     private async Task<IReadOnlyList<AgencyWireRow>> WiresAsync(Guid orgId, AccountantPackagePeriod period, CancellationToken cancellationToken)
     {
         var start = RomeCalendar.StartOfDayUtc(period.From);
@@ -211,7 +200,6 @@ public sealed class AgencySummaryService(
             .ToList();
     }
 
-    /// <summary>The margin for each currency: the taxable commissions and recharges invoiced, less the portal commissions the agency bears.</summary>
     internal static IReadOnlyList<AgencyMarginRow> MarginOf(IReadOnlyList<AgencyCommissionRow> commissions, IReadOnlyList<AgencyPortalCommissionBorneRow> borne) =>
         commissions.Select(c => c.Currency)
             .Concat(borne.Select(b => b.Currency))
@@ -225,8 +213,6 @@ public sealed class AgencySummaryService(
                 return new AgencyMarginRow(currency, invoiced, recharged, cost, invoiced + recharged - cost);
             })
             .ToList();
-
-    // ---------------------------------------------------------------- the reports' rows as the summary holds them
 
     private static AgencyPortalCostRow PortalCostOf(ChannelCostRow row) =>
         new(row.Source, row.Kind, row.StayCount, row.Gross, row.Commission, row.Net, row.CostRate);

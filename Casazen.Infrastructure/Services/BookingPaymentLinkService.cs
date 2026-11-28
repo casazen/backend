@@ -38,14 +38,11 @@ public sealed class BookingPaymentLinkService(
     IGuestEmailBrandingProvider? emailBranding = null,
     IGuestEmailLanguageProvider? emailLanguage = null) : IBookingPaymentLinkService
 {
-    /// <summary>The description of the PaymentIntent and of the payment row of a link (no personal data).</summary>
     internal const string PaymentDescription = "Payment link of a host booking";
     internal const string GuestPaymentDescription = "Guest portal stay balance";
 
-    /// <summary>The <c>kind</c> of the metadata of the checkout's PaymentIntents: the Connect webhook settles only these.</summary>
     internal const string CheckoutPaymentKind = "direct-booking";
 
-    /// <summary>PaymentIntent statuses the guest can still pay.</summary>
     private static readonly HashSet<string> PayableIntentStatuses = new(StringComparer.Ordinal)
     {
         "requires_payment_method",
@@ -73,7 +70,6 @@ public sealed class BookingPaymentLinkService(
 
     public async Task<BookingPaymentLink> CreateAsync(Guid bookingId, CancellationToken ct)
     {
-        // Through the tenant filter of the caller: a booking of another org is not found (404), whatever its id.
         if (!await db.Bookings.AsNoTracking().AnyAsync(b => b.Id == bookingId, ct))
             throw NotFound();
 
@@ -88,16 +84,11 @@ public sealed class BookingPaymentLinkService(
             .FirstOrDefaultAsync(b => b.Id == bookingId, ct)
             ?? throw NotFound();
 
-        // A booking the host entered, or a confirmed one of the booking site whose price an edit raised (E08/F02/US01/T01): a hold of the booking
-        // site has its own checkout, and a portal collects its own bookings.
         var linkable = booking.Source == BookingSource.Manual
                        || (booking.Source == BookingSource.Direct && booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn);
         if (!linkable || booking.Status == BookingStatus.Cancelled)
             throw Unavailable();
 
-        // A booking of the booking site paid at its deadline ("Paga alla scadenza") whose card has not been charged yet is collected by the deadline
-        // charge, on the whole total, and that charge knows nothing of a link: the guest would pay twice. No link until the deadline charge is
-        // collected; after it, only a price raised by an edit leaves a balance (and that one is charged to the saved card).
         if (booking.Source == BookingSource.Direct && booking.PaymentOption == PaymentOption.OnCancellationDeadline)
         {
             var deferred = DeferredCharges.FindPayment(booking, booking.Payments);
@@ -109,7 +100,6 @@ public sealed class BookingPaymentLinkService(
         if (!org.CanTakeDirectPayments || string.IsNullOrWhiteSpace(org.Slug) || !links.IsConfigured)
             throw Unavailable();
 
-        // A payment Stripe is processing (a SEPA debit) is money on its way: no second link next to it.
         if (booking.Payments.Any(p => p.Status == PaymentStatus.Processing))
             throw Unavailable();
 
@@ -121,7 +111,6 @@ public sealed class BookingPaymentLinkService(
         var now = _clock.GetUtcNow().UtcDateTime;
         var prepared = await PrepareIntentAsync(booking, balance, now, fromGuestPortal: false, ct);
 
-        // A new token: the previous link stops working, and only the hash is kept.
         var token = CheckoutOutcomes.NewToken();
         booking.CheckoutTokenHash = CheckoutOutcomes.HashToken(token);
         booking.PaymentLinkSentAt = now;
@@ -212,7 +201,6 @@ public sealed class BookingPaymentLinkService(
             && DeferredCharges.AwaitsGuestPayment(booking)
             && PaymentRefundService.PaymentIntentIdOf(deferredPayment) is not null;
         var processing = amount > 0m && booking.Payments.Any(p => p.Status == PaymentStatus.Processing);
-        // On-site bookings keep their agreed collection method and the separately settled tourist tax.
         var canPay = amount > 0m && (!deferred || retry) && !processing && booking.Org.CanTakeDirectPayments
             && booking.PaymentOption != PaymentOption.OnSite
             && booking.NoShowAt is null && booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
@@ -331,9 +319,7 @@ public sealed class BookingPaymentLinkService(
             return false;
         }
 
-        // E50/F01/US03/T01: the brand of the host while the guest portal is on (null = the CasaZen e-mail). The link is committed: the e-mail is queued whatever happens to the request.
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId, CancellationToken.None);
-        // E50/F01/US03/T02: with the guest portal on, in the language of the guest (the check-in page, the country, the account of the host); without it, in Italian as ever.
         var culture = await emailLanguage.CultureOrAsync(booking.OrgId, booking.Id, EmailTemplates.DefaultCulture, cancellationToken: CancellationToken.None);
         var content = EmailTemplates.BookingPaymentLink(
             culture,

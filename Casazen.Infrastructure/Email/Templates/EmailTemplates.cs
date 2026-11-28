@@ -4,16 +4,10 @@ using Casazen.Core.Suppliers;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
-/// <summary>
-/// Every transactional email of the application, rendered with <see cref="EmailHtmlBuilder"/> in Italian (default)
-/// or English. Links are passed in already built by <see cref="PublicSiteLinks"/>.
-/// </summary>
 public static partial class EmailTemplates
 {
-    /// <summary>Recipients have no language preference yet: emails are sent in Italian.</summary>
     public static CultureInfo DefaultCulture { get; } = CultureInfo.GetCultureInfo("it-IT");
 
-    /// <summary>Template names used in logs and queued jobs.</summary>
     public static partial class Names
     {
         public const string ServiceRequestCreated = "service-request-created";
@@ -48,13 +42,8 @@ public static partial class EmailTemplates
         public const string HostDeferredChargeCancelled = "host-deferred-charge-cancelled";
     }
 
-    /// <summary>EmailTexts key of the label of a <see cref="ServiceCategories"/> code.</summary>
     public static string ServiceCategoryKey(string code) => $"ServiceCategory_{code}";
 
-    /// <summary>
-    /// Label of a service category code in <paramref name="culture"/> (SU-03). A value that is not a known code (an
-    /// old value kept by the migration) is shown as it is; the builder HTML-encodes it like any dynamic value.
-    /// </summary>
     public static string ServiceCategoryLabel(CultureInfo culture, string category) =>
         ServiceCategories.IsKnown(category)
             ? EmailTexts.Get(ServiceCategoryKey(category), culture)
@@ -88,12 +77,6 @@ public static partial class EmailTemplates
             .Build("ServiceRequestCreated_Subject", comune);
     }
 
-    /// <summary>
-    /// A new service request that was accepted automatically for a regular host (SP-04d), to the supplier: it takes the place of
-    /// <see cref="ServiceRequestCreated"/>. The supplier is told the request is already its job and can still be cancelled, with the
-    /// same data as that email (the comune, the time, the amount): the address and the host's contact are in the console, as after any
-    /// take, and are <b>not</b> written here.
-    /// </summary>
     public static EmailContent ServiceRequestAutoAccepted(
         CultureInfo culture,
         string supplierName,
@@ -117,8 +100,6 @@ public static partial class EmailTemplates
             .Build("ServiceRequestAutoAccepted_Subject", comune);
     }
 
-    /// <summary>The final amount and the notes the supplier left when it completed a request, for the email to the host.</summary>
-    /// <param name="TolerancePercent">The tolerance of decision D7, named when the amount is above the quote by more than it.</param>
     public sealed record ServiceRequestCompletionEmail(int? FinalAmountCents, bool AmountNeedsConfirmation, int TolerancePercent, string? Notes);
 
     /// <summary>
@@ -181,15 +162,6 @@ public static partial class EmailTemplates
         return builder.Build($"{prefix}_Subject", propertyName);
     }
 
-    /// <summary>
-    /// A request cancelled by the host or by CasaZen (no answer in time), to the supplier. It names only the comune: the
-    /// supplier may not have taken the request, so it may not know the property (decision D9).
-    /// </summary>
-    /// <param name="cancelledBy"><see cref="ServiceRequestActorParty.Host"/> or <see cref="ServiceRequestActorParty.System"/>.</param>
-    /// <param name="reason">The host's reason (shown for a cancellation by the host only).</param>
-    /// <param name="lostPoints">
-    /// The missed answer cost the supplier points of its reliability (SP-REL): a line says so (cancellation by CasaZen only).
-    /// </param>
     public static EmailContent ServiceRequestCancelledToSupplier(
         CultureInfo culture,
         string supplierName,
@@ -214,7 +186,6 @@ public static partial class EmailTemplates
             .Build($"{prefix}_Subject", comune);
     }
 
-    /// <summary>The host reminds the supplier to answer a new request (SP-04), to the supplier.</summary>
     public static EmailContent ServiceRequestReminder(
         CultureInfo culture,
         string supplierName,
@@ -227,10 +198,6 @@ public static partial class EmailTemplates
             .Button("ServiceRequestReminder_Cta", inboxUrl)
             .Build("ServiceRequestReminder_Subject", comune);
 
-    /// <summary>
-    /// The supplier proposes another time for a new request (SP-04), to the host. <paramref name="hostUrl"/> is the page of the
-    /// stay when the request has one (a long-rent request has none).
-    /// </summary>
     public static EmailContent ServiceRequestTimeProposed(
         CultureInfo culture,
         string category,
@@ -254,7 +221,6 @@ public static partial class EmailTemplates
         return builder.Build("ServiceRequestTimeProposed_Subject", propertyName);
     }
 
-    /// <summary>The host accepted or declined the time the supplier proposed (SP-04), to the supplier.</summary>
     public static EmailContent ServiceRequestProposalAnswered(
         CultureInfo culture,
         string supplierName,
@@ -271,11 +237,9 @@ public static partial class EmailTemplates
             .Build($"{prefix}_Subject", comune);
     }
 
-    /// <summary>An amount in cents as euro in <paramref name="culture"/> (<c>60,00 €</c>, <c>60.00 €</c>).</summary>
     internal static string FormatEuro(int amountCents, CultureInfo culture) =>
         $"{(amountCents / 100m).ToString("N2", culture)} €";
 
-    /// <summary>A time proposed for a job as <c>15/10/2026 10:00–12:00</c>, in Italian time (Europe/Rome).</summary>
     private static string FormatInterval(EmailHtmlBuilder builder, DateTime startUtc, DateTime endUtc)
     {
         var endLocal = TimeZoneInfo.ConvertTimeFromUtc(
@@ -283,10 +247,6 @@ public static partial class EmailTemplates
         return $"{builder.FormatInstant(startUtc)}–{endLocal.ToString("HH:mm", builder.Culture)}";
     }
 
-    /// <summary>
-    /// Service request marked as paid by the host, to the supplier (SU-09). Payment happens outside CasaZen (a manual flag
-    /// of the host, no transfer to the supplier), and the email says so.
-    /// </summary>
     public static EmailContent ServiceRequestPaid(
         CultureInfo culture,
         string supplierName,
@@ -300,10 +260,6 @@ public static partial class EmailTemplates
             .Button("ServiceRequestPaid_Cta", inboxUrl)
             .Build("ServiceRequestPaid_Subject", propertyName);
 
-    /// <summary>
-    /// Invitation of a prospective supplier by a platform admin. <paramref name="comune"/> is the text shown for the
-    /// comune ("Name (code)" when the name is known, else the code); the expiry is shown in Italian time (Europe/Rome).
-    /// </summary>
     public static EmailContent SupplierInvite(
         CultureInfo culture,
         string email,
@@ -328,11 +284,6 @@ public static partial class EmailTemplates
         };
     }
 
-    /// <summary>
-    /// Invitation of a prospective independent host by a platform admin (<paramref name="inviterName"/> null) or by a host. The
-    /// invite grants nothing: the email says to sign up normally. <paramref name="message"/> is the inviter's note, HTML-encoded
-    /// like every value; the expiry is shown in Italian time (Europe/Rome).
-    /// </summary>
     public static EmailContent HostInvite(
         CultureInfo culture,
         string email,
@@ -365,9 +316,6 @@ public static partial class EmailTemplates
     private static string InvoiceLink(string checkInUrl) =>
         Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(checkInUrl, "invoice", "1");
 
-    /// <summary>Tokenized self check-in link, to the guest.</summary>
-    /// <param name="expiresAtUtc">End of validity of the link (CO-09: configurable lifetime), shown in Italian time.</param>
-    /// <param name="branding">The brand of the host (E50/F01/US03/T01): logo, color and name, sent in its name; <c>null</c> = the CasaZen e-mail, as ever.</param>
     public static EmailContent GuestCheckInLink(
         CultureInfo culture,
         string guestName,
@@ -456,10 +404,6 @@ public static partial class EmailTemplates
             .Build("AlloggiatiDeadline_Subject", propertyName, checkInDate);
     }
 
-    /// <summary>
-    /// A refund confirmed by Stripe, to the guest (BK-02). <paramref name="amountEur"/> is in <paramref name="currency"/>, the one of the
-    /// property (the parameter keeps its old name; CHF-MONEY).
-    /// </summary>
     public static EmailContent GuestRefundConfirmed(
         CultureInfo culture,
         string guestName,
@@ -475,10 +419,6 @@ public static partial class EmailTemplates
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestRefundConfirmed_Subject", propertyName);
 
-    /// <summary>
-    /// A payment that arrived when the dates were no longer available, refunded in full once Stripe confirmed the
-    /// refund (BK-04, A3-04), to the guest. <paramref name="amountEur"/> is in <paramref name="currency"/>, the one of the property.
-    /// </summary>
     public static EmailContent GuestPaymentRefundedDatesUnavailable(
         CultureInfo culture,
         string guestName,
@@ -562,11 +502,6 @@ public static partial class EmailTemplates
         return ContactHost(builder, hostContact).Build("GuestBookingCancelled_Subject", propertyName);
     }
 
-    /// <summary>
-    /// The guest cancelled the booking themselves, from the guest area or with the link the host sent (DB-08a), to the host: who, which
-    /// stay, what was refunded (<paramref name="refundedEur"/>, made or started) and what the policy kept (<paramref name="retainedEur"/>),
-    /// the dates free again, and the link to the booking. The guest's own words and the host's reason are not part of it.
-    /// </summary>
     public static EmailContent HostBookingCancelledByGuest(
         CultureInfo culture,
         string guestFullName,
@@ -643,8 +578,6 @@ public static partial class EmailTemplates
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown confirmation kind.");
         }
 
-        // E50/F01/US03/T03: the stay link of the guest portal is the first button, with its fallback link; the notice of the check-in below stays as it is. The address is made by the link
-        // service of the portal and handed in: a template never builds it. Without it (the portal off, a booking that may not have a link) the e-mail is the one of today.
         if (stayUrl is not null)
         {
             builder
@@ -668,11 +601,6 @@ public static partial class EmailTemplates
         return builder.Build("GuestBookingConfirmed_Subject", booking.PropertyName);
     }
 
-    /// <summary>
-    /// What the confirmation says about the online check-in (E23/F02/US01/T01): with the link, a button «Fai il check-in online», the usual fallback link and until when the link is valid;
-    /// without it, the day the link arrives by email (the day is formatted like the other dates of the email) and where to request it, or only where to request it. Nothing when there
-    /// is no notice. The link is an absolute http(s) URL: the builder refuses any other, and encodes it.
-    /// </summary>
     private static void CheckInBlock(EmailHtmlBuilder builder, BookingCheckInNotice? checkIn)
     {
         if (checkIn is null)
@@ -696,11 +624,6 @@ public static partial class EmailTemplates
             builder.Paragraph("GuestBookingConfirmed_CheckInRequest");
     }
 
-    /// <summary>
-    /// A new booking confirmed without the host's action (payment or saved card at the checkout), to the host (BK-10,
-    /// A3-11): guest name, stay, amounts, payment and a link to the booking in the console. A "pay at the property"
-    /// request is accepted by the host, who is not emailed about it.
-    /// </summary>
     public static EmailContent HostBookingConfirmed(
         CultureInfo culture,
         string guestFullName,
@@ -736,11 +659,6 @@ public static partial class EmailTemplates
             .Build("HostBookingConfirmed_Subject", booking.PropertyName, booking.CheckInDate);
     }
 
-    /// <summary>
-    /// RLI registration deadline approaching, to the landlord (LT-11, A7-26). <paramref name="contractNotSignedYet"/>:
-    /// the contract is not signed by every party yet and its start date has passed, so the deadline counts from the
-    /// start date (LT-04).
-    /// </summary>
     public static EmailContent RliDeadlineReminder(
         CultureInfo culture,
         string propertyName,
@@ -757,10 +675,6 @@ public static partial class EmailTemplates
             .Build("RliDeadlineReminder_Subject", propertyName, registrationDeadline);
     }
 
-    /// <summary>
-    /// RLI registration deadline passed without a completed registration, to the landlord. See
-    /// <see cref="RliDeadlineReminder"/> for <paramref name="contractNotSignedYet"/>.
-    /// </summary>
     public static EmailContent RliDeadlineOverdue(
         CultureInfo culture,
         string propertyName,
@@ -776,10 +690,6 @@ public static partial class EmailTemplates
             .Build("RliDeadlineOverdue_Subject", propertyName);
     }
 
-    /// <summary>
-    /// "Pay at the property" request received, to the guest (BK-06, D5): the link confirms the email address and sends the
-    /// request to the host; without it the request is cancelled at <paramref name="confirmByUtc"/> (shown in Italian time).
-    /// </summary>
     public static EmailContent OnSiteRequestReceived(
         CultureInfo culture,
         string guestName,
@@ -803,10 +713,6 @@ public static partial class EmailTemplates
             .Build("OnSiteRequestReceived_Subject", propertyName);
     }
 
-    /// <summary>
-    /// New "pay at the property" request to accept or decline, to the host (BK-06, D5). The answer is due by
-    /// <paramref name="answerByUtc"/> (shown in Italian time); <paramref name="requestsUrl"/> opens the console.
-    /// </summary>
     public static EmailContent OnSiteRequestToHost(
         CultureInfo culture,
         string guestName,
@@ -836,7 +742,6 @@ public static partial class EmailTemplates
             .Build("OnSiteRequestToHost_Subject", propertyName);
     }
 
-    /// <summary>"Pay at the property" request declined by the host, to the guest (BK-06), with the host's optional message.</summary>
     public static EmailContent OnSiteRequestDeclined(
         CultureInfo culture,
         string guestName,
@@ -851,7 +756,6 @@ public static partial class EmailTemplates
             .Paragraph("OnSiteRequest_NoCharge")
             .Build("OnSiteRequestDeclined_Subject", propertyName);
 
-    /// <summary>"Pay at the property" request not answered by the host in time, to the guest (BK-06).</summary>
     public static EmailContent OnSiteRequestExpired(
         CultureInfo culture,
         string guestName,
@@ -864,12 +768,6 @@ public static partial class EmailTemplates
             .Paragraph("OnSiteRequest_NoCharge")
             .Build("OnSiteRequestExpired_Subject", propertyName);
 
-    /// <summary>
-    /// "Paga più tardi": the deferred charge failed (authentication required, card declined), to the guest (BK-08, A3-14).
-    /// <paramref name="payUrl"/> opens the checkout outcome page with a new checkout token, where the guest pays the same
-    /// PaymentIntent. <paramref name="payByDay"/> is the last day to pay before the automatic cancellation, when one
-    /// applies. Shares greeting, booking code, summary, link fallback and host contact with the BK-10 booking emails.
-    /// </summary>
     public static EmailContent GuestDeferredChargeFailed(
         CultureInfo culture,
         string guestName,
@@ -936,10 +834,6 @@ public static partial class EmailTemplates
             .Build("HostDeferredChargeFailed_Subject", booking.PropertyName, booking.CheckInDate);
     }
 
-    /// <summary>
-    /// "Paga più tardi" not paid in time: the booking was cancelled automatically and its dates released, to the host
-    /// (BK-08). The guest gets <see cref="GuestBookingCancelled"/> with <see cref="BookingCancellationEmailCause.DeferredPaymentNotCompleted"/>.
-    /// </summary>
     public static EmailContent HostDeferredChargeCancelled(
         CultureInfo culture,
         string guestFullName,
@@ -1003,7 +897,6 @@ public static partial class EmailTemplates
             .Build(subjectKey, propertyName, deadline);
     }
 
-    /// <summary>Nights, guests, lodging, cleaning and tourist tax (only when charged) and total of a booking.</summary>
     private static IEnumerable<(string Key, object?[] Args)> SummaryLines(BookingEmailSummary booking, CultureInfo culture)
     {
         yield return ("Booking_Summary_Nights", [booking.Nights]);
@@ -1016,10 +909,6 @@ public static partial class EmailTemplates
         yield return ("Booking_Summary_Total", [Money(booking.Total, booking.Currency, culture)]);
     }
 
-    /// <summary>
-    /// The host's contact shown on the booking site (name and email of the site footer); without an email the guest is
-    /// told to contact the host of the property. Nothing else is invented.
-    /// </summary>
     private static EmailHtmlBuilder ContactHost(EmailHtmlBuilder builder, BookingHostContact contact)
     {
         if (string.IsNullOrWhiteSpace(contact.Email))
@@ -1055,40 +944,26 @@ public static partial class EmailTemplates
     }
 }
 
-/// <summary>Why the guest's booking was cancelled (<see cref="EmailTemplates.GuestBookingCancelled"/>).</summary>
 public enum BookingCancellationEmailCause
 {
-    /// <summary>The host cancelled it (PC-07, BK-02).</summary>
     Host,
 
-    /// <summary>"Paga più tardi" not paid within the deadline after the failed charge (BK-08): nothing was charged.</summary>
     DeferredPaymentNotCompleted,
 
-    /// <summary>The guest cancelled it themselves, from the guest area or with the host's link (DB-08a, DB-08h).</summary>
     Guest,
 }
 
-/// <summary>How a booking became confirmed (BK-10): decides the payment paragraph and whether the host is emailed.</summary>
 public enum BookingConfirmationKind
 {
-    /// <summary>Paid online at the checkout, within the hold (<c>payment_intent.succeeded</c>).</summary>
     PaidOnline,
 
-    /// <summary>Paid online after the hold had ended, with the dates still free: confirmed again (BK-04).</summary>
     PaidOnlineLate,
 
-    /// <summary>Card saved at the checkout (<c>setup_intent.succeeded</c>), charged at the free-cancellation deadline.</summary>
     DeferredCharge,
 
-    /// <summary>"Pay at the property" request accepted by the host (BK-06, D5): nothing paid online.</summary>
     OnSite,
 }
 
-/// <summary>
-/// What the booking emails show of a booking (BK-10), as recorded on it and in <see cref="Currency"/>, the one of its property
-/// (CHF-MONEY): <see cref="Lodging"/> is the nightly part (<c>BasePrice - CleaningFee</c>), <see cref="Total"/> includes cleaning and the
-/// tourist tax (BK-03). <see cref="BookingCode"/> is the code "Le mie prenotazioni" asks for (<c>Booking.BookingCode</c>, formatted, BK-11).
-/// </summary>
 public sealed record BookingEmailSummary(
     string BookingCode,
     string PropertyName,
@@ -1104,45 +979,30 @@ public sealed record BookingEmailSummary(
     public int Nights => Math.Max(0, (CheckOutDate.Date - CheckInDate.Date).Days);
 }
 
-/// <summary>
-/// The host's contact the guest emails may show: the name and email that the booking site already shows publicly
-/// (<c>Org.DisplayName</c>, <c>Org.ContactEmail</c>, site footer). Either may be empty.
-/// </summary>
 public sealed record BookingHostContact(string? Name, string? Email)
 {
     public static BookingHostContact None { get; } = new(null, null);
 }
 
-/// <summary>
-/// What the e-mail that confirms a direct booking says about the online check-in (E23/F02/US01/T01, <see cref="EmailTemplates.GuestBookingConfirmed"/>). Three ways, one factory
-/// each: <see cref="WithLink"/> (the check-in is already open and the link is issued: the e-mail carries it), <see cref="OnDay"/> (the link arrives by e-mail on a day) and
-/// <see cref="RequestOnly"/> (the link can be requested in «Le mie prenotazioni» and no day is promised). No notice at all (<c>null</c>) says nothing about the link.
-/// </summary>
 public sealed record BookingCheckInNotice
 {
     private BookingCheckInNotice()
     {
     }
 
-    /// <summary>The check-in link, an absolute URL, when the e-mail carries it.</summary>
     public string? LinkUrl { get; private init; }
 
-    /// <summary>The end of validity of <see cref="LinkUrl"/> (UTC), shown in Italian time.</summary>
     public DateTime? LinkExpiresAtUtc { get; private init; }
 
-    /// <summary>The day the link arrives by e-mail (a date, midnight UTC of the Europe/Rome day: it is formatted like the other dates of the e-mail).</summary>
     public DateTime? LinkArrivesOn { get; private init; }
 
-    /// <summary>The check-in is open and the e-mail carries the link (a button, the fallback link and its validity).</summary>
     public static BookingCheckInNotice WithLink(string linkUrl, DateTime expiresAtUtc)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(linkUrl);
         return new BookingCheckInNotice { LinkUrl = linkUrl, LinkExpiresAtUtc = expiresAtUtc };
     }
 
-    /// <summary>The link arrives by e-mail on <paramref name="day"/>, and from then it can also be requested in «Le mie prenotazioni».</summary>
     public static BookingCheckInNotice OnDay(DateTime day) => new() { LinkArrivesOn = day };
 
-    /// <summary>No day is promised: the link can be requested in «Le mie prenotazioni».</summary>
     public static BookingCheckInNotice RequestOnly { get; } = new();
 }

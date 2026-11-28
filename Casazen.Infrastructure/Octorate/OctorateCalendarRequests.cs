@@ -12,14 +12,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 internal static class OctorateCalendarRequests
 {
-    /// <summary>The longest interval of one element of the bulk call, in days.</summary>
     private const int MaxIntervalDays = 366;
 
-    /// <summary>
-    /// The JSON array of the bulk call: for each update <c>{ room, dateFrom, dateTo, values }</c>, with the members of the values that are not set left out
-    /// and the dates as <c>yyyy-MM-dd</c>.
-    /// </summary>
-    /// <exception cref="ArgumentException">No update, too many, a room that is not a number, an interval that is backwards or too long, or values with nothing to write.</exception>
     internal static string UpdateBody(IReadOnlyList<OctorateCalendarUpdate> updates)
     {
         ArgumentNullException.ThrowIfNull(updates);
@@ -145,7 +139,6 @@ internal static class OctorateCalendarRequests
         }
     }
 
-    /// <summary>A <c>warnings</c> member that says something: a list with an element, a text, an object with a member.</summary>
     private static bool HasWarnings(JsonElement root) =>
         root.TryGetProperty("warnings", out var warnings)
         && warnings.ValueKind switch

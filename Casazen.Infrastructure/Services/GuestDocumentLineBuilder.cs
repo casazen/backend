@@ -47,7 +47,6 @@ public sealed class GuestDocumentLineBuilder(
         return IsItalian(profile.CountryCode) ? (italianTouristTax?.Value.PlatformCollected ?? []).Distinct().ToList() : [];
     }
 
-    /// <summary>True for an issuer in Italy: the country the profile has when it names none.</summary>
     internal static bool IsItalian(string? countryCode) =>
         string.IsNullOrWhiteSpace(countryCode) || string.Equals(countryCode.Trim(), FiscalDocumentRules.Italy, StringComparison.OrdinalIgnoreCase);
 
@@ -86,7 +85,6 @@ public sealed class GuestDocumentLineBuilder(
         // Who collected the money first: the line of an Italian tax the portal left to the host is written «da pagare in struttura» when the document is made, so that the XML and the API say what the PDF says.
         var paymentChannel = await ChannelOfAsync(stay, ct);
 
-        // The tourist tax: the line of the tax is drawn only when the host collects it, and the line of the stay says so when an Italian portal collected a tax (nothing else is said of it).
         var tax = rule.IsSwiss
             ? new TouristTaxOutcome(await SwissTouristTaxAsync(stay, platformCollectedTouristTaxChannels, ct), false, false)
             : await ItalianTouristTaxAsync(stay, platformCollectedTouristTaxChannels, ct);
@@ -117,10 +115,6 @@ public sealed class GuestDocumentLineBuilder(
     private static string TouristTaxKeyOf(FiscalTaxRule rule, FiscalPaymentChannel paymentChannel) =>
         rule.IsSwiss ? SwissTouristTaxKey : paymentChannel == FiscalPaymentChannel.Portal ? TouristTaxToCollectKey : TouristTaxKey;
 
-    /// <summary>
-    /// The lines of the booking that the document of the plan bills (E17/F01/US01/T02): all of them for the one document of the organization; the stay of an owner
-    /// leaves out the services the agency bills apart (the cleaning when it is the agency's service, the extras), which make the agency's own document.
-    /// </summary>
     public static IReadOnlyList<FiscalDocumentGrossLine> LinesOf(IReadOnlyList<FiscalDocumentGrossLine> lines, PlannedDocument planned)
     {
         ArgumentNullException.ThrowIfNull(lines);
@@ -128,10 +122,6 @@ public sealed class GuestDocumentLineBuilder(
         return lines.Where(line => planned.Bills(line.LineType)).ToList();
     }
 
-    /// <summary>
-    /// The lines of the booking that an issued document billed (E17/F01/US01/T02), to compare it with what the booking bills now: the services of the agency for its
-    /// document of the services; for a document of the stay, everything its issuer bills (the services of the agency left out when an owner issued it).
-    /// </summary>
     public static IReadOnlyList<FiscalDocumentGrossLine> LinesOf(
         IReadOnlyList<FiscalDocumentGrossLine> lines,
         FiscalDocument document,
@@ -149,10 +139,6 @@ public sealed class GuestDocumentLineBuilder(
         return byTheOrganization ? lines : lines.Where(line => !services.Contains(line.LineType)).ToList();
     }
 
-    /// <summary>
-    /// The stay and the cleaning of a price that includes the cleaning (<c>BasePrice</c>): the cleaning is at most the price, and the two add up to it, so the cleaning is never
-    /// billed twice. A booking of a portal has no cleaning fee of its own: its whole price is the stay.
-    /// </summary>
     internal static (decimal Lodging, decimal Cleaning) SplitOf(decimal basePrice, decimal cleaningFee)
     {
         var price = Math.Max(basePrice, 0m);
@@ -160,10 +146,6 @@ public sealed class GuestDocumentLineBuilder(
         return (price - cleaning, cleaning);
     }
 
-    /// <summary>
-    /// Who collected the money of a booking: for a portal, the reservation (<c>companyCollect</c>, then whether the commission is taken out of the payments), then the configured
-    /// default of the portal; for any other booking, CasaZen when a payment went through it (Stripe), else outside CasaZen.
-    /// </summary>
     internal static FiscalPaymentChannel ChannelOf(
         BookingSource source,
         bool? companyCollect,
@@ -250,10 +232,6 @@ public sealed class GuestDocumentLineBuilder(
             : new TouristTaxOutcome(0m, amount > 0m, false);
     }
 
-    /// <summary>
-    /// Switzerland: nothing for a channel the profile says collects the tax itself; the amount of the booking when it has one; else the rule of the canton of the property
-    /// (<c>SwissMunicipalities</c>) for the guests and the nights of the stay.
-    /// </summary>
     private async Task<decimal> SwissTouristTaxAsync(StayFacts stay, IReadOnlyList<BookingSource> platformCollected, CancellationToken ct)
     {
         if (platformCollected.Contains(stay.Source))
@@ -280,10 +258,8 @@ public sealed class GuestDocumentLineBuilder(
         return new FiscalDocumentGrossLine(description, 1m, gross, rate.Percent, rate.NatureCode, type);
     }
 
-    /// <summary>The record of the tourist tax of the stay (E25): what the host confirmed, who it declared collects, and the collector of the calculation it confirmed (none before it confirmed).</summary>
     private sealed record TaxRecord(DateTime? ConfirmedAt, decimal Total, TouristTaxCollector? DeclaredCollector, TouristTaxCollector? ConfirmedCollector);
 
-    /// <summary>What the tourist tax of the stay comes to: the amount of its line (0 for none), whether the portal collected a tax the stay owes, and whether the line is there only by the default.</summary>
     private sealed record TouristTaxOutcome(decimal Amount, bool CollectedByPortal, bool FromDefault);
 
     private sealed record StayFacts(
@@ -301,7 +277,6 @@ public sealed class GuestDocumentLineBuilder(
         string? ComuneIstatCode,
         Guid OrgId)
     {
-        /// <summary>The nights of the stay (calendar days between check-in and check-out).</summary>
         public int Nights => Math.Max(0, (CheckOut.Date - CheckIn.Date).Days);
     }
 }

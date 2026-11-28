@@ -25,9 +25,6 @@ public interface IPublicCalendarService
     /// </exception>
     Task<PublicCalendar> GetAsync(Guid propertyId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// The same for a property of a site, by its slug or its id (the org is the site's: a property of another org is not found).
-    /// </summary>
     Task<PublicCalendar> GetAsync(
         Guid orgId,
         string propertySlugOrId,
@@ -53,10 +50,8 @@ public sealed record PublicCalendar(
     IReadOnlyList<PublicCalendarDay> Days,
     DateTime GeneratedAt)
 {
-    /// <summary>Longest range one request may ask for: 13 months, a whole year of bookings plus the month being booked.</summary>
     public const int MaxMonths = 13;
 
-    /// <summary>Months asked when the request names none.</summary>
     public const int DefaultMonths = 12;
 }
 
@@ -92,9 +87,7 @@ public sealed record PublicCalendarDay(
     int? MinAdvanceDays = null,
     int? MaxAdvanceDays = null);
 
-/// <summary>Stable <c>code</c> values of the public calendar errors: never rename one.</summary>
 public static class PublicCalendarErrorCodes
 {
-    /// <summary>422: the end of the range is not after its start, or the range is longer than 13 months.</summary>
     public const string InvalidRange = "public_calendar_range_invalid";
 }

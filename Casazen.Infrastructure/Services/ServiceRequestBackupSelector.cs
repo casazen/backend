@@ -30,7 +30,6 @@ public sealed class ServiceRequestBackupSelector(
     AppDbContext db,
     ILogger<ServiceRequestBackupSelector> logger)
 {
-    /// <summary>The most candidates examined for one request, whatever the number of backups wanted.</summary>
     public const int MaxCandidatesExamined = 12;
 
     public async Task<IReadOnlyList<SupplierProfile>> SelectAsync(
@@ -79,10 +78,6 @@ public sealed class ServiceRequestBackupSelector(
         return chosen;
     }
 
-    /// <summary>
-    /// True when the supplier could take the job at that time: no job it took overlaps it and, when the time must be one of the
-    /// published slots, it is one of the supplier's.
-    /// </summary>
     public async Task<bool> IsFreeAsync(
         Guid supplierOrgId,
         DateTime startUtc,

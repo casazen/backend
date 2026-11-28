@@ -25,16 +25,12 @@ public sealed class DocumentArchiveService(
     IOptions<DocumentArchiveOptions> options,
     ILogger<DocumentArchiveService> logger) : IDocumentArchiveService
 {
-    /// <summary>Code of the 403 of a type the caller may not read.</summary>
     public const string TypeForbiddenCode = "archive_type_forbidden";
 
-    /// <summary>Code of the 404 of a document that is missing, of another org or outside the scope of the caller.</summary>
     public const string DocumentNotFoundCode = "archive_document_not_found";
 
-    /// <summary>Code of the 404 of a document that has no file (or whose file is gone from the storage).</summary>
     public const string DocumentHasNoFileCode = "archive_document_has_no_file";
 
-    /// <summary>Code of the 422 of an export that holds more documents or bytes than the caps allow.</summary>
     public const string ExportTooLargeCode = "archive_export_too_large";
 
     private readonly IReadOnlyList<IDocumentArchiveSource> _sources = [.. sources];
@@ -79,7 +75,6 @@ public sealed class DocumentArchiveService(
         ArgumentNullException.ThrowIfNull(access);
         ArgumentNullException.ThrowIfNull(query);
 
-        // The type filter is the one thing a count by type leaves out: the chips show what choosing each type would give.
         var rows = AllowedRows(scope, access, query, byType: false);
         var counts = new Dictionary<ArchiveDocumentType, int>();
         if (rows is not null)
@@ -113,8 +108,6 @@ public sealed class DocumentArchiveService(
         if (!access.Allows(type))
             throw new DomainForbiddenException(TypeForbiddenCode, "ArchiveTypeForbidden");
 
-        // The row is looked up with the query of the list (org, scope), so another org's document, one outside the reach of the caller and one
-        // that does not exist are the same 404.
         var candidates = _sources.Where(s => s.Type == type).ToList();
         var inReach = false;
         foreach (var source in candidates)
@@ -148,9 +141,7 @@ public sealed class DocumentArchiveService(
         var limits = options.Value;
         var rows = AllowedRows(scope, access, query, byType: true);
 
-        // The caps are checked before a byte is written: a refusal is a 422 the host can act on, never a download that stops half way.
         var found = rows is null ? 0 : await rows.CountAsync(cancellationToken);
-        // A document that stores no size (every property document) counts as the largest upload, never as zero: the cap bounds the response.
         var declaredBytes = rows is null || found == 0
             ? 0L
             : await rows.SumAsync(r => r.SizeBytes ?? DocumentArchiveOptions.UndeclaredDocumentBytes, cancellationToken);
@@ -182,13 +173,8 @@ public sealed class DocumentArchiveService(
             cancellationToken);
     }
 
-    /// <summary>The last page a caller can ask for: with the largest page size it still fits in an <c>int</c> offset.</summary>
     private const int MaxPage = 10_000_000;
 
-    /// <summary>
-    /// The queries of the sources the caller may read (and, with <paramref name="byType"/>, that the request asks for), filtered by the request
-    /// and concatenated; <c>null</c> when no source qualifies. An empty list of types selects nothing, never everything.
-    /// </summary>
     private IQueryable<ArchiveRow>? AllowedRows(HostScope scope, DocumentArchiveAccess access, DocumentArchiveQuery query, bool byType)
     {
         IQueryable<ArchiveRow>? union = null;
@@ -204,7 +190,6 @@ public sealed class DocumentArchiveService(
         return union;
     }
 
-    /// <summary>The filters of the request on one source: days, property, booking and the search. Applied to each source, before they are concatenated.</summary>
     private IQueryable<ArchiveRow> Filtered(IQueryable<ArchiveRow> rows, DocumentArchiveQuery query)
     {
         if (query.From is { } from)
@@ -228,7 +213,6 @@ public sealed class DocumentArchiveService(
 
         if (_postgres)
         {
-            // ILIKE with the wildcards of the text escaped: a search for 50% or a_b finds those characters, not everything.
             var pattern = SupplierAdminService.LikePattern(text)!;
             var escape = SupplierAdminService.LikeEscape;
             return rows.Where(r => EF.Functions.ILike(r.Title, pattern, escape)
@@ -242,7 +226,6 @@ public sealed class DocumentArchiveService(
             || (r.BookingCode != null && r.BookingCode.ToLower().Contains(lower)));
     }
 
-    /// <summary>The first file a source of <paramref name="type"/> opens for the row: more than one source may share a type.</summary>
     private async Task<ArchiveFile?> OpenFileAsync(ArchiveDocumentType type, Guid id, HostScope scope, CancellationToken cancellationToken)
     {
         foreach (var source in _sources.Where(s => s.Type == type))
@@ -255,7 +238,6 @@ public sealed class DocumentArchiveService(
         return null;
     }
 
-    /// <summary>A row whose source could not say the MIME type in SQL gets it from the extension of its title.</summary>
     private static ArchiveRow WithContentType(ArchiveRow row) =>
         row.ContentType.Length > 0 ? row : row with { ContentType = StorageKeys.ContentTypeFor(row.Title) };
 

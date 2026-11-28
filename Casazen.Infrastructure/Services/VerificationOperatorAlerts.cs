@@ -35,7 +35,6 @@ public sealed class VerificationOperatorAlerts(
         if (!VerificationAlertReasons.IsKnown(reasonCode))
             throw new ArgumentException($"Unknown verification alert reason '{reasonCode}'.", nameof(reasonCode));
 
-        // The anonymous guest request has no tenant: the session is found by id and everything after is scoped to its org.
         var target = await db.GuestCheckInSessions
             .AsNoTracking()
             .IgnoreQueryFilters()
@@ -58,8 +57,6 @@ public sealed class VerificationOperatorAlerts(
             return;
         }
 
-        // The one definition of an active stay (AlloggiatiStatusRules): the queue does not list a request, a hold, a cancelled stay or a no-show,
-        // so an alert about one would tell the operators of something they cannot open.
         if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(target.BookingStatus) || target.NoShowAt is not null)
         {
             logger.LogInformation(
@@ -99,7 +96,6 @@ public sealed class VerificationOperatorAlerts(
                 target.BookingId, target.PropertyId);
         }
 
-        // The caller's change of the session is saved with the item above; when the item already existed nothing was saved yet.
         await db.SaveChangesAsync(ct);
 
         var push = EmailTemplates.VerificationOperatorAlertPush(culture, target.PropertyName);
@@ -137,7 +133,6 @@ public sealed class VerificationOperatorAlerts(
 
     public async Task ResolveAsync(Guid orgId, Guid bookingId, CancellationToken ct)
     {
-        // The anonymous guest request has no tenant: the org is named in the query.
         var type = nameof(ActivityType.IdentityVerification);
         var open = await db.InternalActivities
             .AsNoTracking()

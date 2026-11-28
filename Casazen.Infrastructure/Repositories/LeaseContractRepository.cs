@@ -19,7 +19,6 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
     public async Task<LeaseContract?> GetByIdWithDetailsAsync(Guid id)
         => await context.LeaseContracts
             .Include(l => l.Property)
-                // The APE of the property: its code and energy class go into the contract (LT-10, LT-03).
                 .ThenInclude(p => p.PropertyDocuments.Where(d => d.DocumentType == DocumentType.Ape))
             .Include(l => l.Parties)
             .Include(l => l.Registration)
@@ -90,8 +89,6 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
 
         if (query.NormalizedSearch is { } search)
         {
-            // The property (name, city, address) or any tenant whose data were not anonymized (first and last name, in
-            // either order). A plain Contains: the text is a parameter, never a LIKE pattern, so % and _ are just characters.
             var term = search.ToLowerInvariant();
             leases = leases.Where(l =>
                 l.Property.Name.ToLower().Contains(term)
@@ -103,11 +100,7 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                         || (p.LastName + " " + p.FirstName).ToLower().Contains(term))));
         }
 
-        // The installments still to be collected, one row per lease: the next due date, and what is past due. Joined once to
-        // the list (LEFT JOIN of a grouped subquery), so the list is one statement whatever the number of leases.
         var orgId = scope.OrgId;
-        // "Open" and "overdue" are RentInstallmentRules.Open and OverdueOn, written inline in the aggregates (a group cannot take
-        // an expression variable); LongRentSqlShapeTests and the integration tests hold the two to the same rule.
         var rent = context.RentLedgerEntries
             .Where(e => e.OrgId == orgId)
             .Where(RentInstallmentRules.Open)
@@ -154,7 +147,6 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.NoticeOn,
                 l.NoticeFrom,
                 l.TerminatedOn,
-                // What the path of the lease needs besides the above (LR-01b): plain columns of the lease, no other table in the statement.
                 l.Origin,
                 l.SentForSignatureAt,
                 l.ReviewConfirmedAt,
@@ -163,20 +155,15 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.IsConcordatoFacileSource,
                 PartyCount = l.Parties.Count,
                 HasExtraEUTenant = l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
-                // The first tenant (the order entered), by three scalar subqueries on the unique index of the parties
-                // (lease, role, position): they read one row per lease of the list, never the parties of the whole table.
                 TenantFirstName = l.Parties.Where(p => p.Role == PartyRole.Tenant).OrderBy(p => p.Position).Select(p => p.FirstName).FirstOrDefault(),
                 TenantLastName = l.Parties.Where(p => p.Role == PartyRole.Tenant).OrderBy(p => p.Position).Select(p => p.LastName).FirstOrDefault(),
                 TenantAnonymized = l.Parties.Where(p => p.Role == PartyRole.Tenant).OrderBy(p => p.Position).Select(p => p.AnonymizedAt != null).FirstOrDefault(),
-                // A lease with nothing to collect has no row on the right of the join: every column of it is null.
                 NextDueDate = (DateOnly?)r.NextDueDate,
                 OverdueCount = (int?)r.OverdueCount ?? 0,
                 OverdueAmount = (decimal?)r.OverdueAmount ?? 0m,
                 OldestOverdue = (DateOnly?)r.OldestOverdue,
             }).ToListAsync();
 
-        // The stage and the next step of each row (LR-01b): decided by LeaseFlow from the row and, for the registered leases and the drafts,
-        // from the few statements of the reader (none when the list has neither), never one per lease.
         var flows = await LeaseFlowReader.DeriveAsync(
             context,
             rows.Select(x => new LeaseFlowRow(
@@ -221,7 +208,6 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 x.HasExtraEUTenant,
                 x.CreatedAt,
                 x.UpdatedAt,
-                // Names only while the data of that tenant were not anonymized (retention or erasure request, LT-12).
                 TenantFirstName: x.TenantAnonymized ? null : x.TenantFirstName,
                 TenantLastName: x.TenantAnonymized ? null : x.TenantLastName,
                 TenantAnonymized: x.TenantAnonymized,

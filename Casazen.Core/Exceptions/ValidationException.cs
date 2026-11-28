@@ -1,8 +1,5 @@
 namespace Casazen.Core.Exceptions;
 
-/// <summary>
-/// Thrown when domain validation fails. Maps to HTTP 422 Unprocessable Entity.
-/// </summary>
 public class ValidationException : Exception
 {
     public IDictionary<string, string[]> Errors { get; }

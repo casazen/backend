@@ -9,10 +9,6 @@ namespace Casazen.Core.Services;
 /// </summary>
 public interface IStayGuestService
 {
-    /// <summary>
-    /// The guests of the booking by <see cref="StayGuest.Position"/>. When none has been registered yet, the booker as
-    /// single guest or head of family (<see cref="StayGuest.FromBooker"/>), not saved.
-    /// </summary>
     Task<IReadOnlyList<StayGuest>> GetForBookingAsync(Booking booking, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -27,7 +23,6 @@ public interface IStayGuestService
         IReadOnlyList<StayGuest> guests,
         CancellationToken cancellationToken = default);
 
-    /// <summary>The guests of several bookings of the same org, with the same fallback, keyed by booking id.</summary>
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<StayGuest>>> GetForBookingsAsync(
         IReadOnlyCollection<Booking> bookings,
         CancellationToken cancellationToken = default);
@@ -41,11 +36,6 @@ public interface IStayGuestService
         IReadOnlyList<StayGuestInput> guests,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Checks the guests of <paramref name="booking"/> without saving, with the rules of its property as <see cref="ReplaceAsync"/> applies them: in
-    /// canton Ticino (NF-132) the document type and number of every guest the police file notifies on their own row
-    /// (<see cref="Regulatory.TicinoPoliceFile.NotifiedPositions"/>), family and group members included. Empty when they can be saved.
-    /// </summary>
     Task<IReadOnlyList<StayGuestFieldError>> ValidateAsync(
         Booking booking,
         IReadOnlyList<StayGuestInput> guests,
@@ -102,13 +92,10 @@ public sealed class StayGuestInput
     public string? DocumentIssuePlaceCode { get; init; }
     public string? DocumentIssuePlaceName { get; init; }
 
-    /// <summary>Day the document was issued: optional, not after today (Europe/Rome) and not before 1900.</summary>
     public DateOnly? DocumentIssuedOn { get; init; }
 
-    /// <summary>Day the document expires: optional, not before the issue day. An expired document is accepted.</summary>
     public DateOnly? DocumentExpiresOn { get; init; }
 
-    /// <summary>Residence in Italy (comune and province) or abroad (state): optional, same shape rules as the birth place.</summary>
     public bool? ResidenceInItaly { get; init; }
     public string? ResidenceComuneCode { get; init; }
     public string? ResidenceComuneName { get; init; }
@@ -116,38 +103,22 @@ public sealed class StayGuestInput
     public string? ResidenceCountryCode { get; init; }
     public string? ResidenceCountryName { get; init; }
 
-    /// <summary>
-    /// The home of the guest (NF-132, «Indirizzo», «CAP», «Domicilio» of the Ticino police file): optional, trimmed, at most 200, 20 and 100
-    /// characters; the postal code is stored upper case. Independent of <see cref="ResidenceInItaly"/>.
-    /// </summary>
     public string? ResidenceStreet { get; init; }
     public string? ResidencePostalCode { get; init; }
     public string? ResidenceCityName { get; init; }
 
-    /// <summary>Statistical fields (NF-40): optional, a code of the closed lists of <c>IstatGuestFieldLists</c>.</summary>
     public string? TourismType { get; init; }
     public string? TravelWay { get; init; }
     public string? EducationLevel { get; init; }
 
-    /// <summary>
-    /// The tourist tax exemption the host chose (an active, non-automatic reason code). Read only when a host replaces the guests; the
-    /// guest portal never changes it.
-    /// </summary>
     public string? TaxExemptionCode { get; init; }
 }
 
-/// <summary>
-/// A field error of the guests: <paramref name="Index"/> is the position of the guest (null for an error of the list or
-/// of the request, e.g. <c>Guests</c>), <paramref name="Field"/> the <see cref="StayGuestInput"/> property name and <paramref name="MessageKey"/> a
-/// SharedResources key formatted with <paramref name="MessageArgs"/>.
-/// </summary>
 public sealed record StayGuestFieldError(int? Index, string Field, string MessageKey, params object[] MessageArgs)
 {
-    /// <summary>Model state key of the error in a request whose guest list is named <paramref name="listName"/> (e.g. <c>Guests[1].DocumentNumber</c>).</summary>
     public string ModelStateKey(string listName) => Index is { } index ? $"{listName}[{index}].{Field}" : Field;
 }
 
-/// <summary>Who enters the guests of a stay (CO-09): the guest on the portal or a host (user id kept for the audit).</summary>
 public sealed record StayGuestAuthor(StayGuestDataSource Source, string? UserId)
 {
     public static readonly StayGuestAuthor GuestPortal = new(StayGuestDataSource.GuestPortal, null);

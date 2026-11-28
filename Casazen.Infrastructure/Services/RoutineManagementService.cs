@@ -41,7 +41,6 @@ public class RoutineManagementService(
 {
     private static readonly RoutineEventType[] TimeEvents = [.. TimeTrigger.StayKinds.Keys];
 
-    /// <summary>Event types a routine can be saved for, but that nothing starts yet: the weekly recurrence has no job that writes it.</summary>
     private static readonly RoutineEventType[] EventsNotStartedYet = [RoutineEventType.WeeklyRecurrence];
 
     public async Task<IReadOnlyList<Routine>> ListAsync(Guid orgId, CancellationToken cancellationToken = default) =>
@@ -110,7 +109,6 @@ public class RoutineManagementService(
     {
         var routine = await FindAsync(orgId, id, cancellationToken);
 
-        // The log goes with the routine: the foreign key of the executions deletes them (migration AddRoutineEngine).
         db.Routines.Remove(routine);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -171,14 +169,10 @@ public class RoutineManagementService(
         return new RoutineExecutionPage(items, total, number, size);
     }
 
-    /// <summary>The routine of the org, tracked for a change; 404 when it is not the org's.</summary>
     private async Task<Routine> FindAsync(Guid orgId, Guid id, CancellationToken cancellationToken) =>
         await db.Routines.FirstOrDefaultAsync(r => r.Id == id && r.OrgId == orgId, cancellationToken)
         ?? throw NotFound(id);
 
-    // ─── The routine that results: validated as a whole ─────────────────────────────────────────────────────
-
-    /// <summary>The routine a command makes: its members, validated, with the active and test-mode rule applied.</summary>
     private sealed record Definition(
         string Name,
         RoutineEventType EventType,
@@ -189,10 +183,6 @@ public class RoutineManagementService(
         bool Active,
         string? AgentObjective);
 
-    /// <summary>
-    /// The routine that <paramref name="command"/> makes of <paramref name="existing"/> (a new one when there is none): what the command leaves out
-    /// stays as it is, and the result is validated whole, so a change of the event type is judged with the configuration the routine keeps.
-    /// </summary>
     private Definition Define(RoutineCommand command, Routine? existing)
     {
         var name = ValidName(command.Name ?? existing?.Name);
@@ -243,21 +233,15 @@ public class RoutineManagementService(
             ? type
             : throw new DomainRuleException(RoutineCodes.EventTypeInvalid, "RoutineEventTypeInvalid");
 
-    /// <summary>The configuration of an event as written: <c>null</c> and the JSON <c>null</c> are no configuration.</summary>
     private static string ConfigurationText(JsonElement configuration) =>
         configuration.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? "{}" : configuration.GetRawText();
 
-    /// <summary>The condition as written: an empty object is no condition, the JSON <c>null</c> is none either.</summary>
     private static string ConditionText(JsonElement condition) =>
         condition.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
         || (condition.ValueKind == JsonValueKind.Object && !condition.EnumerateObject().Any())
             ? "{}"
             : condition.GetRawText();
 
-    /// <summary>
-    /// <c>{ "days": N, "hours": N }</c>, each a whole number of 0 to 365 and together an offset <see cref="TimeTrigger.OffsetHours"/> reads, for a time
-    /// trigger; an empty object for any other type. Anything else is a 422: the emitter and the handler read the same text, so what is saved is what fires.
-    /// </summary>
     private static void ValidateEventConfig(RoutineEventType type, string json)
     {
         if (Encoding.UTF8.GetByteCount(json) > RoutineLimits.MaxConfigBytes)
@@ -300,7 +284,6 @@ public class RoutineManagementService(
         }
     }
 
-    /// <summary>The condition read as the engine reads it and checked by the evaluator, with the fields a routine can read and the kind of value each operator takes (<see cref="RoutineConditions.ValueErrors"/>); 422 with the errors.</summary>
     private void ValidateCondition(string conditionJson)
     {
         if (Encoding.UTF8.GetByteCount(conditionJson) > RoutineLimits.MaxConditionBytes)
@@ -321,7 +304,6 @@ public class RoutineManagementService(
             throw ConditionInvalid(errors);
     }
 
-    /// <summary>The actions of a command: 1 to 10, each of a known type with a configuration that is an object of at most 4 KB and valid for its type.</summary>
     private static (string ActionsJson, IReadOnlyList<RoutineAction> Actions) ReadActions(IReadOnlyList<RoutineActionInput> inputs)
     {
         if (inputs.Count is 0 or > RoutineLimits.MaxActions)
@@ -355,11 +337,9 @@ public class RoutineManagementService(
         return (JsonSerializer.Serialize(items), actions);
     }
 
-    /// <summary>The actions of a saved routine; 422 when they cannot be read (a routine saved some other way).</summary>
     private static IReadOnlyList<RoutineAction> StoredActions(Routine routine) =>
         RoutineAction.TryParseList(routine.ActionsJson, out var actions) ? actions : throw ActionsInvalid();
 
-    /// <summary>Outside test mode a routine that is active holds only actions the catalog lists as available; 422 naming the others.</summary>
     private void RequireAvailableActions(IReadOnlyList<RoutineAction> actions)
     {
         var unavailable = actions
@@ -382,8 +362,6 @@ public class RoutineManagementService(
             Extensions = new Dictionary<string, object?> { ["actions"] = unavailable },
         };
     }
-
-    // ─── What is refused ─────────────────────────────────────────────────────────────────────────────────────
 
     private static NotFoundException NotFound(Guid id) =>
         new($"Routine {id} not found") { Code = RoutineCodes.NotFound, MessageKey = "RoutineNotFound" };

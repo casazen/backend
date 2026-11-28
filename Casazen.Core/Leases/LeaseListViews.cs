@@ -12,32 +12,21 @@ namespace Casazen.Core.Leases;
 /// </summary>
 public enum LeaseListView
 {
-    /// <summary>Every lease (the list as it has always been; the default).</summary>
     All = 0,
 
-    /// <summary>Registered and not ended yet. Includes the leases that are about to expire.</summary>
     Active = 1,
 
-    /// <summary>Not registered yet: draft, in signature, signed and waiting for the registration (or the registration in progress).</summary>
     InPreparation = 2,
 
-    /// <summary>
-    /// Registered, not ended, and ending within <see cref="LeaseListViews.ExpiringWithinMonths"/> months, or with a notice or an early
-    /// termination recorded (it ends with its period and will not renew). A subset of <see cref="Active"/>.
-    /// </summary>
     Expiring = 3,
 
-    /// <summary>Registered and ended, or rejected (a contract that will not take effect).</summary>
     Ended = 4,
 }
 
-/// <summary>What the lease list is asked for: a property, a view and a text to look for (property or tenant).</summary>
 public sealed record LeaseListQuery(Guid? PropertyId = null, LeaseListView View = LeaseListView.All, string? Search = null)
 {
-    /// <summary>Longest search text taken into account (a longer one is cut).</summary>
     public const int MaxSearchLength = 100;
 
-    /// <summary>The search text trimmed and cut, or <c>null</c> when there is nothing to look for.</summary>
     public string? NormalizedSearch
     {
         get
@@ -67,7 +56,6 @@ public sealed record LeaseListQuery(Guid? PropertyId = null, LeaseListView View 
 /// </remarks>
 public static class LeaseListViews
 {
-    /// <summary>Months before the end of the period from which an active lease is "in scadenza".</summary>
     public const int ExpiringWithinMonths = LongRentDeadlineRules.NoticeMonthsBeforeEnd;
 
     public static Expression<Func<LeaseContract, bool>> Predicate(LeaseListView view, DateTime todayInRome)

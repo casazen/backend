@@ -11,10 +11,8 @@ public sealed class EmailOptions
 {
     public const string SectionName = "Email";
 
-    /// <summary>The only provider implemented (<see cref="External.ResendEmailService"/>).</summary>
     public const string ResendProvider = "Resend";
 
-    /// <summary>Key accepted until Railway is migrated to <c>Email__ApiKey</c>.</summary>
     public const string LegacyResendApiKeyKey = "Email:ResendApiKey";
 
     public string Provider { get; set; } = ResendProvider;
@@ -32,7 +30,6 @@ public sealed class EmailOptions
     /// </summary>
     public string? ApiUrl { get; set; }
 
-    /// <summary>True when an email can be handed to the provider: known provider, API key and a valid sender.</summary>
     public bool IsConfigured =>
         string.Equals(Provider, ResendProvider, StringComparison.OrdinalIgnoreCase)
         && !string.IsNullOrWhiteSpace(ApiKey)

@@ -12,10 +12,8 @@ public static partial class IdentityVerificationServiceCollectionExtensions
 {
     static partial void AddDecisionServices(IServiceCollection services)
     {
-        // E73/F01/US01/T01: the engine is pure (no dependency, no state, no clock, no logger, no randomness): one for the whole process.
         services.AddSingleton<IdentityDecisionEngine>();
 
-        // E73/F01/US01/T02: the pipeline of the presence (validation, choice of the frames, liveness, match). Scoped like the liveness evaluator it holds; it keeps nothing of a frame.
         services.AddScoped<IPresenceEvidenceCollector, PresenceEvidenceCollector>();
     }
 }

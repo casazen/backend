@@ -21,38 +21,20 @@ public enum DomainEventType
     IdVerificationCompleted = 8,
     AlloggiatiReceiptArrived = 9,
 
-    /// <summary>
-    /// A host's service request was made (E24/F01/US01/T02): about the request (<c>EntityId</c>), with the payload <c>ServiceRequestEventPayload</c> (ids and the category,
-    /// nothing else), recorded in the save that creates it. Starts no routine; the invoicing of the owners reads it.
-    /// </summary>
     ServiceRequestCreated = 10,
 
-    /// <summary>
-    /// The supplier completed the work of a service request (E24/F01/US01/T02): about the request, with the same payload, recorded in the save of the completion and once for
-    /// each request. Starts the routines of the activity completed (<c>RoutineEventType.ActivityCompleted</c>) of the org of the request.
-    /// </summary>
     ServiceRequestCompleted = 11,
     PaymentSucceeded = 12,
     PaymentFailed = 13,
     GuestMessageReceived = 14,
 
-    /// <summary>
-    /// A guest sent the review of a stay of the booking site (E26/F01/US01/T01): about the review (<c>EntityId</c>), with the payload <c>ReviewReceivedPayload</c> (the
-    /// review, the stay and the property: ids only), recorded by <c>PublicReviewService.SubmitAsync</c> in the same save as the review and once for each review. It starts
-    /// the routines of the host on <c>RoutineEventType.ReviewReceived</c>.
-    /// </summary>
     ReviewReceived = 15,
 
-    /// <summary>A scheduled trigger of a stay ("2 days before check-in"), written by <c>TimeEventEmitterJob</c> (ADR-022-R8).</summary>
     TimeTrigger = 16,
 
     OctorateWebhookReceived = 17,
     OctorateBookingStateChanged = 18,
 
-    /// <summary>
-    /// The host declared the property ready after the check-out of a stay, at the check-out wizard or later (E08/F06/US01). About the
-    /// booking (<c>EntityId</c>); it closes the cleaning "To do" of that stay. Starts no routine.
-    /// </summary>
     PropertyReadyDeclared = 19,
 
     /// <summary>
@@ -92,13 +74,8 @@ public enum DomainEventType
     /// </summary>
     FiscalDocumentIssued = 60,
 
-    /// <summary>CasaZen issued a credit note of one of its documents (E06/F01/US01/T01): about the credit note, with the same payload and the credited document.</summary>
     FiscalDocumentCreditNoteIssued = 61,
 
-    /// <summary>
-    /// The host marked a confirmed stay as a no-show (E12/F01/US01/T03, I12): about the booking (<c>EntityId</c>), with the payload of a booking event (origin Host), recorded
-    /// in the unit of work of the mark and once per booking. The consumer of the fiscal documents prepares the correction of the document of the stay. Starts no routine.
-    /// </summary>
     BookingNoShowMarked = 62,
 
     /// <summary>
@@ -121,11 +98,6 @@ public enum DomainEventType
     /// </summary>
     FiscalDocumentSdiRejected = 65,
 
-    /// <summary>
-    /// The host started the correction of a rejected fiscal document (E17/F01/US02/T03): about the rejected document (<c>EntityId</c>), with the payload
-    /// <c>FiscalDocumentCorrectedPayload</c> (the two documents and their booking), recorded in the unit of work of the correction. The consumer closes the «Da fare» of the
-    /// rejection. Starts no routine.
-    /// </summary>
     FiscalDocumentCorrected = 66,
 
     /// <summary>
@@ -136,7 +108,6 @@ public enum DomainEventType
     /// </summary>
     OnboardingFlowActivated = 100,
 
-    /// <summary>An org administrator deactivated a flow on a property (E10/F01/US01/T04): about the property, with the same payload.</summary>
     OnboardingFlowDeactivated = 101,
 
     /// <summary>

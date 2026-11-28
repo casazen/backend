@@ -2,19 +2,12 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// Limits of «Suggerisci un testo» of the wizard «Aggiungi immobile» (the headline and the description of a listing written by the AI from the
-/// photos, the comune and the data of the property). The photos follow <see cref="AiPhotoLimits"/>.
-/// </summary>
 public static class ListingTextLimits
 {
-    /// <summary>Photos the AI looks at: the cover and the next ones of the gallery, in its order.</summary>
     public const int MaxPhotos = 6;
 
-    /// <summary>The headline: the limit of the field of the listing.</summary>
     public const int TitleMaxLength = PropertyHouseRules.ListingTitleMaxLength;
 
-    /// <summary>The description: the limit of the field of the property.</summary>
     public const int DescriptionMaxLength = 10_000;
 }
 

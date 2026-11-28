@@ -24,10 +24,8 @@ public sealed record OtaStayConversion(
     string? Country = null,
     string? Note = null);
 
-/// <summary>OTA stays created by the host from iCal blocks (CO-21, decision D7). Rules in <see cref="OtaStays"/>.</summary>
 public interface IOtaStayService
 {
-    /// <summary>The calendar block, or null when it does not exist or belongs to another org (tenant filter). Read only.</summary>
     Task<CalendarBlock?> FindBlockAsync(Guid blockId, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -60,6 +58,5 @@ public interface IOtaStayService
     /// <exception cref="Exceptions.DomainConflictException"><see cref="BookingErrorCodes.DatesUnavailable"/>.</exception>
     Task<Booking> ResolveReviewAsync(Guid bookingId, bool applyChannelDates = false, CancellationToken cancellationToken = default);
 
-    /// <summary>The imported block linked to the stay, or null (not a stay from iCal, or its block left the feed). Read only.</summary>
     Task<CalendarBlock?> GetLinkedBlockAsync(Guid bookingId, CancellationToken cancellationToken = default);
 }

@@ -131,8 +131,6 @@ public class DemoEnvironmentService(
         if (!string.Equals(confirmation, DemoShowcaseCatalog.ResetConfirmation, StringComparison.Ordinal))
             throw new DomainRuleException("demo_reset_confirmation", "DemoResetConfirmation");
 
-        // The drafts, the popup alerts, the tourist tax payments, the marketplace rows and the CRM profiles first: removing the showcase
-        // properties drops every showcase marker of the org, and these are found by theirs.
         await RemoveShowcaseWizardDraftsAsync(orgId, cancellationToken);
         await RemoveShowcaseScheduledMessagesAsync(orgId, cancellationToken);
         await RemoveShowcaseRoutinesAsync(orgId, cancellationToken);
@@ -157,26 +155,20 @@ public class DemoEnvironmentService(
             created++;
         }
 
-        // NF-88, NF-89: the CRM profiles, contacts and proposed merges of the showcase guests come from the bookings just created.
         await SeedCrmProfilesAsync(orgId, cancellationToken);
 
-        // NF-61, NF-64: the conversations of the hub of messages are about the houses and stays just created, so they come after them.
         foreach (var thread in DemoShowcaseCatalog.MessageThreads)
             await CreateMessageThreadAsync(orgId, ownerId, thread, cancellationToken);
 
-        // E05/F06/US01/T03 (NF-69): the reviews of the demo and the drafts of their replies are about the past stays just created, so they come after them.
         foreach (var review in DemoShowcaseCatalog.Reviews)
             await CreateReviewAsync(orgId, review, cancellationToken);
 
-        // E05/F02/US02/T02: the message templates of the demo host point at no house or stay, so they can come anywhere after the removal above.
         foreach (var messageTemplate in DemoShowcaseCatalog.HostMessageTemplates)
             await CreateHostMessageTemplateAsync(orgId, messageTemplate, cancellationToken);
 
-        // NF-90: the welcome link (the QR code) of the demo house, which the houses just created make possible.
         foreach (var welcomeLink in DemoShowcaseCatalog.WelcomeLinks)
             await CreateWelcomeLinkAsync(orgId, ownerId, welcomeLink, cancellationToken);
 
-        // E10/F01/US01/T04: the activation with Octorate of the demo org names houses just created, so it comes after them.
         foreach (var activation in DemoShowcaseCatalog.OnboardingActivations)
             await CreateOnboardingActivationAsync(orgId, ownerId, activation, cancellationToken);
 
@@ -186,34 +178,27 @@ public class DemoEnvironmentService(
         foreach (var draft in DemoShowcaseCatalog.WizardDrafts)
             await CreateWizardDraftAsync(orgId, ownerId, draft, cancellationToken);
 
-        // E01/F04/US01/T03: the routines of the demo host are of the org, not of a house, so they can come anywhere after the removal above.
         foreach (var routine in DemoShowcaseCatalog.Routines)
             await CreateRoutineAsync(orgId, routine, cancellationToken);
 
-        // E05/F07/US01/T02: the scheduled messages of the demo host are for the stays and the routine just created, so they come after both.
         foreach (var message in DemoShowcaseCatalog.ScheduledMessages)
             await CreateScheduledMessageAsync(orgId, ownerId, message, cancellationToken);
 
-        // NF-100: the tourist tax payments of the demo host name the comune of a house just created, so they come after the houses.
         foreach (var remittance in DemoShowcaseCatalog.TouristTaxRemittances)
             await CreateTouristTaxRemittanceAsync(orgId, ownerId, remittance, cancellationToken);
 
-        // FIS-02, NF-82: the profile of the issuer of the demo org (one for each org, skipped when the org has its own).
         foreach (var profile in DemoShowcaseCatalog.FiscalIssuerProfiles)
             await CreateFiscalIssuerProfileAsync(orgId, ownerId, profile, cancellationToken);
 
-        // NF-08: the popup alerts of the demo host point at the stays and houses just created, so they come last.
         foreach (var alert in DemoShowcaseCatalog.PopupAlerts)
             await CreatePopupAlertAsync(orgId, ownerId, alert, cancellationToken);
 
-        // E09/F01: the test partner of the marketplace catalog, then the activation of it that the demo host declared (it names the partner by code).
         foreach (var partner in DemoShowcaseCatalog.MarketplacePartners)
             await CreateMarketplacePartnerAsync(orgId, ownerId, partner, cancellationToken);
 
         foreach (var activation in DemoShowcaseCatalog.MarketplaceActivations)
             await CreateMarketplaceActivationAsync(orgId, activation, cancellationToken);
 
-        // NF-46: the channel rule of the invented comune of the demo (platform data, created only when missing).
         foreach (var rule in DemoShowcaseCatalog.TouristTaxChannelRules)
             await CreateTouristTaxChannelRuleAsync(orgId, rule, cancellationToken);
 
@@ -246,7 +231,6 @@ public class DemoEnvironmentService(
             .Where(d => propertyIds.Contains(d.PropertyId))
             .Select(d => d.StorageUrl)
             .ToListAsync(cancellationToken);
-        // NF-52: the files of the receipts uploaded for these houses go too (their rows cascade with the houses).
         files.AddRange(await db.ManualComplianceProofs.IgnoreQueryFilters([Tenant])
             .Where(p => p.OrgId == orgId && propertyIds.Contains(p.PropertyId))
             .Select(p => p.FileKey)
@@ -291,7 +275,6 @@ public class DemoEnvironmentService(
         return propertyIds.Count;
     }
 
-    /// <summary>Deletes the host invites (and their audit lines) the showcase wrote for the org, found by their markers.</summary>
     private async Task RemoveShowcaseHostInvitesAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var inviteIds = await Markers()
@@ -308,10 +291,6 @@ public class DemoEnvironmentService(
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// Deletes the routines the showcase wrote for the org, found by their markers (E01/F04/US01/T03): invented rows, and a routine of the host has no
-    /// marker. The log of a routine goes with it (the foreign key of the executions cascades).
-    /// </summary>
     private async Task RemoveShowcaseRoutinesAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var routineIds = await Markers()
@@ -327,13 +306,8 @@ public class DemoEnvironmentService(
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// One routine of the demo host, as the API would save it: active, a time trigger of <see cref="DemoRoutineTemplate.DaysBefore"/> days, no condition, and
-    /// the actions of its template (in test mode when it says so). Marked as showcase data, so the next reset deletes it.
-    /// </summary>
     internal static Routine BuildShowcaseRoutine(Guid orgId, DemoRoutineTemplate template, Guid? messageTemplateId = null)
     {
-        // A routine that sends a message names its template by id, which exists only once the reset has written it: the catalog carries a placeholder id and the real one takes its place.
         var actions = template.Actions
             .Select(action => new
             {
@@ -362,7 +336,6 @@ public class DemoEnvironmentService(
         Guid? messageTemplateId = null;
         if (template.MessageTemplateKey is { } templateKey)
         {
-            // The template the routine sends is the one the showcase wrote; when the host already had one with that name and language the showcase wrote none, and a routine with no template to send is not written.
             messageTemplateId = await ShowcaseIdAsync(orgId, TestDataEntities.MessageTemplate, templateKey, cancellationToken);
             if (messageTemplateId is null)
             {
@@ -377,10 +350,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.Routine, routine.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>
-    /// Deletes the scheduled messages the showcase wrote for the org, found by their markers (E05/F07/US01/T02), and the markers. A message of a real stay has no marker and is never touched. Runs before the
-    /// showcase routines and houses go: those removals drop the markers this one finds its rows by.
-    /// </summary>
     internal async Task RemoveShowcaseScheduledMessagesAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var markers = await Markers()
@@ -396,11 +365,6 @@ public class DemoEnvironmentService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// One scheduled message of the demo host (E05/F07/US01/T02): the row the plan would have written for the stay and the routine of the template, at the time the plan gives it, in the state the template
-    /// says (planned, blocked for the reason it names, or skipped by the owner). Written only when the routine and the stay were written by this reset and the plan has a message to give for them (a stay
-    /// that does not happen, a routine that holds no message, plans none): nothing is invented for a stay the real plan would not have planned.
-    /// </summary>
     internal async Task CreateScheduledMessageAsync(Guid orgId, string ownerId, DemoScheduledMessageTemplate template, CancellationToken cancellationToken)
     {
         var routineId = await ShowcaseIdAsync(orgId, TestDataEntities.Routine, template.RoutineKey, cancellationToken);
@@ -466,7 +430,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.ScheduledMessage, row.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>Deletes the wizard drafts the showcase wrote for the org, found by their markers (invented rows: nothing of a real person).</summary>
     private async Task RemoveShowcaseWizardDraftsAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var draftIds = await Markers()
@@ -482,10 +445,6 @@ public class DemoEnvironmentService(
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// One saved draft of the demo host, split as the service splits a real one (the personal fields go to the encrypted half). Skipped when
-    /// the host already has a draft of that wizard (a real one, which the showcase never touches): there is one per person and wizard.
-    /// </summary>
     private async Task CreateWizardDraftAsync(
         Guid orgId, string ownerId, DemoWizardDraftTemplate template, CancellationToken cancellationToken)
     {
@@ -516,10 +475,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.WizardDraft, draft.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>
-    /// One invite of the demo host, in the state of its template. The token is random and thrown away: the link of a demo invite
-    /// does not exist, so it can be neither opened nor accepted.
-    /// </summary>
     private async Task CreateHostInviteAsync(
         Guid orgId, string ownerId, DemoHostInviteTemplate template, CancellationToken cancellationToken)
     {
@@ -556,10 +511,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.HostInvite, invite.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>
-    /// Deletes the popup alerts the showcase wrote for the org, found by their markers. They point at the demo stays and houses by id and
-    /// have no foreign key to them, so they are removed by hand and before the markers of the showcase are (NF-08, ADR-025).
-    /// </summary>
     private async Task RemoveShowcasePopupAlertsAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var alertIds = await Markers()
@@ -648,10 +599,6 @@ public class DemoEnvironmentService(
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// The profile of the issuer of the demo org, complete and invented (FIS-02, NF-82). There is one for each org: it is skipped, with a line in the
-    /// log, when the org already has one (a real one, which the showcase never touches or replaces).
-    /// </summary>
     private async Task CreateFiscalIssuerProfileAsync(
         Guid orgId, string ownerId, DemoFiscalIssuerProfileTemplate template, CancellationToken cancellationToken)
     {
@@ -685,10 +632,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.FiscalIssuerProfile, profile.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>
-    /// Deletes the tourist tax payments the showcase wrote for the org and their invented receipts, found by their markers (NF-100). A real
-    /// payment has no marker and is never touched; the files are removed after the rows, and one that cannot be is only logged.
-    /// </summary>
     private async Task RemoveShowcaseTouristTaxRemittancesAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var remittanceIds = await Markers()
@@ -790,10 +733,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.TouristTaxRemittance, remittance.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>
-    /// Deletes what the showcase wrote on the marketplace for the org, found by the markers (E09/F01): the activations it declared, then the test
-    /// partners it created (their texts go with them). An activation or a partner a person made has no marker and is never touched.
-    /// </summary>
     private async Task RemoveShowcaseMarketplaceAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var activationIds = await Markers()
@@ -926,10 +865,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.MarketplaceActivation, activation.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>
-    /// NF-46: the rates the demo host declared (tenant data) and the channel rules the showcase created (platform data, only the invented comune
-    /// of the demo), found by their markers; a real rate or rule has no marker and is never touched.
-    /// </summary>
     private async Task RemoveShowcaseTouristTaxRulesAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var rateIds = await Markers()
@@ -1004,12 +939,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.WelcomeLink, link.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>
-    /// Deletes the conversations of the channels the showcase wrote for the org, found by their markers (E05/F02/US01/T01): a conversation points at
-    /// its house and its stay with a foreign key that lets go (SET NULL), so left to the removal of the houses it would stay behind as an unassigned
-    /// conversation; its messages go with it (cascade). The conversations with the guests of the direct stays go with their bookings (cascade), and
-    /// their markers with the other showcase markers. Runs before the showcase houses go: it finds its rows by the markers they drop.
-    /// </summary>
     internal async Task RemoveShowcaseMessageThreadsAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var threadIds = await Markers()
@@ -1027,12 +956,6 @@ public class DemoEnvironmentService(
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// One conversation of the hub of messages of the showcase (E05/F02/US01/T01): the conversation with the guest of a direct stay, or a conversation
-    /// of a channel, written as the real flows leave them (the counters of the thread agree with its messages: the last message, the unread ones, the
-    /// time the host read up to). Invented words that say TEST, no channel manager behind them. Skipped, with a log, when the house or the stay it names
-    /// was not created.
-    /// </summary>
     internal async Task CreateMessageThreadAsync(
         Guid orgId, string ownerId, DemoMessageThreadTemplate template, CancellationToken cancellationToken)
     {
@@ -1307,7 +1230,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.MessageTemplate, row.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
-    /// <summary>The id of the showcase row of <paramref name="entityType"/> that came from the template <paramref name="templateKey"/>, or <c>null</c> when there is none.</summary>
     private async Task<Guid?> ShowcaseIdAsync(Guid orgId, string entityType, string templateKey, CancellationToken cancellationToken)
     {
         var id = await Markers()
@@ -1398,7 +1320,6 @@ public class DemoEnvironmentService(
         var mappings = Ids(TestDataEntities.OctorateListingMapping);
         var connections = Ids(TestDataEntities.OctorateConnection);
 
-        // What is still the invented one (the others only lose their marker below).
         var inventedConnections = await InventedConnectionsAsync(orgId, connections, cancellationToken);
         var inventedPartStates = await InventedPartStatesAsync(orgId, partStates, todos, cancellationToken);
         var inventedAccommodations = DemoShowcaseCatalog.OnboardingActivations
@@ -1411,7 +1332,6 @@ public class DemoEnvironmentService(
             .Where(a => a.OrgId == orgId && todos.Contains(a.Id))
             .ExecuteDeleteAsync(cancellationToken);
 
-        // The "To do" the sync raised about the test connection (a job of the connector marked it lost): about a row that goes now.
         await db.InternalActivities.IgnoreQueryFilters([Tenant])
             .Where(a => a.OrgId == orgId
                 && a.EntityType == OnboardingActivationCodes.ConnectionTodoEntityType
@@ -1436,9 +1356,6 @@ public class DemoEnvironmentService(
         await db.PropertyOnboardingData.IgnoreQueryFilters([Tenant])
             .Where(d => d.OrgId == orgId && propertyData.Contains(d.Id))
             .ExecuteDeleteAsync(cancellationToken);
-        // Whatever hangs on an invented connection goes with it (the foreign keys are restrictive): its mappings, marked or not (no real one can
-        // be on it), and the cursor a job of the OTA conversations may have written before it found no token. The marked mappings of a connection
-        // the host took over go only while they still name an invented accommodation: the real ones stay.
         await db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
             .Where(m => m.OrgId == orgId
                 && (inventedConnections.Contains(m.ConnectionId)
@@ -1451,17 +1368,11 @@ public class DemoEnvironmentService(
             .Where(c => c.OrgId == orgId && inventedConnections.Contains(c.Id))
             .ExecuteDeleteAsync(cancellationToken);
 
-        // Every marker goes, those of the rows the host made its own too: from now on they are real rows.
         await Markers()
             .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && types.Contains(m.EntityType))
             .ExecuteDeleteAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// The marked connections that are still the invented ones: the account of the template and no token at all. A consent overwrites the account
-    /// of the connection it completes and stores its tokens, so a connection with a token (even one left by a consent that failed halfway) or
-    /// with another account is the host's.
-    /// </summary>
     private async Task<List<Guid>> InventedConnectionsAsync(Guid orgId, List<Guid> connections, CancellationToken cancellationToken)
     {
         if (connections.Count == 0)
@@ -1479,11 +1390,6 @@ public class DemoEnvironmentService(
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>
-    /// The marked part states that are still the invented ones: the part is tied to the "To do" the showcase raised for it, or it holds no intent at
-    /// all (resumed: the same as no row). A deferral or an exit of the host replaces the "To do" of the row, so the row is then the host's and its
-    /// new "To do" (which has no marker) must not be left pointing at a row that is gone.
-    /// </summary>
     private async Task<List<Guid>> InventedPartStatesAsync(Guid orgId, List<Guid> partStates, List<Guid> todos, CancellationToken cancellationToken)
     {
         if (partStates.Count == 0)
@@ -1638,10 +1544,6 @@ public class DemoEnvironmentService(
             await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);
     }
 
-    /// <summary>
-    /// NF-46, ADR-037-R3: the channel rule of the invented comune of a demo house, platform data with an example source; written only when no rule
-    /// exists for that channel and comune (another org's demo may have written it), so a real rule is never replaced.
-    /// </summary>
     private async Task CreateTouristTaxChannelRuleAsync(
         Guid orgId, DemoTouristTaxChannelRuleTemplate template, CancellationToken cancellationToken)
     {
@@ -1736,7 +1638,6 @@ public class DemoEnvironmentService(
         await MarkManyAsync(orgId, TestDataEntities.CrmMergeCandidate, proposalIds, key, cancellationToken);
     }
 
-    /// <summary>Marks the rows that have no marker yet as showcase data, in one save.</summary>
     private async Task MarkManyAsync(
         Guid orgId, string entityType, IReadOnlyCollection<Guid> entityIds, string templateKey, CancellationToken cancellationToken)
     {
@@ -1818,9 +1719,6 @@ public class DemoEnvironmentService(
         };
         if (swiss is not null)
         {
-            // The country as the property form and the import store Switzerland (SwissPlace.CountryCode, what the one resolver of the place compares with), with what the property service gives a
-            // property of that country: the franc and the clock of Zurich (ApplyCountryDefaults). No municipality is stored on purpose: the resolver derives it from the postal code and the
-            // city, which is what this flat shows. The structure number is the TEST one the file and the activation check (TicinoStructureId).
             property.Country = SwissPlace.CountryCode;
             property.Currency = "CHF";
             property.Timezone = "Europe/Zurich";
@@ -1836,7 +1734,6 @@ public class DemoEnvironmentService(
             property.CadastralIncome = cadastral.Income;
         }
 
-        // SR-07a: the type, beds, area and house rules of the wizard «Aggiungi immobile», so the host's list is not empty.
         if (template.Profile is { } profile)
         {
             property.AccommodationType = profile.Type;
@@ -1855,8 +1752,6 @@ public class DemoEnvironmentService(
             PropertyHouseRules.SyncAmenities(property);
         }
 
-        // DB-11a: what the host says about the house on its public page, through the rules of the host form (a demo can never hold
-        // what a host could not).
         if (template.SiteProfile is { } siteProfile)
             SitePropertyProfileRules.Apply(property, SitePropertyProfileRules.Normalize(siteProfile, property.CheckInFrom, now.Year));
 
@@ -1864,8 +1759,6 @@ public class DemoEnvironmentService(
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Property, property.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
 
-        // DB-11a: the points of interest around the house, with the distance rounded as for a host. They go with their property (cascade) when the
-        // showcase is reset, so they need no marker of their own.
         for (var position = 0; position < (template.Pois?.Count ?? 0); position++)
         {
             var poi = template.Pois![position];
@@ -1886,9 +1779,6 @@ public class DemoEnvironmentService(
             });
         }
 
-        // NF-27, NF-38, NF-34, NF-35: where the content of the house stands on the channels of the channel manager (invented: nothing is sent
-        // anywhere), its rooms with their beds and its length-of-stay discounts. Like the points of interest they go with their property (cascade)
-        // at the next reset, and each carries a marker of its own as the demo rule asks.
         var listingRows = new List<(string EntityType, Guid Id, string Key)>();
         foreach (var channel in template.ChannelStates ?? [])
         {
@@ -1935,8 +1825,6 @@ public class DemoEnvironmentService(
             listingRows.Add((TestDataEntities.PropertyStayDiscount, tier.Id, template.Key + "/discount-" + demoDiscount.MinNights));
         }
 
-        // NF-36: the price and the rules of single nights of the house (invented). Like the rows above they go with their property (cascade) at the
-        // next reset and carry a marker of their own; the nights are counted from the day of the reset, on the calendar of the property.
         var firstNight = DayRuleRules.TodayOf(property.Timezone, clock.GetUtcNow());
         foreach (var demoRule in template.DayRules ?? [])
         {
@@ -1964,7 +1852,6 @@ public class DemoEnvironmentService(
         foreach (var (entityType, id, key) in listingRows)
             await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);
 
-        // NF-46: the rate the demo host declared for a comune with no official one (an invented amount and source note).
         if (template.DeclaredTouristTaxRate is { } declared)
         {
             var rate = new OrgTouristTaxRate
@@ -2010,7 +1897,6 @@ public class DemoEnvironmentService(
     internal async Task CreateBookingAsync(
         Guid orgId, Property property, DemoBookingTemplate template, DateOnly today, CancellationToken cancellationToken)
     {
-        // The booker is the first guest of the stay: when that guest has a Swiss home (NF-132) the record of the booker lives there too, not in Rome.
         var home = template.Guests?.FirstOrDefault()?.Swiss?.Home;
         var guest = new Guest
         {
@@ -2038,8 +1924,6 @@ public class DemoEnvironmentService(
         var total = template.AgreedTotal ?? quoted;
         var priceAgreed = total != quoted;
         var touristTax = template.TouristTax ?? 0m;
-        // SR-05a: the history of a demo stay reads in order, as the timeline of the booking shows it: made a month before the
-        // arrival and confirmed at once, so a stay already over was not "made today"; checked out at the end of its last night.
         var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
         if (madeAt > UtcNow())
             madeAt = UtcNow();
@@ -2055,7 +1939,6 @@ public class DemoEnvironmentService(
             arrivedAt = threeHoursAgo < startOfCheckInDay ? startOfCheckInDay : threeHoursAgo;
         }
 
-        // A stay with registered guests declares as many (NF-40: the check-in wizard compares the two); the others keep two adults.
         var registered = template.Guests ?? [];
         var booking = new Booking
         {
@@ -2083,18 +1966,14 @@ public class DemoEnvironmentService(
             ConfirmedAt = template.Status == BookingStatus.Pending ? null : madeAt,
             CancelledAt = template.Status == BookingStatus.Cancelled ? madeAt : null,
             CancellationReason = template.Status == BookingStatus.Cancelled ? template.CancellationReason : null,
-            // "Pay at the property" is a request the guest confirms by email and the host accepts (BK-06): a demo stay of that kind was both.
             GuestEmailVerifiedAt = template.PaymentOption == PaymentOption.OnSite && template.Status != BookingStatus.Pending ? madeAt : null,
             CheckedOutAt = template.Status == BookingStatus.CheckedOut
                 ? DateTime.SpecifyKind(checkIn.AddDays(template.Nights).AddHours(9), DateTimeKind.Utc)
                 : null,
-            // NF-45: a no-show the host marked in the evening of the arrival day (the status stays Confirmed).
             NoShowAt = template.NoShow && template.Status == BookingStatus.Confirmed
                 ? DateTime.SpecifyKind(checkIn.AddHours(20), DateTimeKind.Utc)
                 : null,
             ArrivedAt = arrivedAt,
-            // E08/F03/US03/T02 (NF-74, NF-77): the reservation of the stay on the channel manager, with the amounts and the flags the import would have
-            // stored (invented, like the rest: nothing is sent to Octorate).
             OctorateReservationId = template.Ota?.ReservationId,
             OctorateUpdatedAt = template.Ota is null ? null : madeAt,
             OtaCommission = template.Ota?.Commission,
@@ -2103,8 +1982,6 @@ public class DemoEnvironmentService(
             OtaBalanceAmount = template.Ota?.Balance,
             OtaCompanyCollect = template.Ota?.CompanyCollect,
             OtaCommissionIncludedInPayments = template.Ota?.CommissionIncludedInPayments,
-            // E27/F01/US01/T01 (NF-123): where the guest came from, as the checkout (a link of the agency) or the import (the booking engine of the agency)
-            // would have recorded it; invented like the rest. With the source it gives the origin the host reads on the booking.
             AttributionSource = template.Attribution?.Source,
             AttributionMedium = template.Attribution?.Medium,
             AttributionCampaign = template.Attribution?.Campaign,
@@ -2119,11 +1996,9 @@ public class DemoEnvironmentService(
         if (template.InvoiceData is { } invoiceData)
             await CreateInvoiceDataAsync(orgId, booking.Id, invoiceData, template.Key, madeAt, cancellationToken);
 
-        // E07/F03/US02 (NF-97): the payments of the stay, so the reports of the money have something to show. They go with the booking at the next reset.
         if (template.Payments is { Count: > 0 } payments)
             await CreatePaymentsAsync(orgId, property, booking, template.Key, payments, today, cancellationToken);
 
-        // NF-40, NF-46: the registered guests of the stay, with complete data of the right shape (they go with the booking at the next reset).
         List<StayGuest> rows = [];
         if (template.Guests is { Count: > 0 } guests)
         {
@@ -2138,7 +2013,6 @@ public class DemoEnvironmentService(
             }
         }
 
-        // NF-52: what the compliance traffic light finds on the stay (guests entrusted to the channel manager, a receipt the host uploaded).
         if (template.Compliance is { } complianceTemplate)
             await CreateComplianceStateAsync(orgId, property.OwnerId, property, booking, rows, complianceTemplate, template.Key, cancellationToken);
     }
@@ -2218,7 +2092,6 @@ public class DemoEnvironmentService(
                     orgId, TestDataEntities.StayGuestOctorateLink, links[position].Id, TestDataOrigins.Showcase, $"{templateKey}/{position}", cancellationToken);
             }
 
-            // NF-47: and the line of the log of what was sent that the send of the guests to the channel manager writes (the page of the stay shows it).
             await AddSendLogLineAsync(orgId, property, booking, ComplianceSender.ChannelManager, now.AddHours(-2), null, templateKey, cancellationToken);
         }
 
@@ -2246,20 +2119,17 @@ public class DemoEnvironmentService(
             };
             db.ManualComplianceProofs.Add(proof);
 
-            // E20/F02/US01/T01: a receipt names the flats it covers, the one it was filed under included (the demo receipt covers its own house, as a real one does).
             var coverage = new ManualComplianceProofProperty { OrgId = orgId, ProofId = proof.Id, PropertyId = property.Id };
             db.ManualComplianceProofProperties.Add(coverage);
             await db.SaveChangesAsync(cancellationToken);
             await MarkAsync(orgId, TestDataEntities.ManualComplianceProof, proof.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
             await MarkAsync(orgId, TestDataEntities.ManualComplianceProofProperty, coverage.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
 
-            // NF-47: the host sent the communication on the portal on the arrival day and declared it: the line of the log of what was sent, by the owner.
             await AddSendLogLineAsync(
                 orgId, property, booking, ComplianceSender.Manual, DateTime.SpecifyKind(proof.Day.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc), ownerId, templateKey, cancellationToken);
         }
     }
 
-    /// <summary>One line of the log of what was sent for a showcase stay (E03/F02/US03/T01, NF-47): no guest data, no reference, marked like the rest.</summary>
     private async Task AddSendLogLineAsync(
         Guid orgId,
         Property property,
@@ -2285,10 +2155,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.ComplianceSendLogEntry, line.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
     }
 
-    /// <summary>
-    /// The hash of what the showcase says it sent to Octorate for a guest: SHA-256 (hex, lower case, 64 characters) of an invented text, as the
-    /// column wants. No personal data goes into it.
-    /// </summary>
     private static string DemoPayloadHash(Guid bookingId, int position) =>
         Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes($"TEST|demo-guest|{bookingId:N}|{position}")));
@@ -2308,7 +2174,6 @@ public class DemoEnvironmentService(
         string templateKey,
         CancellationToken cancellationToken)
     {
-        // The create is the first operation: a later one (a change that was refused) follows a reservation Octorate had already confirmed.
         var confirmed = template.State == OctorateSyncState.Synced || template.LastOperation != OctorateSyncOperation.Create;
         var sync = new OctorateBookingSync
         {
@@ -2331,7 +2196,6 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.OctorateBookingSync, sync.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
     }
 
-    /// <summary>The stay Octorate holds in a showcase conflict, in the stored form: the booking's own, the arrival and the departure moved by the same days.</summary>
     private static string ConflictVersionJson(Booking booking, DemoOctorateSyncTemplate template)
     {
         var shift = template.VersionCheckInShiftDays ?? 0;
@@ -2402,10 +2266,6 @@ public class DemoEnvironmentService(
             await MarkAsync(orgId, TestDataEntities.Payment, rows[position].Id, TestDataOrigins.Showcase, $"{templateKey}/{position}", cancellationToken);
     }
 
-    /// <summary>
-    /// Who the invoice of a showcase stay is made out to (NF-81): the guest's «yes» of the online check-in and the data of the recipient, in the
-    /// row the real flows write (encrypted by the context). It goes with its booking when the reset deletes it (the table cascades).
-    /// </summary>
     private async Task CreateInvoiceDataAsync(
         Guid orgId, Guid bookingId, DemoInvoiceData template, string templateKey, DateTime madeAt, CancellationToken cancellationToken)
     {
@@ -2477,16 +2337,12 @@ public class DemoEnvironmentService(
             row.DocumentExpiresOn = demo.DocumentExpired ? arrival.AddDays(-20) : arrival.AddYears(7);
         }
 
-        // NF-40: data still to complete, which the check-in wizard asks for.
         if (demo.BirthPlaceMissing)
         {
             row.BirthComuneName = string.Empty;
             row.BirthProvince = null;
         }
 
-        // NF-132: the guest of a stay in Switzerland is recorded as the Swiss check-in records it: born and living abroad of Italy, the nationality, and the document of the guest, a family member's
-        // included (the file notifies every adult on their own row). The kind of the document is the one the guest showed, whatever the kind of guest; a document dated as the other demo ones.
-        // No image of a document is made for a Swiss property (decision D6): the template has none, and nothing else is written.
         if (demo.Swiss is { } swiss)
         {
             row.BornInItaly = false;
@@ -2511,11 +2367,6 @@ public class DemoEnvironmentService(
         return row;
     }
 
-    /// <summary>
-    /// What the CRM guests of the showcase were shown and agreed to (NF-89, NF-90), invented and marked: the soft opt-in notice of a direct customer,
-    /// and the marketing consent of the online check-in with the address confirmed (double opt-in), in the rows the real flows write. They go with
-    /// their guest and their booking when the reset deletes them. The CRM sync reads them to build the contacts.
-    /// </summary>
     private async Task CreateCrmConsentsAsync(
         Guid orgId, Guid guestId, Guid bookingId, DemoBookingTemplate template, DateTime madeAt, CancellationToken cancellationToken)
     {
@@ -2888,9 +2739,6 @@ public class DemoEnvironmentService(
         return candidate;
     }
 
-    /// <summary>
-    /// The demo landlord can show a linked bank without a raw account number. A link the org already stored is left as it is.
-    /// </summary>
     private async Task ApplyShowcaseBankLinkAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var org = await db.Orgs.SingleOrDefaultAsync(o => o.Id == orgId, cancellationToken);

@@ -79,18 +79,15 @@ public sealed class IstatRegionService(
                 throw new DomainRuleException(IstatRegionErrors.PortalInvalidCode, "IstatRegionPortalInvalid");
         }
 
-        // The API refuses a number that is not a value of the enum; a caller that is not the API must not get one in either.
         if (!Enum.IsDefined(update.DeadlineKind))
             throw new ArgumentOutOfRangeException(nameof(update), update.DeadlineKind, "Not an ISTAT deadline kind.");
         if (!Enum.IsDefined(update.OctorateCoverage))
             throw new ArgumentOutOfRangeException(nameof(update), update.OctorateCoverage, "Not an ISTAT coverage.");
 
-        // Only a monthly deadline has a day, and it has one: the database holds the same rule (CK_IstatRegionRules_Deadline).
         var monthly = update.DeadlineKind == IstatDeadlineKind.Monthly;
         if ((monthly && update.DeadlineDay is not (>= 1 and <= 31)) || (!monthly && update.DeadlineDay is not null))
             throw new DomainRuleException(IstatRegionErrors.DeadlineInvalidCode, "IstatRegionDeadlineInvalid");
 
-        // Null is «not verified» (no field is asked); an empty list is «verified: none required»; a name outside the lists is refused.
         string? requiredFields = null;
         if (update.RequiredGuestFields is { } fields)
         {
@@ -113,7 +110,6 @@ public sealed class IstatRegionService(
         Set(changes, "sourceUrl", rule.SourceUrl, source, v => rule.SourceUrl = v ?? string.Empty);
         Set(changes, "notes", rule.Notes, Clean(update.Notes), v => rule.Notes = v);
 
-        // Saving a row says the person read it against its source: with nothing else changed, that is the whole change.
         var verified = $"verifiedAt: {Day(rule.VerifiedAt)} -> {Day(verifiedAt)}; source: {source}";
         var action = changes.Count == 0 ? RegulatoryAuditAction.MarkedVerified : RegulatoryAuditAction.Updated;
         rule.VerifiedAt = verifiedAt;
@@ -159,7 +155,6 @@ public sealed class IstatRegionService(
         var match = await FindForComuneAsync(db, property.ComuneIstatCode, ct);
         var rule = match?.Rule;
 
-        // The deadline of the cockpit: the row's monthly day, or the day configured for the region, which overrides it (a day out of 1 to 31 is ignored).
         var day = IstatRegionResolver.DeadlineDay(
             rule,
             match?.RegionCode,
@@ -183,7 +178,6 @@ public sealed class IstatRegionService(
             IstatRegionResolver.RequiredFields(rule),
             RequiredGuestFieldsKnown: rule?.RequiredGuestFields is not null,
             coverage,
-            // The cockpit reads the same rule: where the channel manager does not cover the region, nobody outside sends it and the host does.
             IstatRegionResolver.IstatSenderFor(sender.IstatSender, coverage),
             next,
             next == IstatNextStep.AskSupport ? OnboardingAssistContexts.PanelIstat : null,
@@ -191,10 +185,6 @@ public sealed class IstatRegionService(
             rule?.VerifiedAt);
     }
 
-    /// <summary>
-    /// The row of the table for the comune of a property (null: the property has no comune of the list, or the table has no row for its territory),
-    /// with the region of the comune. The same rule for the cockpit, the guest page and the check-in wizard, so they never disagree.
-    /// </summary>
     public static async Task<IstatRegionMatch?> FindForComuneAsync(AppDbContext db, string? comuneIstatCode, CancellationToken ct)
     {
         var found = await FindForComuniAsync(db, [comuneIstatCode], ct);
@@ -272,10 +262,8 @@ public sealed class IstatRegionService(
 
     private static string Day(DateTime? value) => value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? EmptyValue;
 
-    /// <summary>A value for the audit line: «(none)» for null (not set, not verified) and «(empty)» for an empty list.</summary>
     private static string Show(string? value) => value is null ? EmptyValue : value.Length == 0 ? "(empty)" : value;
 
-    /// <summary>Applies a value and notes what it was and is when it changed (the values are codes, addresses and short texts, never a person's).</summary>
     private static void Set(List<string> changes, string field, string? before, string? after, Action<string?> apply)
     {
         if (string.Equals(before, after, StringComparison.Ordinal))

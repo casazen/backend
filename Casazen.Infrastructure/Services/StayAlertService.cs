@@ -62,7 +62,6 @@ public sealed class StayAlertService(
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>The stages of CHK-12 and what they leave behind run only while the module's flag is on; without the flag (or the services) nothing changed.</summary>
     private bool ComplianceStagesOn => featureFlags?.IsEnabled(FeatureFlags.ComplianceTrafficLight) == true;
 
     public async Task<StayAlertRunResult> RunAsync(CancellationToken cancellationToken = default)
@@ -87,8 +86,6 @@ public sealed class StayAlertService(
     private async Task<int> SendAlloggiatiAlertsAsync(DateTime now, DateTime today, CancellationToken cancellationToken)
     {
         var settings = options.Value;
-        // From the day before arrival to one day after the last stage can be due (deadline at most the day after the
-        // check-in day, then the daily reminders).
         var firstCheckIn = today.AddDays(-(Math.Max(0, settings.MaxOverdueReminders) + 3));
         var lastCheckIn = today.AddDays(1);
 
@@ -134,7 +131,6 @@ public sealed class StayAlertService(
                 }
 
                 var step = StayAlertSchedule.DueAlloggiatiStep(booking, status.DataComplete, settings, now);
-                // A failed communication already has its own alert: never "guest data missing" on top of it.
                 if (step is null || (failed && step.Alert.Kind == StayAlertKind.GuestDataMissing))
                     continue;
 
@@ -158,7 +154,6 @@ public sealed class StayAlertService(
     private async Task<int> SendCheckoutRemindersAsync(DateTime now, DateTime today, CancellationToken cancellationToken)
     {
         var hour = complianceOptions.Value.CheckoutReminderHourLocal;
-        // Property time zones around Europe: the check-out day is yesterday, today or tomorrow in Rome.
         var firstCheckOut = today.AddDays(-1);
         var lastCheckOut = today.AddDays(1);
 
@@ -190,8 +185,6 @@ public sealed class StayAlertService(
         return sent;
     }
 
-    // ─── The stages of CHK-12 (E03/F02/US02/T01) ───
-
     /// <summary>
     /// The receipt that is missing the day after the communication: asked of the compliance status engine for the stays of the window (the stays that
     /// arrived, a read of the database only: no Octorate), which says <see cref="ComplianceReasonCodes.ReceiptMissing"/> exactly when the communication
@@ -222,8 +215,6 @@ public sealed class StayAlertService(
                     if (!stays.TryGetValue(item.BookingId!.Value, out var booking))
                         continue;
 
-                    // The instant of the communication: the day it was sent or declared; for a stay entrusted to the channel manager, which has no report,
-                    // the legal deadline (the receipt is expected by then, and missing the day after it).
                     var info = await alloggiatiWebService.GetStatusAsync(booking.Id);
                     var step = StayAlertSchedule.DueReceiptMissingStep(booking, info.ReportedAt ?? item.DueAt ?? now, settings, now);
                     if (step is not null)
@@ -301,10 +292,6 @@ public sealed class StayAlertService(
         return sent;
     }
 
-    /// <summary>
-    /// The stays whose registered guests are all on the channel manager for good (sent, not as a draft): the rule of the compliance status engine
-    /// (<c>ComplianceStatusService</c>). A stay with no registered guest has nothing to entrust. Only ids and positions are read, never a guest's data.
-    /// </summary>
     private async Task<HashSet<Guid>> EntrustedStaysAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
     {
         if (bookingIds.Count == 0)
@@ -330,10 +317,6 @@ public sealed class StayAlertService(
             .ToHashSet();
     }
 
-    /// <summary>
-    /// The "To do" of a condition this service sees cleared: the communication was sent or declared (the "To do" to send it goes), the data of the guests
-    /// are complete (the "To do" to complete them goes), and the stays that owe nothing any more. A proof that arrives closes its own through the event bus.
-    /// </summary>
     private async Task CloseClearedTodosAsync(IReadOnlyCollection<Guid> sentIds, IReadOnlyCollection<Guid> completeIds, CancellationToken ct)
     {
         if (followUp is null)
@@ -351,8 +334,6 @@ public sealed class StayAlertService(
         }
     }
 
-    // ─── Delivery ───
-
     private async Task<int> DeliverAsync(Booking booking, StayAlertStep step, DateTime now, CancellationToken cancellationToken)
     {
         if (!await ClaimAsync(booking, step, now, cancellationToken))
@@ -365,7 +346,6 @@ public sealed class StayAlertService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // At most once: the stage stays claimed, the next run does not send it again.
             delivered = false;
             logger.LogError(
                 ex,
@@ -388,10 +368,6 @@ public sealed class StayAlertService(
         return 1;
     }
 
-    /// <summary>
-    /// What the stage leaves behind (E03/F02/US02/T01): the "To do" of its condition and, for a legal deadline within 24 hours, a popup alert for the
-    /// people who reach the property. Only with the module's flag on; a failure is logged and does not undo the stage, which is claimed.
-    /// </summary>
     private async Task FollowUpAsync(Booking booking, StayAlertStep step, DateTime now, CancellationToken ct)
     {
         if (followUp is null || !ComplianceStagesOn)
@@ -460,7 +436,6 @@ public sealed class StayAlertService(
                 && (s.ReferenceDate != step.ReferenceDate || s.Stage < step.Stage));
         if (!db.Database.IsRelational())
         {
-            // Test providers (EF InMemory) have no conditional UPDATE: the same compare-and-set, one request at a time.
             var row = await behind.FirstOrDefaultAsync(cancellationToken);
             if (row is null)
                 return false;

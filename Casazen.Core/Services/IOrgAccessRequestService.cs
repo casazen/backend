@@ -8,17 +8,12 @@ namespace Casazen.Core.Services;
 /// <param name="Language">The language of the emails: <c>it</c> (default) or <c>en</c>.</param>
 public sealed record RequestOrgAccess(Guid OrgId, string ActorUserId, string Area, string? Note, string? Language = null);
 
-/// <summary>The outcome of a request: how many administrators were told.</summary>
-/// <param name="Notified">The administrators an email was queued for (0 when there was nobody to tell or the queue refused every email).</param>
 public sealed record OrgAccessRequested(int Notified);
 
-/// <summary>Stable codes of the refusals of <see cref="IOrgAccessRequestService"/>, translated by the clients.</summary>
 public static class OrgAccessRequestErrors
 {
-    /// <summary>422: the area or page asked for is not one a member can ask access to.</summary>
     public const string AreaUnknown = "access_request_area_unknown";
 
-    /// <summary>409: the member already sent as many requests as it may in 24 hours; the administrators have been told.</summary>
     public const string LimitReached = "access_request_limit_reached";
 }
 
@@ -37,8 +32,5 @@ public static class OrgAccessRequestErrors
 /// </remarks>
 public interface IOrgAccessRequestService
 {
-    /// <exception cref="UnauthorizedAccessException">The caller is not an active member of the org (403).</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainRuleException"><see cref="OrgAccessRequestErrors.AreaUnknown"/>.</exception>
-    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><see cref="OrgAccessRequestErrors.LimitReached"/>.</exception>
     Task<OrgAccessRequested> RequestAsync(RequestOrgAccess request, CancellationToken cancellationToken = default);
 }

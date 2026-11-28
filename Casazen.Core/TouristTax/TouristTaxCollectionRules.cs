@@ -5,34 +5,24 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.TouristTax;
 
-/// <summary>Why the guest cannot pay the tourist tax of the stay online now (<see cref="None"/> when there is something to pay).</summary>
 public enum TouristTaxNotPayableReason
 {
-    /// <summary>There is something to pay.</summary>
     None = 0,
 
-    /// <summary>The stay is not active: a request, a hold, a cancelled stay or a no-show.</summary>
     StayNotActive = 1,
 
-    /// <summary>The host recorded that the guest paid it at the property.</summary>
     PaidAtProperty = 2,
 
-    /// <summary>The channel collects it and pays the comune.</summary>
     ChannelCollects = 3,
 
-    /// <summary>A channel stay with no channel rule and no declaration of the host: who collects is not known, so nothing is charged.</summary>
     CollectorUnknown = 4,
 
-    /// <summary>The amount cannot be calculated (no rate, an age or a category missing, no canton rule): the host tells the guest the amount.</summary>
     NotComputable = 5,
 
-    /// <summary>The price of the booking included the tax and the host has not confirmed the tax of the stay yet: nothing more is asked meanwhile.</summary>
     AwaitingConfirmation = 6,
 
-    /// <summary>Nothing is left to pay: what is due is paid, or nothing is due.</summary>
     NothingDue = 7,
 
-    /// <summary>The guest already paid online once and something is still due: the rest is collected at the property, never with a second online payment.</summary>
     AlreadyPaidOnline = 8,
 }
 
@@ -86,7 +76,6 @@ public sealed record TouristTaxCollectionDue(
 /// </summary>
 public static class TouristTaxCollectionRules
 {
-    /// <summary>The effective collection of the stay of <paramref name="facts"/>.</summary>
     public static TouristTaxCollectionDue Evaluate(TouristTaxCollectionFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -99,7 +88,6 @@ public static class TouristTaxCollectionRules
 
         if (!facts.StayActive)
         {
-            // No night spent: nothing is due, and what was paid online goes back. A stay cancelled after the arrival keeps what it has: the host decides.
             if (facts.EndedBeforeAnyNight)
                 return new TouristTaxCollectionDue(TouristTaxCollectionStatus.NotDue, 0m, 0m, collected, TouristTaxNotPayableReason.StayNotActive);
 
@@ -156,16 +144,10 @@ public static class TouristTaxCollectionRules
         return RomeCalendar.DateInRome(cancelledAt) <= RomeCalendar.DateInRome(booking.CheckInDate);
     }
 
-    /// <summary>An amount in minor units (cents of a euro or of a franc), rounded half away from zero.</summary>
     public static long ToMinorUnits(decimal amount) => (long)decimal.Round(amount * 100m, 0, MidpointRounding.AwayFromZero);
 
-    /// <summary>An amount of minor units (cents of a euro or of a franc).</summary>
     public static decimal FromMinorUnits(long minorUnits) => minorUnits / 100m;
 
-    /// <summary>
-    /// What a balance of <paramref name="rest"/> (due less what is already paid) means: something to collect, or a difference to give back. Once the guest
-    /// paid online (<paramref name="paidOnce"/>) the rest is collected at the property: one online payment per stay.
-    /// </summary>
     private static TouristTaxCollectionDue Balance(decimal rest, bool paidOnce, TouristTaxCollectionStatus settled)
     {
         if (rest <= 0m)

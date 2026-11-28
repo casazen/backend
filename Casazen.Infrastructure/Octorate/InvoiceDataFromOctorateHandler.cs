@@ -55,7 +55,6 @@ public sealed class InvoiceDataFromOctorateHandler(
     TimeProvider timeProvider,
     ILogger<InvoiceDataFromOctorateHandler> logger) : IEventHandler<DomainEvent>
 {
-    /// <summary>How many times the fields that fail a check are dropped and the rest checked again (dropping the country can change what the postal code needs).</summary>
     private const int MaxCleaningPasses = 3;
 
     public async Task HandleAsync(DomainEvent domainEvent, CancellationToken ct)
@@ -68,7 +67,6 @@ public sealed class InvoiceDataFromOctorateHandler(
         if (!OctorateBillingSyncRules.IsOn(featureFlags))
             return;
 
-        // Only what the import of Octorate created: the origin says it, the booking itself is checked below.
         if (OctorateBillingSyncRules.PayloadOf<BookingEventPayload>(domainEvent) is not { Origin: BookingEventOrigin.Octorate })
             return;
 
@@ -86,7 +84,6 @@ public sealed class InvoiceDataFromOctorateHandler(
         if (booking.Status == BookingStatus.Cancelled || booking.CheckOutDate < timeProvider.TodayInRome())
             return;
 
-        // A property that is not mirrored has no accommodation on Octorate: there is nothing to read.
         var accommodationId = await targets.AccommodationOfAsync(booking.PropertyId, ct);
         if (accommodationId is null)
             return;
@@ -113,8 +110,6 @@ public sealed class InvoiceDataFromOctorateHandler(
             }
             catch (OctorateException ex)
             {
-                // Nothing is swallowed: the booking has no row to keep a code on (it may have no data at all), so the outbox keeps the failure, with its
-                // code, as it keeps every other: the event is delivered again and, after five deliveries, dead-lettered.
                 logger.LogWarning(
                     "Billing data of booking {BookingId} of org {OrgId} not read from Octorate: {Code} (HTTP {Status}); the event is delivered again",
                     bookingId,
@@ -148,7 +143,6 @@ public sealed class InvoiceDataFromOctorateHandler(
         }
         catch (DomainRuleException ex)
         {
-            // The data of Octorate fails a check once put together with what is stored: the booking simply has no data from Octorate.
             logger.LogWarning(
                 "Billing data of booking {BookingId} of org {OrgId} from Octorate not saved: {Code}",
                 bookingId,
@@ -157,10 +151,6 @@ public sealed class InvoiceDataFromOctorateHandler(
         }
     }
 
-    /// <summary>
-    /// <paramref name="command"/> normalized and checked field by field as the invoice data checks it, with every field that fails left out (listed in
-    /// <paramref name="dropped"/> by name, never by value); <c>null</c> when nothing is left to save.
-    /// </summary>
     internal static SaveInvoiceDataCommand? Cleaned(SaveInvoiceDataCommand command, out IReadOnlyList<string> dropped)
     {
         var removed = new List<string>();
@@ -185,7 +175,6 @@ public sealed class InvoiceDataFromOctorateHandler(
             current.Province, current.SdiRecipientCode, current.Pec,
         }.Any(text => !string.IsNullOrWhiteSpace(text));
 
-        // The kind and the country alone are not data: they only qualify what is sent with them.
         return hasText ? current : null;
     }
 

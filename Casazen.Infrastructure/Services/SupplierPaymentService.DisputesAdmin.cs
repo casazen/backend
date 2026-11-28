@@ -24,7 +24,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 public sealed partial class SupplierPaymentService
 {
-    /// <summary>One line of the admin's list, read in a single statement with the numbers of its payment.</summary>
     private sealed record DisputeRow(
         Guid Id,
         Guid ServiceRequestId,
@@ -46,8 +45,6 @@ public sealed partial class SupplierPaymentService
         bool CommissionAddedToPrice,
         int RefundedCents);
 
-    // ─── The work queue ──────────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<(IReadOnlyList<AdminServiceDisputeSummary> Items, int TotalCount)> ListDisputesAsync(
         AdminServiceDisputeQuery query,
         CancellationToken cancellationToken = default)
@@ -64,7 +61,6 @@ public sealed partial class SupplierPaymentService
 
         var total = await disputes.CountAsync(cancellationToken);
 
-        // The work queue is read oldest first, so nothing waits behind newer cases; the history is read newest first.
         var ordered = query.OpenOnly
             ? disputes.OrderBy(d => d.OpenedAt).ThenBy(d => d.Id)
             : disputes.OrderByDescending(d => d.OpenedAt).ThenBy(d => d.Id);
@@ -93,7 +89,6 @@ public sealed partial class SupplierPaymentService
                 d.ServiceRequestPayment.RefundedCents))
             .ToListAsync(cancellationToken);
 
-        // The supplier's name, for the line: the org is the supplier itself, read by id.
         var supplierIds = rows.Select(r => r.SupplierOrgId).Distinct().ToList();
         var names = await db.Orgs
             .AsNoTracking()
@@ -119,7 +114,6 @@ public sealed partial class SupplierPaymentService
         return await AdminDetailAsync(disputeId, cancellationToken);
     }
 
-    /// <summary>One dispute as the admin who decides reads it: the line of the queue, the state of the money and the words of both parties.</summary>
     private async Task<AdminServiceDisputeDetail> AdminDetailAsync(Guid disputeId, CancellationToken cancellationToken)
     {
         var dispute = await db.ServicePaymentDisputes
@@ -142,11 +136,9 @@ public sealed partial class SupplierPaymentService
             })
             .FirstAsync(cancellationToken);
 
-        // What can still go back to the payer counts the refunds that are on their way, not only the ones that succeeded.
         var refunds = await LoadRefundsAsync(dispute.ServiceRequestPaymentId, cancellationToken);
         var inProgress = (int)Math.Min(refunds.Where(IsInProgress).Sum(r => (long)r.AmountCents), int.MaxValue);
 
-        // The request has two parties and is not tenant-filtered; scoped by the id the dispute points to.
         var request = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -214,8 +206,6 @@ public sealed partial class SupplierPaymentService
         r.DecidedRefundCents,
         Settled: r.Status == ServiceDisputeStatus.ResolvedForCustomer && r.SettledAt is not null);
 
-    // ─── The decision ────────────────────────────────────────────────────────────────────────────────────────────────
-
     public async Task<AdminServiceDisputeDetail> ResolveDisputeAsync(
         Guid disputeId,
         ResolveServiceDisputeRequest request,
@@ -225,7 +215,6 @@ public sealed partial class SupplierPaymentService
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
 
-        // What is asked is checked before anything is locked.
         if (!ServiceDisputeRules.TryParseOutcome(request.Outcome, out var outcome))
             throw ServiceDisputeErrors.OutcomeNotValid();
         if (outcome == ServiceDisputeStatus.ResolvedForSupplier && request.RefundCents is not null)
@@ -249,7 +238,6 @@ public sealed partial class SupplierPaymentService
             dispute = await db.ServicePaymentDisputes.Where(d => d.Id == disputeId).FirstOrDefaultAsync(cancellationToken)
                       ?? throw ServiceDisputeErrors.DisputeNotFound();
 
-            // Decided already: the same decision is the same answer and moves nothing; any other is a conflict (another admin, the payer's withdrawal).
             if (ServiceDisputeRules.IsResolved(dispute.Status))
             {
                 if (dispute.Status == outcome && SameDecision(dispute, request))
@@ -258,7 +246,6 @@ public sealed partial class SupplierPaymentService
                 throw ServiceDisputeErrors.DisputeChanged();
             }
 
-            // The supplier has its time to reply; an admin who decides before that takes it away.
             if (!ServiceDisputeRules.CanResolve(dispute.Status))
                 throw ServiceDisputeErrors.SupplierStillHasTime(dispute.SupplierReplyDueAt);
 
@@ -301,8 +288,6 @@ public sealed partial class SupplierPaymentService
             "Dispute {DisputeId} of request {RequestId} decided by admin {ActorUserId}: {Outcome}, {RefundCents} cents to the payer",
             dispute.Id, dispute.ServiceRequestId, actorUserId, outcome, dispute.DecidedRefundCents ?? 0);
 
-        // Stripe is asked after the commit, with the key of the row that was reserved with the decision. A failure here changes nothing that was
-        // decided: the refund waits, the sync job sends it again, and the admins are told if it does not go through.
         if (reserved is not null)
         {
             try
@@ -326,7 +311,6 @@ public sealed partial class SupplierPaymentService
         return await AdminDetailAsync(dispute.Id, cancellationToken);
     }
 
-    /// <summary>The decision asked for is the one already taken: the outcome was compared, the amount is left to compare (none asked means the one decided).</summary>
     private static bool SameDecision(ServicePaymentDispute dispute, ResolveServiceDisputeRequest request) =>
         dispute.Status != ServiceDisputeStatus.ResolvedForCustomer
         || request.RefundCents is null
@@ -371,24 +355,18 @@ public sealed partial class SupplierPaymentService
         dispute.DecidedRefundCents = amount;
         dispute.RefundTargetCents = ServiceDisputeRules.RefundTarget(refunded, inProgress, amount);
 
-        // Nothing to give back and the payment already ended (everything but the commission was refunded some other way): nothing to wait for.
         if (amount == 0 && payment.Status != ServicePaymentStatus.Disputed)
             dispute.SettledAt = now;
 
         if (amount == 0)
             return null;
 
-        // The euros are reserved now: no release (the payment is Disputed) and no other refund can take them; the commission is kept.
         var reservation = ReserveHeld(
             payment, refunds, amount, $"dispute:{dispute.Id:D}", ServicePaymentRefundOrigin.System, actorUserId, now, keepCommission: true);
         db.ServiceRequestPaymentRefunds.Add(reservation);
         return reservation;
     }
 
-    /// <summary>
-    /// Tells the ranking that the supplier lost (a dispute decided for the customer, or a no-show). A failure here is logged and never undoes the decision:
-    /// the dispute row is the source from which the event can be rebuilt. Without a sink the penalty is only logged.
-    /// </summary>
     private async Task RecordPenaltyAsync(ServicePaymentDispute dispute, ServiceDisputeStatus outcome, DateTime at)
     {
         if (ServiceDisputeRules.PenaltyFor(outcome, dispute.NoShow) is not { } kind)

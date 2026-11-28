@@ -41,15 +41,10 @@ public class GuestPortalLinkController(
     /// <summary>409: the stay e-mail cannot be sent again because the guest has no address to write to (an OTA booking without one): the host copies the link.</summary>
     public const string NoGuestEmailCode = "guest_portal_no_guest_email";
 
-    /// <summary>409: the e-mail was not queued (no e-mail provider is configured, or the queue refused it).</summary>
     public const string EmailNotSentCode = "guest_portal_email_not_sent";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    /// <summary>
-    /// The stay link of the booking: <c>{ state, url, createdAt, expiresAt, eligible, ineligibleReason }</c>. Never makes one. <c>url</c> is there only
-    /// while the link is active and only for a caller who may write the booking.
-    /// </summary>
     [HttpGet("{bookingId:guid}/guest-portal")]
     [ProducesResponseType(typeof(GuestPortalLinkDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -65,11 +60,6 @@ public class GuestPortalLinkController(
         return Ok(GuestPortalLinkDto.From(link, booking, Now(), l => canCopy ? links.BuildUrl(l) : null));
     }
 
-    /// <summary>
-    /// The stay link of the booking, made now if it has none: the call is safe to repeat and never changes the address of a link that exists
-    /// (<c>regenerate</c> does). 409 <c>guest_portal_booking_not_eligible</c> for a request, a cancelled booking, a no-show or a stay over by more
-    /// than 30 days.
-    /// </summary>
     [HttpPost("{bookingId:guid}/guest-portal")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(GuestPortalLinkDto), StatusCodes.Status200OK)]
@@ -85,7 +75,6 @@ public class GuestPortalLinkController(
         if (GuestPortalRules.IneligibleReason(booking, Now()) is { } reason)
             return NotEligible(reason);
 
-        // A missing App:PublicSiteBaseUrl is a configuration error (500) before any link is made: never a wrong address.
         publicSiteLinks.EnsureConfigured();
         var result = await links.GetOrCreateAsync(booking.OrgId, bookingId, User.GetUserId(), cancellationToken);
         if (result is null)
@@ -97,10 +86,6 @@ public class GuestPortalLinkController(
         return Ok(GuestPortalLinkDto.From(result.Link, booking, Now(), links.BuildUrl));
     }
 
-    /// <summary>
-    /// A new address: the active link is revoked and a new one is made, in one step. The old address stops opening at once (the portal answers it like
-    /// one that never existed). 409 <c>guest_portal_booking_not_eligible</c> as for the first link.
-    /// </summary>
     [HttpPost("{bookingId:guid}/guest-portal/regenerate")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(typeof(GuestPortalLinkDto), StatusCodes.Status200OK)]
@@ -146,7 +131,6 @@ public class GuestPortalLinkController(
         if (GuestPortalRules.IneligibleReason(booking, Now()) is { } reason)
             return NotEligible(reason);
 
-        // A missing App:PublicSiteBaseUrl is a configuration error (500) before any link is made: never a wrong address.
         publicSiteLinks.EnsureConfigured();
         var service = stayEmails ?? throw new InvalidOperationException("The e-mails of the guest portal are not registered (AddGuestPortal).");
         var result = await service.ResendPrepareArrivalAsync(booking.OrgId, bookingId, User.GetUserId(), cancellationToken);
@@ -164,7 +148,6 @@ public class GuestPortalLinkController(
         }
     }
 
-    /// <summary>Revokes the stay link of the booking: its address stops opening at once. 204, also when the booking had none.</summary>
     [HttpDelete("{bookingId:guid}/guest-portal")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -210,7 +193,6 @@ public class GuestPortalLinkController(
         return (booking, null);
     }
 
-    /// <summary>True when the caller holds <paramref name="operation"/> on the property of the booking (the booking is already known to be visible).</summary>
     private async Task<bool> CanAsync(Booking booking, HostOperationRequirement operation, CancellationToken cancellationToken)
     {
         var property = await hostResources.ForPropertyAsync(booking.PropertyId, cancellationToken);

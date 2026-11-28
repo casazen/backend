@@ -20,7 +20,6 @@ namespace Casazen.Infrastructure.Services;
 /// </remarks>
 internal static class ComplianceFollowUps
 {
-    /// <summary>The types of "To do" the stay stages raise: the sweeps of the stays that owe nothing and of the conditions that cleared look for these.</summary>
     public static readonly ActivityType[] StayTodoTypes =
     [
         ActivityType.CheckInPending,
@@ -28,7 +27,6 @@ internal static class ComplianceFollowUps
         ActivityType.ReceiptToRetrieve,
     ];
 
-    /// <summary>The "To do" of a stay alert stage; <c>null</c> for a stage that has none (the check-out reminder).</summary>
     public static CreateTodoRequest? TodoForStay(Booking booking, StayAlertStep step)
     {
         ArgumentNullException.ThrowIfNull(booking);
@@ -37,7 +35,6 @@ internal static class ComplianceFollowUps
         var deadline = step.Alert.DeadlineUtc ?? StayAlertSchedule.AlertDeadlineUtc(booking);
         return step.Alert.Kind switch
         {
-            // The data of the guests are missing before the arrival: the check-in of the booking is where the host completes them.
             StayAlertKind.GuestDataMissing => ForStay(
                 booking,
                 ActivityType.CheckInPending,
@@ -126,7 +123,6 @@ internal static class ComplianceFollowUps
             step.Alert.DeadlineDay is { } day ? ComplianceAlertSchedule.DeadlineEndUtc(day) : null);
     }
 
-    /// <summary>The "To do" of an inactive connection: the property, with the cockpit action that opens the page of its sender.</summary>
     public static CreateTodoRequest? TodoForConnection(Guid propertyId)
     {
         if (ComplianceActivityFeeder.TodoOf(ComplianceCockpitAction.ActivateOctorateSend) is not { } mapping)

@@ -4,43 +4,28 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Services;
 
-/// <summary>
-/// What an entry of the timeline of a booking is about (SR-05a). The titles are keys: the words are the client's (IT and EN). The order
-/// of the members is the order of a stay and settles two entries at the same instant.
-/// </summary>
 public enum BookingTimelineKind
 {
-    /// <summary>The booking was made (<see cref="BookingTimelineData.Source"/> says where from).</summary>
     Created,
 
-    /// <summary>A "pay at the property" request was received: the booking is a request the host answers.</summary>
     RequestReceived,
 
-    /// <summary>The request waits for the guest to confirm the email; <see cref="BookingTimelineData.ExpiresAt"/> is the term.</summary>
     GuestEmailPending,
 
-    /// <summary>The request waits for the host's answer; <see cref="BookingTimelineData.ExpiresAt"/> is the term.</summary>
     ApprovalPending,
 
-    /// <summary>The booking site's checkout waits for the guest's payment.</summary>
     PaymentPending,
 
-    /// <summary>A booking entered by the host waits for the host's confirmation.</summary>
     HostConfirmationPending,
 
-    /// <summary>A payment came in (<see cref="BookingTimelineData.Amount"/> only for a caller who may read payments).</summary>
     PaymentReceived,
 
-    /// <summary>The booking is confirmed: its dates are blocked on every calendar.</summary>
     Confirmed,
 
-    /// <summary>The link of the online check-in went out (<see cref="BookingTimelineData.LinkState"/> says where it stands).</summary>
     CheckInLinkSent,
 
-    /// <summary>The guest submitted the data of the online check-in.</summary>
     GuestDocumentsReceived,
 
-    /// <summary>The host registered the arrival of the guest.</summary>
     Arrived,
 
     /// <summary>
@@ -49,63 +34,41 @@ public enum BookingTimelineKind
     /// </summary>
     Alloggiati,
 
-    /// <summary>The stay was checked out.</summary>
     CheckedOut,
 
-    /// <summary>The booking was cancelled (<see cref="BookingTimelineData.Reason"/>: by the system or declined; <see cref="BookingTimelineData.Note"/>: the host's).</summary>
     Cancelled,
 
-    /// <summary>A refund of a payment (<see cref="BookingTimelineData.RefundStatus"/>).</summary>
     Refund,
 }
 
-/// <summary>Where an entry of the timeline stands.</summary>
 public enum BookingTimelineState
 {
-    /// <summary>It happened.</summary>
     Done,
 
-    /// <summary>It is happening: something waits for the host, the guest or the bank.</summary>
     Current,
 }
 
-/// <summary>
-/// What an entry of the timeline says besides its kind: each field belongs to a few kinds and is <c>null</c> for the others. Only
-/// codes, amounts and dates: no name and no email of anyone.
-/// </summary>
 public sealed record BookingTimelineData
 {
-    /// <summary>Where the booking came from (<see cref="BookingTimelineKind.Created"/>, <see cref="BookingTimelineKind.RequestReceived"/>).</summary>
     public BookingSource? Source { get; init; }
 
-    /// <summary>Euros, for a caller who may read payments (<see cref="BookingTimelineKind.PaymentReceived"/>, <see cref="BookingTimelineKind.Refund"/>).</summary>
     public decimal? Amount { get; init; }
 
-    /// <summary>How it was paid (<see cref="BookingTimelineKind.PaymentReceived"/>).</summary>
     public PaymentMethod? Method { get; init; }
 
-    /// <summary>The term of a request that waits (UTC).</summary>
     public DateTime? ExpiresAt { get; init; }
 
-    /// <summary>
-    /// Why a booking was cancelled by the system (or the request the host declined), or <see cref="BookingCancellationReason.GuestRequested"/>
-    /// when the guest cancelled it themselves; <c>null</c> for the host's cancellation.
-    /// </summary>
     public BookingCancellationReason? Reason { get; init; }
 
-    /// <summary>The reason the host wrote when cancelling; host only, never sent to the guest.</summary>
     public string? Note { get; init; }
 
-    /// <summary><see cref="HostTodayCheckInState.Sent"/>, <see cref="HostTodayCheckInState.InProgress"/>, <see cref="HostTodayCheckInState.Expired"/> or <see cref="HostTodayCheckInState.Completed"/>.</summary>
     public HostTodayCheckInState? LinkState { get; init; }
 
-    /// <summary>The Alloggiati Web status as the host reads it.</summary>
     public AlloggiatiWebStatus? AlloggiatiStatus { get; init; }
 
     /// <summary>The legal term of the Alloggiati communication (UTC) while it is not sent.</summary>
     public DateTime? DeadlineAt { get; init; }
 
-    /// <summary>Where the refund stands.</summary>
     public PaymentRefundStatus? RefundStatus { get; init; }
 }
 
@@ -119,18 +82,10 @@ public sealed record BookingTimelineData
 /// <param name="Data">What it says besides.</param>
 public sealed record BookingTimelineEvent(BookingTimelineKind Kind, DateTime? At, BookingTimelineState State, BookingTimelineData Data);
 
-/// <summary>A payment of the booking, as far as the timeline is concerned.</summary>
-/// <param name="At">When it came in: <see cref="Payment.ProcessedAt"/>, else <see cref="Payment.CreatedAt"/> (as the fiscal reports read it).</param>
 public sealed record BookingTimelinePayment(PaymentStatus Status, PaymentMethod Method, decimal Amount, DateTime At);
 
-/// <summary>A refund of a payment of the booking.</summary>
-/// <param name="At">When it succeeded (<see cref="PaymentRefund.CompletedAt"/>), else when it was asked.</param>
 public sealed record BookingTimelineRefund(PaymentRefundStatus Status, decimal Amount, DateTime At);
 
-/// <summary>Where the online check-in of the stay stands (the state of <see cref="HostTodayCheckInState"/>).</summary>
-/// <param name="State">The state of the links of the stay, as the Home reads it.</param>
-/// <param name="LinkAt">When the link that counts went out; <c>null</c> when none was usable.</param>
-/// <param name="CompletedAt">When the guest submitted the data; <c>null</c> before.</param>
 public sealed record BookingTimelineCheckIn(HostTodayCheckInState State, DateTime? LinkAt, DateTime? CompletedAt);
 
 /// <summary>The Alloggiati communication of the stay.</summary>
@@ -138,7 +93,6 @@ public sealed record BookingTimelineCheckIn(HostTodayCheckInState State, DateTim
 /// <param name="ReportedAt">The time it was sent or declared sent.</param>
 public sealed record BookingTimelineAlloggiati(AlloggiatiWebStatus? Stored, DateTime? ReportedAt);
 
-/// <summary>What the timeline of a booking is built from, besides the booking: the rows of the other tables that tell its history.</summary>
 public sealed record BookingTimelineFacts(
     IReadOnlyList<BookingTimelinePayment> Payments,
     IReadOnlyList<BookingTimelineRefund> Refunds,
@@ -176,7 +130,6 @@ public static class BookingTimeline
         void Add(BookingTimelineKind kind, BookingTimelineState state, DateTime? at, DateTime sortAt, BookingTimelineData? data = null) =>
             entries.Add(new Entry(new BookingTimelineEvent(kind, at, state, data ?? new BookingTimelineData()), sortAt));
 
-        // The birth of the booking: a request for the host to answer, or a booking.
         var isRequest = booking.Source == BookingSource.Direct && booking.PaymentOption == PaymentOption.OnSite;
         Add(
             isRequest ? BookingTimelineKind.RequestReceived : BookingTimelineKind.Created,
@@ -188,7 +141,6 @@ public static class BookingTimeline
         if (booking.Status == BookingStatus.Pending)
             AddPending(booking, now.UtcDateTime, Add);
 
-        // Money that came in, and went back. Only what Stripe or the host recorded as collected counts as received.
         var collected = facts.Payments
             .Where(p => p.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded)
             .ToList();
@@ -270,7 +222,6 @@ public static class BookingTimeline
             .ToList();
     }
 
-    // A booking that is not confirmed yet: what it waits for.
     private static void AddPending(
         Booking booking,
         DateTime nowUtc,
@@ -288,8 +239,6 @@ public static class BookingTimeline
                     booking.GuestEmailVerifiedAt ?? booking.CreatedAt, new BookingTimelineData { ExpiresAt = booking.RequestExpiresAt });
                 break;
 
-            // A request past its term waits for the job that cancels it: nothing to say. Any other pending booking waits for its payment
-            // (the checkout of the booking site) or for the host (a booking the host entered).
             case null when !OnSiteRequests.IsOpenRequest(booking):
                 add(
                     booking.Source == BookingSource.Direct ? BookingTimelineKind.PaymentPending : BookingTimelineKind.HostConfirmationPending,
@@ -301,8 +250,6 @@ public static class BookingTimeline
         }
     }
 
-    // The link of the online check-in that went out: waiting for the guest before the arrival, or the guest's data received. A link that
-    // was never sent is a step still to come, not an entry; once the guest is there the link is no longer something the host waits on.
     private static void AddCheckInLink(
         Booking booking,
         BookingTimelineCheckIn checkIn,
@@ -346,7 +293,6 @@ public static class BookingTimeline
         if (status is AlloggiatiWebStatus.DaInviare or AlloggiatiWebStatus.NotDue)
             return;
 
-        // The communication follows the arrival, whatever time the declaration of the host carries.
         var arrival = booking.ArrivedAt ?? booking.CheckInDate;
         if (AlloggiatiStatusRules.IsSent(status))
         {

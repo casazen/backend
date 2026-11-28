@@ -13,38 +13,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// What the payment webhook did with a succeeded PaymentIntent of a booking payment (BK-04), or with the SetupIntent of
-/// a deferred payment (<see cref="ConfirmedWithSavedCard"/>, BK-10).
-/// </summary>
 public enum CheckoutPaymentOutcome
 {
-    /// <summary>No payment row for the PaymentIntent, or the event came from another Stripe account: nothing changed.</summary>
     Ignored,
 
-    /// <summary>Already applied: the payment was completed on a valid booking, refunded, or its late refund exists.</summary>
     AlreadySettled,
 
-    /// <summary>Payment completed on a booking that was already confirmed (or checked in / out).</summary>
     Recorded,
 
-    /// <summary>The checkout hold was still valid: booking confirmed.</summary>
     Confirmed,
 
-    /// <summary>The hold had expired or the booking was cancelled, and the dates were still free: booking confirmed again.</summary>
     Reconfirmed,
 
-    /// <summary>The dates were no longer free: booking cancelled, full refund reserved (sent to Stripe after the commit).</summary>
     Refunding,
 
-    /// <summary>
-    /// Deferred payment: the guest's card was saved (<c>setup_intent.succeeded</c>) and the booking confirmed; it is
-    /// charged at the free-cancellation deadline (BK-10).
-    /// </summary>
     ConfirmedWithSavedCard,
 }
 
-/// <summary>Result of <see cref="CheckoutPaymentSettlementService.SettleSucceededPaymentAsync"/>.</summary>
 public sealed record CheckoutPaymentSettlement(CheckoutPaymentOutcome Outcome, Guid? BookingId = null, Guid? RefundId = null)
 {
     public static CheckoutPaymentSettlement Ignored { get; } = new(CheckoutPaymentOutcome.Ignored);
@@ -89,11 +74,6 @@ public sealed class CheckoutPaymentSettlementService(
 
     private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
 
-    /// <summary>
-    /// Settles the payment of <paramref name="paymentIntentId"/>. <paramref name="eventAccountId"/> is the event's
-    /// <c>account</c> (the connected account of a direct charge); on the platform endpoint without one the PaymentIntent
-    /// lives on the platform account. Call <see cref="CompleteAsync"/> with the result once the event is committed.
-    /// </summary>
     public async Task<CheckoutPaymentSettlement> SettleSucceededPaymentAsync(
         string paymentIntentId,
         WebhookSource source,
@@ -111,7 +91,6 @@ public sealed class CheckoutPaymentSettlementService(
 
         await LockAsync(payment, cancellationToken);
 
-        // Read again under the locks: a checkout of the same dates, the expiry job or the host may have changed them.
         await db.Entry(payment).ReloadAsync(cancellationToken);
         await db.Entry(payment).Reference(p => p.Booking).LoadAsync(cancellationToken);
         var booking = payment.Booking;
@@ -147,7 +126,6 @@ public sealed class CheckoutPaymentSettlementService(
 
             MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
 
-            // E08/F01/US01/T04: the payment became paid; its event is saved with the status (the Octorate handler records it on the reservation).
             await GuestPortal.GuestHostExtraService.RecordBookingPaymentAsync(db, booking, cancellationToken);
             await PaymentEvents.RecordSucceededAsync(
                 domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
@@ -158,15 +136,11 @@ public sealed class CheckoutPaymentSettlementService(
         var now = UtcNow;
         var expiredHoldCutoff = CheckoutHolds.CutoffAt(now, CheckoutHolds.GetTtlMinutes(configuration));
 
-        // A hold still within its TTL (or whose payment the expiry job saw in flight) kept its dates in the iCal export:
-        // only another booking can stand in its way. An expired hold or a cancelled booking had released them.
         var validHold = booking.Status == BookingStatus.Pending &&
             !await db.Bookings
                 .Where(b => b.Id == booking.Id)
                 .Where(CheckoutHolds.IsExpired(expiredHoldCutoff))
                 .AnyAsync(cancellationToken);
-        // A booking the host entered (its payment link, E08/F01/US01/T05) is confirmed from the start: a payment that succeeds once the host
-        // cancelled it never brings it back, whatever the dates, and is refunded in full like a payment on dates that are taken.
         var hostBooking = booking.Source == BookingSource.Manual;
         var datesFree = !hostBooking
                         && await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
@@ -179,8 +153,6 @@ public sealed class CheckoutPaymentSettlementService(
                 booking.Status);
         }
 
-        // E08/F01/US01/T04: a payment that confirms its booking is a payment received; one that is refunded at once (the dates are taken, the
-        // host cancelled) is not announced as one.
         var completedNow = payment.Status != PaymentStatus.Completed;
         MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
         if (completedNow && datesFree)
@@ -196,14 +168,11 @@ public sealed class CheckoutPaymentSettlementService(
         {
             var previousStatus = booking.Status;
             booking.Status = BookingStatus.Confirmed;
-            // The payment is what confirms it: the same instant, so the timeline reads "paid" and then "confirmed".
             booking.ConfirmedAt = payment.ProcessedAt ?? now;
-            // A hold that had expired and is confirmed again is no longer a cancelled booking.
             booking.CancelledAt = null;
             booking.CancellationReason = null;
             booking.UpdatedAt = now;
 
-            // The guest's payment confirmed the stay: the event is saved with the confirmation, in the transaction of the webhook event.
             await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Guest, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
 
@@ -232,7 +201,6 @@ public sealed class CheckoutPaymentSettlementService(
         var refunds = await db.PaymentRefunds.Where(r => r.PaymentId == payment.Id).ToListAsync(cancellationToken);
         if (PaymentRefundService.Summarize(payment, refunds).RefundableAmount <= 0)
         {
-            // Refunded from the Stripe Dashboard before this event arrived: only the payment status is brought up to date.
             await refundService.RecomputePaymentAsync(payment, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             logger.LogWarning(
@@ -251,7 +219,6 @@ public sealed class CheckoutPaymentSettlementService(
             cancellationToken,
             lateRefundKey);
 
-        // Safety net: if the process stops between the commit and the Stripe call, the job sends the refund (same key).
         refundRetryScheduler.ScheduleSubmit(refund.Id);
 
         logger.LogWarning(
@@ -326,10 +293,6 @@ public sealed class CheckoutPaymentSettlementService(
         }
     }
 
-    /// <summary>
-    /// No other booking takes the dates (confirmed, checked in, or a hold still valid:
-    /// <see cref="CheckoutHolds.OccupiesDates"/>) and, when <paramref name="checkCalendarBlocks"/>, no iCal block.
-    /// </summary>
     private async Task<bool> AreDatesFreeAsync(
         Booking booking,
         HoldExpiryCutoff expiredHoldCutoff,
@@ -429,7 +392,6 @@ public sealed class CheckoutPaymentSettlementService(
             (PostgresAdvisoryLocks.Scope.PaymentRefund, payment.Id.ToString("N")));
         if (ownTransaction is not null)
         {
-            // Unreachable: the property lock above already requires the caller's transaction.
             await ownTransaction.DisposeAsync();
             throw new InvalidOperationException("The payment settlement must run inside the webhook event transaction.");
         }

@@ -18,18 +18,14 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static partial class SdiRejectionReasons
 {
-    /// <summary>The key of the text of a code the map does not know: it says the raw code (<c>{0}</c>).</summary>
     public const string GenericKey = "SdiReasonGeneric";
 
-    /// <summary>The key of the text of a rejection that came without any code.</summary>
     public const string NoCodeKey = "SdiReasonNoCode";
 
-    /// <summary>The longest code of an SDI notification (five digits).</summary>
     public const int CodeLength = 5;
 
     private static readonly IReadOnlyDictionary<string, string> Keys = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        // The name, the size and the signature of the file (the channel signs the file and names it).
         ["00001"] = "SdiReasonFileName",
         ["00002"] = "SdiReasonFileNameDuplicate",
         ["00003"] = "SdiReasonFileSize",
@@ -42,7 +38,6 @@ public static partial class SdiRejectionReasons
         ["00107"] = "SdiReasonSignature",
         ["00106"] = "SdiReasonFileCorrupt",
 
-        // The format of the file.
         ["00200"] = "SdiReasonFormat",
         ["00201"] = "SdiReasonFormat",
 
@@ -80,7 +75,6 @@ public static partial class SdiRejectionReasons
         ["00476"] = "SdiReasonDocumentType",
         ["00477"] = "SdiReasonIntentDeclaration",
 
-        // Who is who: the fiscal ids of the parties and the recipient code.
         ["00300"] = "SdiReasonTransmitterId",
         ["00301"] = "SdiReasonIssuerId",
         ["00302"] = "SdiReasonIssuerId",
@@ -98,24 +92,19 @@ public static partial class SdiRejectionReasons
         ["00398"] = "SdiReasonPublicBody",
         ["00399"] = "SdiReasonPublicBody",
 
-        // The invoice was sent before.
         ["00404"] = "SdiReasonDuplicate",
         ["00409"] = "SdiReasonDuplicate",
 
-        // The refusals of the channel, before the SDI saw the file.
         [SdiSubmissionErrors.IssuerPending] = "SdiErrorIssuerPending",
         [SdiSubmissionErrors.ProviderRefused] = "SdiErrorProviderRefused",
         [SdiSubmissionErrors.ProviderError] = "SdiErrorProviderError",
         [SdiSubmissionErrors.NotSupported] = "SdiErrorNotSupported",
     };
 
-    /// <summary>The codes of the map: the 63 of the official list and the four of the channel.</summary>
     public static IReadOnlyCollection<string> KnownCodes => Keys.Keys.ToList();
 
-    /// <summary>The codes of the notification of rejection of the official list.</summary>
     public static IReadOnlyCollection<string> SdiCodes => Keys.Keys.Where(IsSdiCode).ToList();
 
-    /// <summary>The code as the map spells it: trimmed, a number of one to five digits written with five (<c>300</c> is <c>00300</c>); a code of the channel in lower case; <c>null</c> for nothing.</summary>
     public static string? Normalize(string? code)
     {
         if (string.IsNullOrWhiteSpace(code))
@@ -131,7 +120,6 @@ public static partial class SdiRejectionReasons
     /// <summary>True when the map has a text of its own for <paramref name="code"/> (an SDI code of the list, or a code of the channel).</summary>
     public static bool IsKnown(string? code) => Normalize(code) is { } normalized && Keys.ContainsKey(normalized);
 
-    /// <summary>The key in <c>SharedResources</c> of the words of <paramref name="code"/>: its own, else <see cref="GenericKey"/> (or <see cref="NoCodeKey"/> without a code).</summary>
     public static string KeyOf(string? code)
     {
         var normalized = Normalize(code);
@@ -141,7 +129,6 @@ public static partial class SdiRejectionReasons
         return Keys.TryGetValue(normalized, out var key) ? key : GenericKey;
     }
 
-    /// <summary>The reason of <paramref name="code"/> in plain words, in <paramref name="language"/>: the generic text carries the raw code of a code the map does not know.</summary>
     public static string Describe(string? code, IDocumentTexts texts, string language)
     {
         ArgumentNullException.ThrowIfNull(texts);
@@ -167,7 +154,6 @@ public static partial class SdiRejectionReasons
         return masked.Length <= maxLength ? masked : masked[..maxLength].TrimEnd();
     }
 
-    /// <summary>True for a code of the notification of rejection of the official list (five digits).</summary>
     private static bool IsSdiCode(string code) => code.Length == CodeLength && code.All(char.IsAsciiDigit);
 
     private static string Raw(string? normalized) => normalized ?? "-";

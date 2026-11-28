@@ -19,7 +19,6 @@ public sealed class PublicAvailabilityService(
     IConfiguration configuration,
     TimeProvider? timeProvider = null) : IPublicAvailabilityService
 {
-    // The nights taken by stays, holds and blocks: the definition the calendar and the per-site reads share.
     private readonly PublicOccupancyReader _occupancy = new(db, configuration, timeProvider);
 
     public async Task<PublicAvailability> GetAsync(
@@ -53,7 +52,6 @@ public sealed class PublicAvailabilityService(
             };
         }
 
-        // Dates only, never the guest or the source of a stay (the reader ignores the tenant filter for the same reason as above).
         var taken = await _occupancy.TakenNightsAsync([propertyId], from, to, cancellationToken);
 
         return new PublicAvailability(propertyId, from, to, [.. taken[propertyId]], published.MinNights);

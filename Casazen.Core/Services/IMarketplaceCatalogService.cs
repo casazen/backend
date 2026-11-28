@@ -28,25 +28,11 @@ public interface IMarketplaceCatalogService
     Task<MarketplaceCatalog> GetCatalogAsync(
         Guid orgId, HostScope scope, Guid? propertyId, string language, CancellationToken ct = default);
 
-    /// <summary>
-    /// The Active tab: the activations of the org that are active, pending, to fix or requested (<c>Integrations</c>, limited to the properties
-    /// of the caller's scope; the org-level ones only to a caller who reaches the whole org) and the suppliers the host already asked for a
-    /// job (<c>Providers</c>, from <see cref="IHostSupplierUsageReader"/>). With a <paramref name="propertyId"/> only that property's
-    /// activations and the org-level ones.
-    /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The property is not one of the org inside the caller's scope.</exception>
     Task<MarketplaceActive> GetActiveAsync(Guid orgId, HostScope scope, Guid? propertyId, CancellationToken ct = default);
 
-    /// <summary>
-    /// Whether the Active tab holds at least one integration that is on (<see cref="MarketplaceCardStatus.Active"/>) or that the host declared
-    /// (<see cref="MarketplaceIntegration.IsDeclared"/>), for the caller's <paramref name="scope"/>: the same rows as <see cref="GetActiveAsync"/> without a
-    /// property, answered by one query that reads nothing else of the tab (no name, no property, no supplier). The part «Partners» of the activation plan
-    /// asks it on every read of the plan (E10/F01/US04/T01).
-    /// </summary>
     Task<bool> HasActiveIntegrationAsync(Guid orgId, HostScope scope, CancellationToken ct = default);
 }
 
-/// <summary>The ids of the five groups of the catalog, in the order the page shows them.</summary>
 public static class MarketplaceGroupIds
 {
     public const string SalesChannels = "salesChannels";
@@ -59,65 +45,42 @@ public static class MarketplaceGroupIds
         [SalesChannels, ConnectedTools, ChannelManagerFunctions, HomeServices, Partners];
 }
 
-/// <summary>What a card says about its state (NF-54): the four states of the page.</summary>
 public enum MarketplaceCardStatus
 {
-    /// <summary>On, for the org or for the property asked.</summary>
     Active = 1,
 
-    /// <summary>Not on, and nothing is under way.</summary>
     NotActive = 2,
 
-    /// <summary>Asked for or under way, not finished (a request that waits for the license is shown as Pending).</summary>
     Pending = 3,
 
-    /// <summary>It stopped working and the host has to do something.</summary>
     ToFix = 4,
 }
 
-/// <summary>Whether the status of a card is the org's or a property's.</summary>
 public enum MarketplaceStatusScope
 {
-    /// <summary>The org as a whole (a partner, or a channel, a tool or a licensed function asked about without a property).</summary>
     Org = 1,
 
-    /// <summary>One property (a channel, a tool or a licensed function asked about with a property).</summary>
     Property = 2,
 }
 
-/// <summary>The stable codes of <c>reason</c>, which the client translates; none of them is a sentence.</summary>
 public static class MarketplaceReasons
 {
-    /// <summary>The Octorate connector is off, or the org has no connected Octorate account: the page leads to the connect wizard.</summary>
     public const string OctorateNotConnected = "octorate_not_connected";
 
-    /// <summary>It is already on.</summary>
     public const string AlreadyActive = "already_active";
 
-    /// <summary>Its activation is under way or waits for an answer.</summary>
     public const string InProgress = "activation_in_progress";
 
-    /// <summary>It stopped working: the way forward is fixing it, not activating it again.</summary>
     public const string NeedsFixing = "needs_fixing";
 
-    /// <summary>Octorate does not let a connection to the portal be created through the API.</summary>
     public const string NotAvailable = "not_available";
 }
 
-/// <summary>What a card costs, as far as it is known: the words (<c>null</c> when nobody knows, never invented) and who invoices.</summary>
 public sealed record MarketplaceCost(string? Text, MarketplaceCostInvoicer InvoicedBy)
 {
-    /// <summary>Nobody knows what it costs or who invoices.</summary>
     public static MarketplaceCost Unknown { get; } = new(null, MarketplaceCostInvoicer.Unknown);
 }
 
-/// <summary>
-/// One card of the catalog. <see cref="PropertyCount"/> is set only for a channel or a tool asked about without a property and active on
-/// some: the number of properties of the caller's scope that have it on. <see cref="Job"/>, <see cref="WebsiteUrl"/>,
-/// <see cref="ServiceCategories"/> and <see cref="OctoratePortalCode"/> are the partner's own. <see cref="ConnectByPropertyId"/> is true for a
-/// sales channel whose connection CasaZen creates from the id of the property on the portal («Collega da CasaZen»,
-/// <see cref="MarketplaceCardRules.ConnectsByPropertyId"/>), and false on every other card.
-/// </summary>
 public sealed record MarketplaceCatalogEntry(
     MarketplaceActivationKind Kind,
     string Code,
@@ -137,16 +100,12 @@ public sealed record MarketplaceCatalogEntry(
     bool ConnectByPropertyId = false,
     bool RequiresCredentials = false);
 
-/// <summary>A group of the catalog. The home services have no entries and say that their flow is unchanged (<see cref="UnchangedFlow"/>).</summary>
 public sealed record MarketplaceGroup(string Id, bool UnchangedFlow, IReadOnlyList<MarketplaceCatalogEntry> Entries);
 
-/// <summary>Whether the Octorate connector is on, and the org has a connected Octorate account in this environment.</summary>
 public sealed record MarketplaceOctorateState(bool Enabled, bool Connected);
 
-/// <summary>The answer of <see cref="IMarketplaceCatalogService.GetCatalogAsync"/>.</summary>
 public sealed record MarketplaceCatalog(MarketplaceOctorateState Octorate, IReadOnlyList<MarketplaceGroup> Groups);
 
-/// <summary>The property an integration of the Active tab is about.</summary>
 public sealed record MarketplaceIntegrationProperty(Guid Id, string Name);
 
 /// <summary>
@@ -167,5 +126,4 @@ public sealed record MarketplaceIntegration(
     DateTime? DeclaredAt = null,
     DateTime? VerifiedAt = null);
 
-/// <summary>The answer of <see cref="IMarketplaceCatalogService.GetActiveAsync"/>: the integrations and the suppliers used, together.</summary>
 public sealed record MarketplaceActive(IReadOnlyList<MarketplaceIntegration> Integrations, IReadOnlyList<HostUsedSupplier> Providers);

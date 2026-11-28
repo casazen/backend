@@ -39,7 +39,6 @@ public sealed class LeaseDocumentExtractionService(
 {
     private const int HighConfidenceThreshold = 80;
 
-    /// <summary>Fewer letters and digits than this in a whole document is no text.</summary>
     private const int MinimumCharacters = 20;
 
     public async Task ExtractAsync(Guid documentId, CancellationToken ct = default)
@@ -52,7 +51,6 @@ public sealed class LeaseDocumentExtractionService(
 
         var lease = document.LeaseContract;
 
-        // Tenancy: a document is never read into a lease of another org, whatever the ids say (the job runs with no org filter).
         if (document.OrgId != lease.OrgId)
             throw new DomainRuleException("tenant_isolation_violation", "TenantIsolationViolation");
 
@@ -80,7 +78,6 @@ public sealed class LeaseDocumentExtractionService(
 
             if (importedDraft && document.Kind != LeaseDocumentKind.Contract)
             {
-                // The identity document of a tenant or the receipt of a registration do not fill the draft of a contract.
                 await UpdateAsync(documentId, d =>
                 {
                     d.ExtractionStartedAt = DateTime.UtcNow;
@@ -147,20 +144,12 @@ public sealed class LeaseDocumentExtractionService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException && ex is not NotFoundException { Code: "document_not_found" })
         {
-            // The type of the failure and the ids, never its message: the reader of a document may put a word of it there.
-            // A document deleted while it was being read is not a failure: there is no row left to mark, and the job stops.
             logger.LogError("Reading the document failed. DocumentId={DocumentId} LeaseId={LeaseId} Error={ErrorType}", documentId, document.LeaseContractId, ex.GetType().Name);
             await FailAsync(documentId, ContractReadingCodes.Error, CancellationToken.None);
             throw;
         }
     }
 
-    // ---- the document of an imported draft -----------------------------------------------------------------------------
-
-    /// <remarks>
-    /// The draft service clears the change tracker of the context it takes the lock on (the same scoped context as this service's), so
-    /// everything written to the document after it goes through <see cref="UpdateAsync"/>, which reads the document again.
-    /// </remarks>
     private async Task<LeaseDocumentExtractionStatus> ReadIntoDraftAsync(
         Guid documentId, LeaseContract lease, ContractText text, DocumentAnalysis analysis, CancellationToken ct)
     {
@@ -178,7 +167,6 @@ public sealed class LeaseDocumentExtractionService(
         }
         catch (DomainConflictException ex) when (ex.Code == LeaseDraftErrorCodes.NotDraft)
         {
-            // The person went on while the document was being read (the contract was imported, the draft deleted): nothing to fill.
             await UpdateAsync(documentId, d =>
             {
                 d.ExtractionStatus = LeaseDocumentExtractionStatus.Skipped;
@@ -252,9 +240,6 @@ public sealed class LeaseDocumentExtractionService(
         await db.SaveChangesAsync(ct);
     }
 
-    // ---- the sections of a contract document (CF-DOCS-REAL) ---------------------------------------------------------------
-
-    /// <summary>What the pages of a contract document are made of and what each part says: kept in memory only, never stored whole.</summary>
     private sealed record DocumentAnalysis(
         RecognizedSections Sections,
         string ContractText,
@@ -263,10 +248,6 @@ public sealed class LeaseDocumentExtractionService(
         CalculationSheetReading? Sheet,
         IReadOnlyList<ReadingWarning> Warnings);
 
-    /// <summary>
-    /// Tells the sections of the document apart, reads each with its own reader and checks them against each other and against the
-    /// property. The contract is read from its own pages only: the attestation repeats the rent and the dates with other meanings.
-    /// </summary>
     private static DocumentAnalysis Analyze(ContractText text, LeaseContract lease)
     {
         var pages = text.PageTexts();
@@ -293,14 +274,11 @@ public sealed class LeaseDocumentExtractionService(
         return new DocumentAnalysis(sections, contractText, reading, attestation, sheet, warnings);
     }
 
-    /// <summary>The sections as they are kept: the kind and the pages, nothing of the text.</summary>
     private static IEnumerable<object> SectionsOf(DocumentAnalysis analysis) =>
         analysis.Sections.Sections.Select(s => new { kind = DocumentSectionKinds.Code(s.Kind), firstPage = s.FirstPage, lastPage = s.LastPage });
 
     private static IEnumerable<object> WarningsOf(DocumentAnalysis analysis) =>
         analysis.Warnings.Select(w => new { code = w.Code, pages = w.Pages });
-
-    // ---- the receipt of the registration (CF-DOCS-REAL) --------------------------------------------------------------------
 
     /// <summary>
     /// The receipt of the Agenzia delle Entrate is a digital PDF: its text is read in process, without OCR. What is kept with the document is
@@ -334,7 +312,6 @@ public sealed class LeaseDocumentExtractionService(
             return LeaseDocumentExtractionStatus.Failed;
         }
 
-        // A scan or a photo of the receipt is not read here: the person types the number and the date, as before.
         if (text is null)
         {
             await FailAsync(documentId, ContractReadingCodes.NoText, ct);
@@ -392,16 +369,12 @@ public sealed class LeaseDocumentExtractionService(
         return content.ToArray();
     }
 
-    // ---- any other lease: the first pipeline, as it was (ADR-009) -------------------------------------------------------
-
     private async Task<LeaseDocumentExtractionStatus> ReadIntoLeaseAsync(
         LeaseDocument document, LeaseContract lease, ContractText text, DocumentAnalysis? analysis, CancellationToken ct)
     {
-        // A contract that comes with its attestation and its sheet is read on its own pages: the numbers of the other sections are not its own.
         var fields = ParseExtractedFields(analysis?.ContractText ?? text.Text);
         var conflicts = ValidateCoherence(fields, lease);
 
-        // Fields are written to the lease only when every one is certain and none contradicts the lease.
         var allHighConfidence = fields.All(f => f.Confidence >= HighConfidenceThreshold);
         if (allHighConfidence && conflicts.Count == 0)
         {
@@ -413,7 +386,6 @@ public sealed class LeaseDocumentExtractionService(
             document.ExtractionStatus = LeaseDocumentExtractionStatus.NeedsReview;
         }
 
-        // The names of the fields and how sure the reading was, never what it read: the name of a person is not kept here.
         document.ExtractionError = null;
         document.ExtractionResult = analysis is null
             ? JsonSerializer.Serialize(new
@@ -441,7 +413,6 @@ public sealed class LeaseDocumentExtractionService(
     {
         var fields = new List<ExtractedField>();
 
-        // Extract landlord name (simplified pattern matching)
         var landlordMatch = Regex.Match(text, @"(?:locatore|landlord|proprietario)[:\s]+([A-Z][a-z]+\s+[A-Z][a-z]+)", RegexOptions.IgnoreCase);
         if (landlordMatch.Success)
         {
@@ -453,7 +424,6 @@ public sealed class LeaseDocumentExtractionService(
             });
         }
 
-        // Extract tenant name
         var tenantMatch = Regex.Match(text, @"(?:conduttore|tenant|inquilino)[:\s]+([A-Z][a-z]+\s+[A-Z][a-z]+)", RegexOptions.IgnoreCase);
         if (tenantMatch.Success)
         {
@@ -465,7 +435,6 @@ public sealed class LeaseDocumentExtractionService(
             });
         }
 
-        // Extract monthly rent
         var rentMatch = Regex.Match(text, @"(?:canone|rent|affitto)[:\s]+€?\s*([0-9,\.]+)", RegexOptions.IgnoreCase);
         if (rentMatch.Success && decimal.TryParse(rentMatch.Groups[1].Value.Replace(",", "."), out var rent))
         {
@@ -477,7 +446,6 @@ public sealed class LeaseDocumentExtractionService(
             });
         }
 
-        // Extract security deposit
         var depositMatch = Regex.Match(text, @"(?:deposito|cauzione|deposit)[:\s]+€?\s*([0-9,\.]+)", RegexOptions.IgnoreCase);
         if (depositMatch.Success && decimal.TryParse(depositMatch.Groups[1].Value.Replace(",", "."), out var deposit))
         {
@@ -489,7 +457,6 @@ public sealed class LeaseDocumentExtractionService(
             });
         }
 
-        // Extract start date
         var startDateMatch = Regex.Match(text, @"(?:inizio|start|decorrenza)[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})", RegexOptions.IgnoreCase);
         if (startDateMatch.Success && DateTime.TryParse(startDateMatch.Groups[1].Value, out var startDate))
         {
@@ -501,7 +468,6 @@ public sealed class LeaseDocumentExtractionService(
             });
         }
 
-        // Extract end date
         var endDateMatch = Regex.Match(text, @"(?:fine|end|scadenza)[:\s]+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})", RegexOptions.IgnoreCase);
         if (endDateMatch.Success && DateTime.TryParse(endDateMatch.Groups[1].Value, out var endDate))
         {
@@ -520,7 +486,6 @@ public sealed class LeaseDocumentExtractionService(
     {
         var conflicts = new List<ExtractionConflict>();
 
-        // Check parties (simplified - we'd need to check the actual parties in the database)
         var hasLandlord = fields.Any(f => f.Name == "LandlordName");
         var hasTenant = fields.Any(f => f.Name == "TenantName");
         if (!hasLandlord || !hasTenant)
@@ -532,7 +497,6 @@ public sealed class LeaseDocumentExtractionService(
             });
         }
 
-        // Check date coherence
         var startDateField = fields.FirstOrDefault(f => f.Name == "StartDate");
         var endDateField = fields.FirstOrDefault(f => f.Name == "EndDate");
         if (startDateField != null && endDateField != null &&
@@ -547,11 +511,10 @@ public sealed class LeaseDocumentExtractionService(
             });
         }
 
-        // Check rent coherence if the lease has a rent already
         var rentField = fields.FirstOrDefault(f => f.Name == "MonthlyRent");
         if (rentField != null && decimal.TryParse(rentField.Value, out var extractedRent) && lease.MonthlyRent > 0)
         {
-            var tolerance = lease.MonthlyRent * 0.5m; // +/- 50%
+            var tolerance = lease.MonthlyRent * 0.5m;
             if (Math.Abs(extractedRent - lease.MonthlyRent) > tolerance)
             {
                 conflicts.Add(new ExtractionConflict
@@ -567,7 +530,6 @@ public sealed class LeaseDocumentExtractionService(
 
     private void PopulateLeaseFields(LeaseContract lease, List<ExtractedField> fields)
     {
-        // Only populate if the field is not already set (don't silently overwrite user data)
         var rentField = fields.FirstOrDefault(f => f.Name == "MonthlyRent");
         if (rentField != null && decimal.TryParse(rentField.Value, out var rent))
         {
@@ -577,7 +539,6 @@ public sealed class LeaseDocumentExtractionService(
             }
             else if (Math.Abs(lease.MonthlyRent - rent) > 0.01m)
             {
-                // Field already populated - this is a conflict, don't overwrite
                 logger.LogWarning("Lease {LeaseId} MonthlyRent is already set and the document says another: left as it is", lease.Id);
             }
         }
@@ -620,11 +581,8 @@ public sealed class LeaseDocumentExtractionService(
                 logger.LogWarning("Lease {LeaseId} EndDate is already set and the document says another: left as it is", lease.Id);
             }
         }
-
-        // The parties are not written here: a lease that exists has its people already, and an imported draft is filled by LeaseDraftContractFill.
     }
 
-    /// <summary>A field of the first pipeline, in memory only: its value is never kept with the document.</summary>
     private sealed class ExtractedField
     {
         public string Name { get; set; } = string.Empty;

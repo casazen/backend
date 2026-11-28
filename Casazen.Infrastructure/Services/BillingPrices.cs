@@ -17,29 +17,20 @@ public static class BillingPrices
 {
     public const string SectionName = "Billing:Prices";
 
-    /// <summary>422 of a checkout for a tier whose Price id is not configured in this environment.</summary>
     public const string PlanUnavailableCode = "billing_plan_unavailable";
 
-    /// <summary>Resource key of the message of <see cref="PlanUnavailableCode"/>.</summary>
     public const string PlanUnavailableMessageKey = "BillingPlanUnavailable";
 
-    /// <summary>Prefix of every Stripe Price id.</summary>
     private const string PriceIdPrefix = "price_";
 
-    /// <summary>Railway variable of the Price id of a tier.</summary>
     public static string VariableName(PlanTier tier) => $"Billing__Prices__{tier}";
 
-    /// <summary>
-    /// Price id of the tier, or null when it is empty, a placeholder (<c>price_PLACEHOLDER_…</c>, <c>YOUR_…</c>) or not a
-    /// Stripe Price id (<c>price_…</c>).
-    /// </summary>
     public static string? Resolve(IConfiguration configuration, PlanTier tier)
     {
         var value = (configuration[$"Billing:CheckoutPrices:{tier}"] ?? configuration[$"{SectionName}:{tier}"])?.Trim();
         return IsPriceId(value) ? value : null;
     }
 
-    /// <summary>Tier of the catalogue whose configured Price id is <paramref name="priceId"/>, or null.</summary>
     public static PlanTier? TierOf(IConfiguration configuration, string? priceId)
     {
         if (string.IsNullOrWhiteSpace(priceId))
@@ -56,15 +47,10 @@ public static class BillingPrices
         return AgencyUsagePricing.MatchesPriceId(configuration, AgencyUsagePricing.Base, priceId) ? PlanTier.Agency : null;
     }
 
-    /// <summary>
-    /// What stops the plans from being sold: tiers of the catalogue without a valid Price id, and one id set on two tiers
-    /// (a payment would grant the wrong plan). Names the variables, never the values.
-    /// </summary>
     public static IReadOnlyList<string> GetProblems(IConfiguration configuration)
     {
         var problems = new List<string>();
 
-        // Agency is a newly introduced opt-in product; existing installations keep serving their configured plans.
         var missing = PlanCatalog.All
             .Where(e => e.Tier != PlanTier.Agency)
             .Where(e => Resolve(configuration, e.Tier) is null)

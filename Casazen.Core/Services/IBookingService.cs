@@ -7,10 +7,6 @@ public interface IBookingService
 {
     Task<Booking?> GetBookingAsync(Guid id);
 
-    /// <summary>
-    /// The bookings the caller sees (<paramref name="scope"/>, TN-3), optionally of one property and/or one guest, with
-    /// their property and guest: one SQL query, filtered by org and owner in the database (A2-17).
-    /// </summary>
     Task<IReadOnlyList<Booking>> GetBookingsAsync(
         HostScope scope,
         Guid? propertyId = null,
@@ -29,12 +25,7 @@ public interface IBookingService
     Task<Booking> CreateManualBookingAsync(Booking booking, Guest guest);
 
     Task<Booking> UpdateBookingAsync(Booking booking);
-    // Cancellation (with refunds and intents on Stripe) is IBookingCancellationService (BK-02).
     Task<bool> IsPropertyAvailableAsync(Guid propertyId, DateTime checkIn, DateTime checkOut, int? pendingDirectTtlMinutes = null);
-    /// <summary>
-    /// Bookings of the host calendar from <paramref name="startDate"/> to <paramref name="endDate"/>: stay dates, both
-    /// included, never converted to a time zone (<see cref="HostCalendarRange"/>, MO-06).
-    /// </summary>
     Task<IEnumerable<Booking>> GetCalendarAsync(Guid propertyId, DateTime startDate, DateTime endDate);
     /// <summary>
     /// Public checkout: a <see cref="BookingStatus.Pending"/> hold with its PaymentIntent / SetupIntent, or a "pay at the
@@ -64,16 +55,6 @@ public interface IBookingService
     /// </exception>
     Task<DirectBookingQuote> QuoteDirectBookingAsync(DirectBookingQuoteInput input, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Price of a stay the host enters or changes in <paramref name="property"/> (manual booking, PC-07): the same
-    /// calculation as <see cref="QuoteDirectBookingAsync"/> (nightly rate x nights + cleaning fee, tourist tax of BK-03),
-    /// without the checks of the public booking site (active listing, compliance). It does not check availability.
-    /// </summary>
-    /// <exception cref="Exceptions.DomainRuleException">
-    /// <see cref="BookingErrorCodes.TooManyGuests"/>, <see cref="BookingErrorCodes.InvalidDates"/> or
-    /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/> (checked first: the property is in long-term mode,
-    /// PM-01).
-    /// </exception>
     Task<DirectBookingQuote> PriceHostStayAsync(
         Property property,
         DateTime checkInDate,

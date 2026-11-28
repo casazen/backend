@@ -31,20 +31,10 @@ namespace Casazen.Core.Services;
 /// </remarks>
 public static partial class ComplianceAlertSchedule
 {
-    /// <summary>The last hour of the arrival day (property clock) at which the first alert of a Ticino day can be due.</summary>
     internal const int TicinoLastArrivalAlertHour = 23;
 
-    /// <summary>
-    /// The <see cref="ComplianceAlertState.ReferenceKey"/> of the alerts of an arrival day: <c>yyyy-MM-dd</c>. The property is the other column of the unique index
-    /// (property, type, reference), so it is not repeated in the key, which a column of 32 characters could not hold with the id of the property.
-    /// </summary>
     public static string TicinoReferenceKey(DateOnly arrivalDay) => arrivalDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>
-    /// The earliest expected check-in of the stays of an arrival day: the earliest valid <c>HH:mm</c> of <paramref name="expectedArrivalTimes"/> (the
-    /// <c>Booking.ExpectedArrivalTime</c> of the stays). <c>late</c>, a blank value and anything that is not a time say nothing about when: they are ignored.
-    /// <c>null</c> when no stay of the day gave one.
-    /// </summary>
     public static TimeOnly? TicinoFirstExpectedArrival(IEnumerable<string?> expectedArrivalTimes)
     {
         ArgumentNullException.ThrowIfNull(expectedArrivalTimes);

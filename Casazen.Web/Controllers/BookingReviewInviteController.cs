@@ -6,13 +6,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// The invitation of a guest to review a stay (DB-12a), at the host's explicit request: <c>POST</c> sends the one email with the signed
-/// link, <c>GET</c> tells the host whether it can and what already happened. The only other thing that sends it is the action
-/// <c>RequestReview</c> of a routine the host switched on (E26/F01/US01/T01), through the same service and the same mark, so the guest gets it once
-/// whoever asks; no job and no reminder of its own. The booking is authorized as a row of its property (<c>booking.read</c> to look,
-/// <c>booking.write</c> to send).
-/// </summary>
 [ApiController]
 [Route("api/bookings/{id:guid}/review-invite")]
 [Authorize(Policy = CasazenPolicies.BookingRead)]
@@ -21,10 +14,6 @@ public class BookingReviewInviteController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService) : ControllerBase
 {
-    /// <summary>
-    /// Whether the host can ask the guest for a review now (<c>canInvite</c>), why not (<c>reason</c>), when it asked
-    /// (<c>inviteSentAt</c>) and whether the guest already reviewed (<c>reviewed</c>).
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ReviewInviteStatusDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

@@ -11,11 +11,6 @@ using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Controllers;
 
-/// <summary>
-/// Public-site branding of the caller's org (BK-12, A3-17): logo, hero image, primary color, tagline and theme, shown
-/// on <c>/book/{slug}</c> through <c>GET /api/public/orgs/{slug}</c> and <c>GET /api/public/resolve-host</c>. Same
-/// policy as the org settings (PL-04): only the org's billing/settings administrator.
-/// </summary>
 [ApiController]
 [Route("api/orgs/me/branding")]
 [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -27,7 +22,6 @@ public class OrgBrandingController(
     IPublicHostResolver publicHostResolver,
     IOptions<PublicHostOptions> publicHostOptions) : ControllerBase
 {
-    /// <summary>Multipart body limit of the image uploads: the largest image (hero) plus the form overhead.</summary>
     private const long MaxUploadRequestBytes = 11 * 1024 * 1024;
 
     [HttpGet]
@@ -99,7 +93,6 @@ public class OrgBrandingController(
     public Task<ActionResult<OrgBrandingDto>> UploadLogo(IFormFile? file, CancellationToken cancellationToken) =>
         UploadAsync(BrandingImageKind.Logo, file, cancellationToken);
 
-    /// <summary>Removes the logo: the site shows the display name again.</summary>
     [HttpDelete("logo")]
     [ProducesResponseType(typeof(OrgBrandingDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -124,7 +117,6 @@ public class OrgBrandingController(
     public Task<ActionResult<OrgBrandingDto>> UploadHero(IFormFile? file, CancellationToken cancellationToken) =>
         UploadAsync(BrandingImageKind.Hero, file, cancellationToken);
 
-    /// <summary>Removes the hero image: the landing falls back to the first property photo.</summary>
     [HttpDelete("hero")]
     [ProducesResponseType(typeof(OrgBrandingDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -160,7 +152,6 @@ public class OrgBrandingController(
         return org is null ? OrgNotFound() : Saved(org);
     }
 
-    /// <summary>The resolve-host cache carries the branding: drop it so subdomain/custom-domain sites show the change.</summary>
     private OkObjectResult Saved(Org org)
     {
         publicHostResolver.InvalidateOrgHosts(org, publicHostOptions.Value.NormalizedBaseDomain);

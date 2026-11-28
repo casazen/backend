@@ -56,11 +56,6 @@ public class PublicReviewsController(IOrgService orgService, IPublicReviewServic
         });
     }
 
-    /// <summary>
-    /// What the page of the review link shows: the property, the dates and, when the guest already wrote it, the review. The token of the
-    /// email is in the body, not in the address. 422 <c>review_link_invalid</c> for a link that is not ours, is expired or is for another
-    /// booking (the same answer for all); 409 <c>review_not_available</c> when the stay can no longer be reviewed.
-    /// </summary>
     [HttpPost("bookings/{bookingId:guid}/review/lookup")]
     [EnableRateLimiting(RateLimitPolicies.PublicBookingLookup)]
     [RequestSizeLimit(MaxBodyBytes)]

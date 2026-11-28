@@ -22,7 +22,6 @@ public class SeoBootstrapHostedService(
     IOptions<SeoBootstrapOptions> options,
     ILogger<SeoBootstrapHostedService> logger) : IHostedService
 {
-    /// <summary>Hangfire hash holding the bootstrap marker (field <see cref="EnqueuedAtField"/>).</summary>
     public const string MarkerKey = "casazen:seo-bootstrap";
 
     public const string EnqueuedAtField = "EnqueuedAt";

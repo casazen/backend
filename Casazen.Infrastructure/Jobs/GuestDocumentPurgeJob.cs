@@ -17,7 +17,6 @@ public class GuestDocumentPurgeJob(IGuestDocumentPurgeService purge)
 {
     public const string RecurringJobId = "guest-document-purge";
 
-    /// <summary>Every day at 03:50 UTC, after the retention jobs of the night.</summary>
     public const string Cron = "50 3 * * *";
 
     [AutomaticRetry(Attempts = 3)]

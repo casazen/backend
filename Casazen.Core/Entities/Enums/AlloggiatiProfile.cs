@@ -6,7 +6,6 @@ namespace Casazen.Core.Entities.Enums;
 /// </summary>
 public enum AlloggiatiProfile
 {
-    /// <summary>One account for one structure: the account of the property alone.</summary>
     SingleStructure = 1,
 
     /// <summary>

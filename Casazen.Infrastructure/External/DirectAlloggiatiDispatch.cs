@@ -16,7 +16,6 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
     IAlloggiatiDelegationService delegation, IDirectAlloggiatiRoute route, TimeProvider clock, IFeatureFlags flags,
     AlloggiatiTransportEnvironment environment)
 {
-    // The arrival report has already passed the arrival-day scheduler; an actual arrival is required as well.
     public async Task<List<AlloggiatiJobTarget>> CandidatesAsync(CancellationToken ct)
     {
         if (!environment.Live) return [];
@@ -90,8 +89,6 @@ public sealed class DirectAlloggiatiDispatch(AppDbContext db, DirectAlloggiatiSo
         var currentSummary = await reports.GetGuestSummaryAsync(booking.Id);
         if (!currentSummary.ExportReady || !summary.Guests.Select(g => g.StayGuestId).SequenceEqual(currentSummary.Guests.Select(g => g.StayGuestId)) ||
             !string.Equals(file.Text, AlloggiatiRecordFile.Build(currentSummary.Guests).Text, StringComparison.Ordinal)) return;
-        // Claim the current report in the database before the irreversible call. A crashed worker
-        // leaves an open attempt that a later worker can only reconcile, never resend.
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             var claimed = await db.AlloggiatiWebReports.Where(r => r.Id == report.Id && r.Status == AlloggiatiWebStatus.DaInviareManualmente

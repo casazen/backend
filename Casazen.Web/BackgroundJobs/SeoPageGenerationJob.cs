@@ -3,13 +3,8 @@ using Casazen.Core.Services;
 
 namespace Casazen.Web.BackgroundJobs;
 
-/// <summary>
-/// Generates SEO pages (bootstrap and admin "Genera"). Every text is stored as a draft revision that waits for a human
-/// review in the admin dashboard: this job never approves anything (SE-01, A8-04).
-/// </summary>
 public class SeoPageGenerationJob(ISeoContentService seoContentService, ILogger<SeoPageGenerationJob> logger)
 {
-    /// <summary>Bootstrap: the compliance guide and the tourist tax page of every comune of <paramref name="comuneCodes"/>.</summary>
     public Task ExecuteAsync(IReadOnlyList<string> comuneCodes) =>
         ExecuteAsync(comuneCodes, [SeoPageType.ComplianceGuide, SeoPageType.TouristTaxCalc], forceRegenerate: false);
 
@@ -44,7 +39,6 @@ public class SeoPageGenerationJob(ISeoContentService seoContentService, ILogger<
         return ExecuteAsync(comuneCodes);
     }
 
-    /// <summary>Signature of the admin jobs queued before SE-01; the auto-approval flag is ignored (see above).</summary>
     public Task ExecuteAsync(
         IReadOnlyList<string> comuneCodes,
         IReadOnlyList<SeoPageType> pageTypes,

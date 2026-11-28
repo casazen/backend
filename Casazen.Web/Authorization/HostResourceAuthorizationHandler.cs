@@ -63,7 +63,6 @@ public sealed class HostResourceAuthorizationHandler(
     }
 }
 
-/// <summary>Shorthand for the boolean outcome of a resource-based check.</summary>
 public static class HostAuthorizationExtensions
 {
     public static async Task<bool> IsAuthorizedAsync(

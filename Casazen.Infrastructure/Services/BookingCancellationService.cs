@@ -101,7 +101,6 @@ public sealed class BookingCancellationService(
             booking.CancellationNote = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
             booking.UpdatedAt = now;
 
-            // The host's timeline tells the guest's own cancellation apart from the host's (DB-08a).
             if (request.Initiator == BookingCancellationInitiator.Guest)
                 booking.CancellationReason = BookingCancellationReason.GuestRequested;
 
@@ -111,8 +110,6 @@ public sealed class BookingCancellationService(
             if (request.Initiator == BookingCancellationInitiator.Guest && booking.GuestCancelTokenExpiresAt > now)
                 booking.GuestCancelTokenExpiresAt = now;
 
-            // The one place where a booking is cancelled by a person, the host or the guest (GuestBookingCancellationService goes
-            // through here): the event is saved with the cancellation, and the transaction that commits one commits the other.
             await BookingEvents.RecordAsync(
                 domainEvents,
                 db,
@@ -145,7 +142,6 @@ public sealed class BookingCancellationService(
                 remaining -= part;
             }
 
-            // What stays with the host of what could have been refunded: the host is told when the guest cancels (DB-08a).
             retained = Math.Max(0m, quote.RefundableAmount - reserved.Sum(r => r.Amount));
 
             if (transaction is not null)
@@ -191,7 +187,6 @@ public sealed class BookingCancellationService(
             {
                 if (refund.Status == PaymentRefundStatus.Succeeded)
                 {
-                    // Claimed by a webhook already: the guest also got "refund confirmed", the amount is still refunded.
                     await refundService.ClaimGuestNotificationAsync(refund.Id, cancellationToken);
                     refunded += refund.Amount;
                 }
@@ -230,16 +225,11 @@ public sealed class BookingCancellationService(
         var pending = summaries.Sum(s => s.PendingRefundAmount);
         var refundable = summaries.Sum(s => s.RefundableAmount);
 
-        // BK-02, PO 2026-10-08: host cancellation always refunds 100% to the guest, regardless of the policy.
-        // The floor evaluated from the model is kept for reference only (shown as the rule in the response).
         var now = _clock.GetUtcNow();
         var nights = (booking.CheckOutDate.Date - booking.CheckInDate.Date).Days;
         var policy = CancellationRefundPolicy.EffectivePolicy(booking.Property, nights);
         var floor = CancellationRefundPolicy.Evaluate(booking, policy, now);
 
-        // BK-02, BK-07: a guest who cancels themselves gets what the property's policy grants, no more than what is
-        // refundable (DB-08h: asking them for everything refundable, as for the host, refused every cancellation that
-        // the policy does not refund in full).
         var minimum = initiator == BookingCancellationInitiator.Guest
             ? CancellationRefundPolicy.EvaluateGuestRefund(booking, now, refundable).Amount
             : refundable;
@@ -248,7 +238,6 @@ public sealed class BookingCancellationService(
             .Where(p => PaymentRefundService.PaymentIntentIdOf(p) is null && p.Status == PaymentStatus.Completed)
             .Sum(p => p.Amount);
 
-        // A booking that came from a channel is cancellable only where the channel lets the host do it (E08/F02/US02/T02, D8): the quote keeps its shape.
         var cancellable = IsCancellable(booking.Status)
                           && (!OtaChannelActionPolicy.IsChannelBooking(booking) || _channelPolicy.For(booking.Source).CanCancel);
 
@@ -256,7 +245,6 @@ public sealed class BookingCancellationService(
             booking.Id,
             booking.Status,
             cancellable,
-            // The refund is in the currency of the charge, which is the one of the property (CHF-MONEY): Stripe refunds in it.
             StayCurrency.ForProperty(booking.Property),
             paid,
             refunded,
@@ -281,8 +269,6 @@ public sealed class BookingCancellationService(
 
         if (refundAmount is not { } amount)
         {
-            // A host always owes the whole refundable amount, so a missing amount is refused; a guest whose policy
-            // refunds nothing owes nothing, and no amount means no refund.
             if (quote.MinimumRefundAmount > 0)
             {
                 throw new DomainRuleException(
@@ -364,8 +350,6 @@ public sealed class BookingCancellationService(
                     case "processing":
                         throw new DomainConflictException("booking_payment_in_progress", "BookingPaymentInProgress");
                     case "succeeded":
-                        // A succeeded SetupIntent cannot be canceled: the saved card is detached instead, so the
-                        // deadline charge can never happen (the job also skips cancelled bookings).
                         await DetachSavedCardAsync(booking, setupIntent.PaymentMethodId, account, cancellationToken);
                         break;
                 }
@@ -396,7 +380,6 @@ public sealed class BookingCancellationService(
         }
         catch (Stripe.StripeException ex)
         {
-            // Not blocking: the booking is cancelled and the deadline job never charges a cancelled booking.
             logger.LogWarning(ex, "Saved card of cancelled booking {BookingId} could not be detached", booking.Id);
         }
     }
@@ -416,7 +399,6 @@ public sealed class BookingCancellationService(
           payment.TransactionId.StartsWith("seti_", StringComparison.Ordinal))) ||
         (payment.Status == PaymentStatus.Failed && PaymentRefundService.PaymentIntentIdOf(payment) is not null);
 
-    /// <summary>Pending payments (with or without Stripe) and failed PaymentIntents that can still be paid.</summary>
     private static bool IsUncollectedIntentOrPending(Payment payment) =>
         payment.Status == PaymentStatus.Pending ||
         (payment.Status == PaymentStatus.Failed && PaymentRefundService.PaymentIntentIdOf(payment) is not null);

@@ -20,15 +20,9 @@ namespace Casazen.Infrastructure.Email;
 /// </summary>
 public interface IGuestCheckInLinkEmailQueue
 {
-    /// <summary>
-    /// Queues the email of the link <paramref name="token"/> of <paramref name="sessionId"/> to the booking's guest
-    /// (<see cref="GuestCheckInLinkEmailJob"/>) and records <see cref="GuestCheckInLinkEmailStatus.Queued"/>, or
-    /// <see cref="GuestCheckInLinkEmailStatus.Failed"/> with the reason when it cannot be queued (no address, no provider).
-    /// </summary>
     Task<GuestCheckInLinkEmailOutcome> QueueAsync(Guid sessionId, string token, CancellationToken cancellationToken = default);
 }
 
-/// <summary>State of a link email after <see cref="IGuestCheckInLinkEmailQueue.QueueAsync"/>; <paramref name="Error"/> only when failed.</summary>
 public sealed record GuestCheckInLinkEmailOutcome(GuestCheckInLinkEmailStatus Status, string? Error = null);
 
 public sealed class GuestCheckInLinkEmailQueue(
@@ -55,7 +49,6 @@ public sealed class GuestCheckInLinkEmailQueue(
                 ? GuestCheckInLinkEmailErrors.NoRecipient
                 : null;
 
-        // Saved before the job is queued: the job may finish before this request and must find "queued" to update.
         await SetAsync(session, error is null ? GuestCheckInLinkEmailStatus.Queued : GuestCheckInLinkEmailStatus.Failed, error, cancellationToken);
         if (error is not null)
         {
@@ -113,10 +106,8 @@ public sealed class GuestCheckInLinkEmailJob(
     IGuestEmailLanguageProvider? emailLanguage = null,
     IGuestStayLinkProvider? stayLinks = null)
 {
-    /// <summary>Attempts of one email, the first one included.</summary>
     public const int MaxAttempts = 4;
 
-    /// <summary>Delay before attempt 2, 3 and 4.</summary>
     public static readonly TimeSpan[] RetryDelays = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(10), TimeSpan.FromHours(1)];
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -163,14 +154,11 @@ public sealed class GuestCheckInLinkEmailJob(
         // reminder of the missing data (ReminderSentAt set by the send job) carries the reminder text. E40/F01/US01/T03: the link is on the
         // agency's own domain when its guest area is served there (AgencyDomainLinks), on the CasaZen domain otherwise.
         var link = (await agencyLinks.ForOrgOrPlatformAsync(publicSiteLinks, booking.OrgId)).GuestCheckIn(token);
-        // E50/F01/US03/T02: with the guest portal on the language is the one of the guest page, else the country on the booking, else the account of the host, else Italian; without it, the one
-        // of the guest page, else Italian, as ever.
         var culture = await emailLanguage.CultureOrAsync(
             booking.OrgId,
             booking.Id,
             GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null)),
             session.Language);
-        // E50/F01/US03/T01: with the guest portal on, the e-mail carries the brand of the host and goes in its name; without it, it is the CasaZen e-mail.
         var branding = await emailBranding.ForOrgOrNullAsync(booking.OrgId);
         // E50/F01/US03/T03: with the guest portal on, «Prepara il tuo arrivo» takes the place of the e-mail of the check-in link (same job, same timing, same delivery tracking below; the reminder
         // of the missing data stays what it is): the stay link, made by the link service of the portal, is the main button and the check-in link of this session the second one. A booking that may

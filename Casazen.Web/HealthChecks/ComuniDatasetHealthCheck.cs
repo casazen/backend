@@ -37,7 +37,6 @@ public sealed class ComuniDatasetHealthCheck(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A broken database is reported by the database check; this one must not hide it behind a second error.
             logger.LogWarning(ex, "The ISTAT comuni list could not be checked");
             return HealthCheckResult.Degraded("The ISTAT comuni list could not be checked.");
         }

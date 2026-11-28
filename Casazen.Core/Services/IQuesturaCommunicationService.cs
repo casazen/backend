@@ -25,27 +25,18 @@ public interface IQuesturaCommunicationService
     Task MarkDoneAsync(
         Guid leaseId, string userId, QuesturaCommunicationDeclaration declaration, CancellationToken cancellationToken = default);
 
-    /// <summary>The stored receipt; 404 <see cref="QuesturaCommunicationErrorCodes.ReceiptNotAvailable"/> when there is none.</summary>
     Task<QuesturaReceiptFile> OpenReceiptAsync(Guid leaseId, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// The landlord's declaration: the date the communication was sent (calendar date, not after today) and, optionally, the
-/// receipt (PDF checked on its content, at most <see cref="QuesturaCommunicationLimits.MaxReceiptBytes"/>).
-/// </summary>
 public sealed record QuesturaCommunicationDeclaration(DateTime CommunicationDate, Stream? Receipt = null, long? ReceiptLength = null);
 
-/// <summary>The stored receipt; the caller disposes <see cref="Content"/>.</summary>
 public sealed record QuesturaReceiptFile(Stream Content, string FileName);
 
-/// <summary>Input limits of the Questura declaration.</summary>
 public static class QuesturaCommunicationLimits
 {
-    /// <summary>Largest receipt accepted, the same as the RLI receipt.</summary>
     public const long MaxReceiptBytes = RliRegistrationLimits.MaxReceiptBytes;
 }
 
-/// <summary>Error codes of the Questura communication (ProblemDetails <c>code</c>, FD-05).</summary>
 public static class QuesturaCommunicationErrorCodes
 {
     public const string NotRequired = "questura_not_required";

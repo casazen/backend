@@ -13,11 +13,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-/// <summary>
-/// <see cref="IPropertyMappingReader"/> over <see cref="IChannelMappingService.ListAsync"/> (E10/F01/US01/T02, NF-106): the confirmed rows
-/// only, so epic E10 never reads the mapping tables itself. A row that is proposed, ambiguous or rejected, or whose property was deleted, is
-/// not a mapping.
-/// </summary>
 public sealed class ChannelMappingReader(IChannelMappingService mappings) : IPropertyMappingReader
 {
     public bool IsProvided => true;
@@ -35,7 +30,6 @@ public sealed class ChannelMappingReader(IChannelMappingService mappings) : IPro
         var wanted = propertyIds.ToHashSet();
         foreach (var row in await mappings.ListAsync(orgId, ct))
         {
-            // The unique index of the confirmed mappings holds one listing for each property.
             if (row.Status == OctorateMappingStatus.Confirmed && row.Property is { } property && wanted.Contains(property.Id))
                 confirmed[property.Id] = row.OctorateAccommodationId;
         }
@@ -58,11 +52,6 @@ public sealed class FlowPrerequisiteReader(
     private readonly Dictionary<Guid, FlowPrerequisite> _connections = [];
     private readonly Dictionary<(Guid OrgId, Guid PropertyId), FlowPrerequisite> _mappings = [];
 
-    /// <summary>
-    /// The <c>connection</c> prerequisite of the org: its <see cref="OctorateConnection"/> of this environment is
-    /// <see cref="OctorateConnectionStatus.Connected"/>. Not met with <see cref="OnboardingFlowReasons.ConnectionLost"/> when the connection is
-    /// disconnected or in error, and with <see cref="OnboardingFlowReasons.ConnectionMissing"/> when there is none.
-    /// </summary>
     public async Task<FlowPrerequisite> ConnectionAsync(Guid orgId, CancellationToken ct)
     {
         if (_connections.TryGetValue(orgId, out var known))
@@ -114,7 +103,6 @@ public sealed class FlowPrerequisiteReader(
         return ids.ToDictionary(id => id, id => _mappings[(orgId, id)]);
     }
 
-    /// <summary>The confirmed mapping of the properties, or <c>null</c> when it cannot be read (the caller never treats that as confirmed).</summary>
     private async Task<IReadOnlyDictionary<Guid, string>?> ReadConfirmedAsync(Guid orgId, IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
         if (!mappingReader.IsProvided)
@@ -126,18 +114,12 @@ public sealed class FlowPrerequisiteReader(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // The org and the kind of failure only: no listing, no name, no token.
             logger.LogWarning("The channel mapping of org {OrgId} could not be read for the flow status ({ExceptionType})", orgId, ex.GetType().Name);
             return null;
         }
     }
 }
 
-/// <summary>
-/// The listings flow (E10/F01/US01/T02, NF-106): the content of the property on the channels. Needs the connection, the confirmed mapping
-/// and no channel that refused the content. Not available when every channel the property is on is written on the channel itself (Expedia):
-/// CasaZen sends nothing there, so there is nothing to complete.
-/// </summary>
 public sealed class ListingsFlowProvider(AppDbContext db, FlowPrerequisiteReader prerequisites) : IFlowReadinessProvider
 {
     public OnboardingFlow Flow => OnboardingFlow.Listings;
@@ -170,7 +152,6 @@ public sealed class ListingsFlowProvider(AppDbContext db, FlowPrerequisiteReader
                 continue;
             }
 
-            // No row, or no row that a channel refused: the content is not what stops the flow.
             var content = states.Contains(ChannelPublishStatus.ToFix)
                 ? FlowPrerequisite.Lacks(OnboardingPrerequisiteKeys.Content, OnboardingFlowReasons.ChannelContentToFix)
                 : FlowPrerequisite.Holds(OnboardingPrerequisiteKeys.Content);
@@ -181,7 +162,6 @@ public sealed class ListingsFlowProvider(AppDbContext db, FlowPrerequisiteReader
     }
 }
 
-/// <summary>The bookings flow (E10/F01/US01/T02, NF-106): the bookings and the calendar of the property. Needs the connection and the confirmed mapping.</summary>
 public sealed class BookingsFlowProvider(FlowPrerequisiteReader prerequisites) : IFlowReadinessProvider
 {
     public OnboardingFlow Flow => OnboardingFlow.Bookings;
@@ -251,8 +231,6 @@ public sealed class CheckInComplianceFlowProvider(
             .Select(s => s.PropertyId)
             .ToHashSet();
 
-        // A saved account choice is a single sender too; an explicit property override always takes precedence.
-        // This proves only that a choice exists, never that an external connection or transmission is operational.
         var accountChoice = await db.Orgs.AsNoTracking()
             .Where(o => o.Id == orgId)
             .Select(o => o.DefaultComplianceSender)
@@ -293,7 +271,6 @@ public sealed class CheckInComplianceFlowProvider(
 
     private async Task<bool> HasRateInForceAsync(TouristTaxComune comune, DateOnly today, CancellationToken ct)
     {
-        // The same comune for many properties (an agency's portfolio) is looked up once; the key is what the lookup compares.
         var key = (comune.IstatCode?.Trim() ?? string.Empty, TouristTaxComune.NormalizeName(comune.Name));
         if (!_rateInForce.TryGetValue(key, out var found))
         {

@@ -19,13 +19,11 @@ public sealed class GuestSessionService(
     IConfiguration configuration,
     TimeProvider? timeProvider = null) : IGuestSessionService
 {
-    /// <summary>Configuration key of the length of a session, in minutes.</summary>
     public const string SessionMinutesKey = "GuestArea:SessionMinutes";
 
     public const int DefaultSessionMinutes = 120;
     public const int MinSessionMinutes = 5;
 
-    /// <summary>The ceiling of a session: 24 hours, whatever the configuration says.</summary>
     public const int MaxSessionMinutes = 24 * 60;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -46,10 +44,6 @@ public sealed class GuestSessionService(
         return Open(booking);
     }
 
-    /// <summary>
-    /// The session of the guest of <paramref name="booking"/>, whichever proof matched (e-mail or the digits of the phone): the hash is made from the
-    /// address the booking has, so every later check compares the same value and the two proofs open the same session.
-    /// </summary>
     private GuestSessionOpened Open(Booking booking)
     {
         var expiresAt = _clock.GetUtcNow().UtcDateTime.AddMinutes(SessionMinutes());
@@ -74,10 +68,6 @@ public sealed class GuestSessionService(
         CancellationToken cancellationToken = default) =>
         lookup.LoadAsync(ticket, bookingCode, cancellationToken);
 
-    /// <summary>
-    /// The configured length of a session in minutes, kept between <see cref="MinSessionMinutes"/> and <see cref="MaxSessionMinutes"/>.
-    /// The sessions opened for the guest of the mobile app with an account (<see cref="GuestAccountBookingService"/>) last as long.
-    /// </summary>
     public static int SessionMinutesOf(IConfiguration configuration) =>
         Math.Clamp(configuration.GetValue(SessionMinutesKey, DefaultSessionMinutes), MinSessionMinutes, MaxSessionMinutes);
 

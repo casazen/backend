@@ -270,7 +270,6 @@ public class OfficialReferenceDataRefreshService(
             var extraction = TouristTaxOfficialExtractor.TryExtract(source.IstatCode, file.Bytes);
             if (!extraction.Succeeded || extraction.Rates.Count == 0)
             {
-                // Keep the last good amount. Do not stamp SourceRetrievedAt as if the tariff was re-read.
                 results.Add(await RecordAsync(
                     OfficialSourceDatasets.TouristTax,
                     url.ToString(),

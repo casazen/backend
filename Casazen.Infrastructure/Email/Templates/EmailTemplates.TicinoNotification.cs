@@ -19,7 +19,6 @@ public static partial class EmailTemplates
         public const string TicinoNotificationAlert = "ticino-notification-alert";
     }
 
-    /// <summary>The order the types of field that are missing are listed in; a code that is not here follows, in alphabetical order.</summary>
     private static readonly string[] TicinoMissingOrder =
     [
         TicinoAlertMissing.StructureId,
@@ -31,11 +30,6 @@ public static partial class EmailTemplates
         TicinoMissing.DocumentType,
     ];
 
-    /// <summary>
-    /// A Ticino arrival day still to notify, to the host (<see cref="ComplianceAlertKind.TicinoFileToPrepare"/>: the day of the arrival;
-    /// <see cref="ComplianceAlertKind.TicinoDeadlineApproaching"/>: the deadline is near; <see cref="ComplianceAlertKind.TicinoOverdue"/>: it is over, with the
-    /// number of the reminder). The button leads to the compliance page of the console when its link is known.
-    /// </summary>
     public static EmailContent TicinoNotificationAlert(CultureInfo culture, ComplianceAlert alert, string propertyName, string? complianceUrl = null)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -56,10 +50,6 @@ public static partial class EmailTemplates
         return WithComplianceLink(builder, complianceUrl).Build($"TicinoNotificationAlert_{phase}_Subject", propertyName, day);
     }
 
-    /// <summary>
-    /// Push text of a Ticino arrival day (E30/F02/US01/T01): the property and the day, the deadline while it is ahead, and the types of field that are missing.
-    /// Plain text on a lock screen, no guest data.
-    /// </summary>
     public static PushText TicinoNotificationPush(CultureInfo culture, ComplianceAlert alert, string propertyName)
     {
         ArgumentNullException.ThrowIfNull(alert);
@@ -78,10 +68,6 @@ public static partial class EmailTemplates
         return new PushText(EmailTexts.Get($"{prefix}_Title", culture), body);
     }
 
-    /// <summary>
-    /// Push text of the declaration of a Ticino arrival day as uploaded to the police portal, or of its undo (E30/F02/US02/T01, NF-128): the property and the arrival day. Plain text on a
-    /// lock screen: never a guest, a value, a document or the person who did it (the cockpit shows who).
-    /// </summary>
     public static PushText TicinoNotificationDeclaredPush(CultureInfo culture, string propertyName, DateOnly day, bool declared)
     {
         var date = day.ToDateTime(TimeOnly.MinValue).ToString(EmailTexts.Get("Format_Date", culture), culture);
@@ -96,10 +82,6 @@ public static partial class EmailTemplates
         _ => throw new ArgumentOutOfRangeException(nameof(alert), alert.Kind, "Not an alert about a Ticino arrival day."),
     };
 
-    /// <summary>
-    /// The types of field that are missing as the texts write them, comma separated and in the order of <see cref="TicinoMissingOrder"/>: a code with no text of its
-    /// own (one a later version of the file plan adds) is told as «other data», once. Empty when nothing is missing.
-    /// </summary>
     internal static string TicinoMissingLabels(IReadOnlyList<string>? codes, CultureInfo culture)
     {
         if (codes is null || codes.Count == 0)
@@ -109,7 +91,6 @@ public static partial class EmailTemplates
         var other = false;
         foreach (var code in codes.Distinct(StringComparer.Ordinal).OrderBy(c => OrderOf(c)).ThenBy(c => c, StringComparer.Ordinal))
         {
-            // A code is a word of letters and digits: only such a code is looked up as the key of a text.
             var text = code.Length > 0 && code.All(char.IsAsciiLetterOrDigit)
                 ? EmailTexts.Resources.GetString($"TicinoMissing_{code}", culture)
                 : null;

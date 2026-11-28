@@ -15,16 +15,11 @@ public class Org
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>
-    /// Name given to an org provisioned without a display name (the access token carries none, A1-02). An org still
-    /// named so has not chosen its name yet: the activation checklist (PL-15) keeps asking for it.
-    /// </summary>
     public const string PlaceholderName = "La mia organizzazione";
 
     [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Unique, URL-safe org identifier (internal in US-004; public branding added later).</summary>
     [Required, MaxLength(100)]
     public string Slug { get; set; } = string.Empty;
 
@@ -34,23 +29,16 @@ public class Org
     [Required]
     public PlanTier PlanTier { get; set; } = PlanTier.Starter;
 
-    /// <summary>
-    /// Tier downgrade flag: when tier is Agency and this is true, B2B mutations return 403 tier_insufficient
-    /// but reads succeed (ADR-010-R5). Agency data is retained in read-only mode.
-    /// </summary>
     public bool IsAgencyTierDowngraded { get; set; }
 
-    /// <summary>Issue #896: server-validated commercial draft; no paid access is granted by this field.</summary>
     public string? CommercialSignupJson { get; set; }
     public bool CommercialPaymentConfirmed { get; set; }
     public string? CommercialPaidAddonsJson { get; set; }
     public int CommercialRoomAllowance { get; set; }
 
 
-    /// <summary>Business identity, independent of billing tier. Private owners cannot invite collaborators.</summary>
     public bool IsAgency { get; set; }
 
-    /// <summary>Account choice inherited by Italian properties without their own override. Null preserves existing defaults.</summary>
     [ConcurrencyCheck]
     public ComplianceSenderType? DefaultComplianceSender { get; set; }
     [ConcurrencyCheck]
@@ -71,10 +59,6 @@ public class Org
     [MaxLength(50)]
     public string? PublicThemeId { get; set; }
 
-    /// <summary>
-    /// The font pair of the public site (DB-01): one of <c>PublicSiteFonts.All</c> (editoriale, moderno, classico). Null = the
-    /// font its theme starts with. Set by the branding endpoint, read anonymously through <c>PublicOrgDto</c>.
-    /// </summary>
     [MaxLength(20)]
     public string? PublicFontId { get; set; }
 
@@ -84,11 +68,6 @@ public class Org
     [MaxLength(500)]
     public string? Tagline { get; set; }
 
-    /// <summary>
-    /// The sentence under the slogan in the cover of the public site (DB-03, the "sottotitolo"): plain text, at most
-    /// <c>OrgBrandingRules.SubtitleMaxLength</c> characters once the whitespace is collapsed. Null = none: the cover shows the
-    /// slogan alone. Set by the branding endpoint, read anonymously through <c>PublicOrgDto</c>.
-    /// </summary>
     [MaxLength(500)]
     public string? Subtitle { get; set; }
 
@@ -121,11 +100,6 @@ public class Org
     [MaxLength(200)]
     public string? LegalName { get; set; }
 
-    /// <summary>
-    /// Registered office ("sede legale") of the operator of the booking site (DB-03b-a), one free-text line such as
-    /// <c>Via Roma 1, 70121 Bari (BA)</c>: plain text, at most <c>OrgOperatorRules.RegisteredOfficeMaxLength</c> characters once
-    /// the whitespace is collapsed. Null = not entered. Written and read like <see cref="LegalName"/>.
-    /// </summary>
     [MaxLength(300)]
     public string? RegisteredOffice { get; set; }
 
@@ -138,11 +112,6 @@ public class Org
     [MaxLength(20)]
     public string? ContactPhone { get; set; }
 
-    /// <summary>
-    /// Language of the account (AM-08b-b): <c>it</c> (default) or <c>en</c>. It is the language of the emails the org sends to its team
-    /// when nobody chooses another (the default of <c>OrgInvitation.Language</c>). The language of the guests is theirs to choose, not
-    /// the org's. Existing orgs have <c>it</c>.
-    /// </summary>
     [MaxLength(2)]
     public string DefaultLanguage { get; set; } = OrgInvitationRules.DefaultLanguage;
 
@@ -154,11 +123,6 @@ public class Org
     /// </summary>
     public bool SupplierBackupsEnabled { get; set; } = true;
 
-    /// <summary>
-    /// Whether the guests of the org's stays may pay the tourist tax online in the check-in, on the org's own connected account (E25/F01/US01/T01,
-    /// NF-119, the setting <c>TouristTaxOnlinePayment</c>). <b>Off by default</b>; it matters only while <c>Features:TouristTaxOnlinePayment</c> is on and the
-    /// account takes payments (<see cref="CanTakeDirectPayments"/>). Written by <c>PUT api/orgs/me/tourist-tax-settings</c>.
-    /// </summary>
     public bool TouristTaxOnlinePaymentEnabled { get; set; }
 
     /// <summary>
@@ -178,7 +142,6 @@ public class Org
     /// </summary>
     public bool ContactEmailPublic { get; set; }
 
-    /// <summary>Non-secret Stripe customer reference (billing). Set by <c>spec-saas-billing</c>.</summary>
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
 
@@ -189,7 +152,6 @@ public class Org
     [MaxLength(255)]
     public string? FinancialConnectionsAccountId { get; set; }
 
-    /// <summary>Stripe subscription id (<c>sub_xxx</c>) synced from platform webhooks.</summary>
     [MaxLength(255)]
     public string? SubscriptionId { get; set; }
 
@@ -216,7 +178,6 @@ public class Org
     [MaxLength(7)]
     public string? BillingSdiRecipientCode { get; set; }
 
-    /// <summary>Certified e-mail (PEC) for the e-invoice, alternative to <see cref="BillingSdiRecipientCode"/>.</summary>
     [MaxLength(255)]
     public string? BillingPecEmail { get; set; }
 
@@ -226,20 +187,15 @@ public class Org
 
     public DateTime? PastDueSince { get; set; }
 
-    /// <summary>Non-secret Stripe Connect account reference (payouts). Used by <c>spec-direct-checkout</c>.</summary>
     [MaxLength(255)]
     public string? StripeConnectedAccountId { get; set; }
 
-    /// <summary>Cached from Stripe <c>account.updated</c> â€” true when the connected account can accept charges.</summary>
     public bool ConnectChargesEnabled { get; set; }
 
-    /// <summary>Cached from Stripe â€” payouts capability on the connected account.</summary>
     public bool ConnectPayoutsEnabled { get; set; }
 
-    /// <summary>Cached from Stripe â€” KYC/details submitted on the connected account.</summary>
     public bool ConnectDetailsSubmitted { get; set; }
 
-    /// <summary>JSON array of outstanding Stripe requirement field names (e.g. <c>["individual.verification.document"]</c>).</summary>
     public string? ConnectRequirementsDueJson { get; set; }
 
     /// <summary>
@@ -251,12 +207,6 @@ public class Org
     [NotMapped]
     public bool CanTakeDirectPayments => AcceptsDirectPayments(StripeConnectedAccountId, ConnectChargesEnabled);
 
-    /// <summary>
-    /// The rule of <see cref="CanTakeDirectPayments"/> on the two columns it reads, for the places that read them in a
-    /// projection without loading the org. A booking of the public site, whatever its payment option (card now, card at the
-    /// deadline, or a "pay at the property" request), needs a ready connected account: without it the checkout answers 409
-    /// <c>direct_booking_payments_not_ready</c>, so this is also the <c>acceptsBookings</c> the site shows.
-    /// </summary>
     public static bool AcceptsDirectPayments(string? stripeConnectedAccountId, bool connectChargesEnabled) =>
         !string.IsNullOrWhiteSpace(stripeConnectedAccountId) && connectChargesEnabled;
 
@@ -265,7 +215,6 @@ public class Org
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>STR fiscal profile (issue #3). Distinct from billing <see cref="VatId"/>.</summary>
     public bool HasPartitaIva { get; set; }
 
     [MaxLength(11)]
@@ -276,58 +225,37 @@ public class Org
 
     public DateTime? FiscalDataRetentionUntil { get; set; }
 
-    // ─── Custom domain / subdomain booking (US-024 / #298) ───────────────────────
-
-    /// <summary>How this org publishes its public booking site: path, subdomain, or custom domain.</summary>
     [Required]
     public PublicHostMode PublicHostMode { get; set; } = PublicHostMode.CasazenPath;
 
-    /// <summary>Normalized FQDN (lowercase, no scheme/port) — Pro/Scale feature; requires verification.</summary>
     [MaxLength(253)]
     public string? CustomDomain { get; set; }
 
-    /// <summary>TXT ownership challenge state for <see cref="CustomDomain"/>.</summary>
     [Required]
     public DomainVerificationStatus DomainVerificationStatus { get; set; } = DomainVerificationStatus.Pending;
 
-    /// <summary>Cryptographically random token expected in the <c>_casazen-challenge</c> TXT record.</summary>
     [MaxLength(128)]
     public string? DomainVerificationToken { get; set; }
 
-    /// <summary>
-    /// Why <see cref="DomainVerificationStatus"/> is what it is (BK-17): a stable code of <c>DomainIssues</c> (e.g.
-    /// <c>dns_not_pointing</c>), <c>null</c> when the domain is verified. The UI explains it in the user's language.
-    /// </summary>
     [MaxLength(64)]
     public string? DomainStatusDetail { get; set; }
 
-    /// <summary>UTC instant of the last check of the domain (manual or by the periodic job), <c>null</c> before the first.</summary>
     public DateTime? DomainCheckedAt { get; set; }
 
-    /// <summary>UTC instant the domain last became <c>Verified</c>; <c>null</c> while it is not.</summary>
     public DateTime? DomainVerifiedAt { get; set; }
 
-    /// <summary>UTC instant the owner set <see cref="CustomDomain"/>: the periodic job stops checking a pending domain a while after it.</summary>
     public DateTime? DomainConfiguredAt { get; set; }
 
-    /// <summary>
-    /// UTC instant the domain was found on the Vercel project (added by the platform, BK-17); <c>null</c> when it is not
-    /// there. A domain that was there is removed from the project when the owner changes or drops it.
-    /// </summary>
     public DateTime? DomainVercelAddedAt { get; set; }
 
-    /// <summary>Consecutive failed checks of a verified domain: it is only demoted after a few, so a DNS hiccup does not take a site down.</summary>
     public int DomainCheckFailures { get; set; }
 
-    /// <summary>TXT record Vercel asks for before the domain may be used on the project (domain already on another Vercel account), host.</summary>
     [MaxLength(253)]
     public string? DomainVercelTxtHost { get; set; }
 
-    /// <summary>Value of the TXT record of <see cref="DomainVercelTxtHost"/>.</summary>
     [MaxLength(500)]
     public string? DomainVercelTxtValue { get; set; }
 
-    /// <summary>Label for <c>{Subdomain}.casazen.it</c>; falls back to <see cref="Slug"/> when null.</summary>
     [MaxLength(63)]
     public string? Subdomain { get; set; }
 
@@ -335,35 +263,22 @@ public class Org
     // The agency's choices; what is really served is decided by Casazen.Core.Services.HostSurfaceRules (flag WhiteLabelHost, a verified
     // custom domain the org pays for, these settings). A platform subdomain never serves them.
 
-    /// <summary>The guest area (check-in, booking area) is served on the verified custom domain too (NF-140). Off by default.</summary>
     public bool GuestAreaOnOwnDomain { get; set; }
 
-    /// <summary>The owner portal is served on the verified custom domain too (NF-140); signing in there also needs <see cref="OwnerLoginHostState"/> Ready (NF-141). Off by default.</summary>
     public bool OwnerPortalOnOwnDomain { get; set; }
 
-    /// <summary>
-    /// The links CasaZen sends (check-in, booking area, owner invitations) are built on the agency's domain (NF-142). On by default: it takes
-    /// effect only once the domain is verified and the surface of the link is on.
-    /// </summary>
     public bool UseOwnDomainForLinks { get; set; } = true;
 
-    /// <summary>The Auth0 registration of the custom domain for the owner sign-in (NF-141); back to NotRequested when the domain or the host mode changes.</summary>
     [Required]
     public OwnerLoginHostState OwnerLoginHostState { get; set; } = OwnerLoginHostState.NotRequested;
 
-    /// <summary>Longest <see cref="GtmContainerId"/> the column holds (a valid id is at most 16 characters, <c>GtmContainerIds</c>).</summary>
     public const int GtmContainerIdMaxLength = 20;
 
-    /// <summary>The Google Tag Manager container of the agency's booking pages (NF-149), normalized by <c>GtmContainerIds</c>, or null.</summary>
     [MaxLength(GtmContainerIdMaxLength)]
     public string? GtmContainerId { get; set; }
 
-    // ─── Delegation of the Alloggiati transmission (AW-R02, ADR-015-R10) ─────────
-
-    /// <summary>Longest user id of the delegation columns (the Auth0 subject).</summary>
     public const int AlloggiatiDelegationUserIdMaxLength = 255;
 
-    /// <summary>Longest <see cref="AlloggiatiDelegationTextVersion"/>.</summary>
     public const int AlloggiatiDelegationTextVersionMaxLength = 50;
 
     /// <summary>
@@ -372,38 +287,21 @@ public class Org
     /// </summary>
     public DateTime? AlloggiatiDelegationGrantedAt { get; set; }
 
-    /// <summary>Who granted the delegation: the Auth0 subject of the account, not a foreign key.</summary>
     [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
     public string? AlloggiatiDelegationGrantedByUserId { get; set; }
 
-    /// <summary>The version of the delegation text accepted with the grant (a code of the legal documents), never the text itself.</summary>
     [MaxLength(AlloggiatiDelegationTextVersionMaxLength)]
     public string? AlloggiatiDelegationTextVersion { get; set; }
 
-    /// <summary>
-    /// When the delegation was revoked; <c>null</c> while it stands. A revocation blocks new sends, not the retrieval of the receipts of
-    /// the transmissions already acquired.
-    /// </summary>
     public DateTime? AlloggiatiDelegationRevokedAt { get; set; }
 
-    /// <summary>Who revoked the delegation: the Auth0 subject of the account, not a foreign key.</summary>
     [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
     public string? AlloggiatiDelegationRevokedByUserId { get; set; }
 
-    // ─── Guests written to the channel manager on their own (E20/F01/US01, decision O1) ─────────
-
-    /// <summary>
-    /// The org lets CasaZen write the guests of a stay to the channel manager as soon as their data is complete and the identity check has passed,
-    /// with no confirmation of the host (decision O1: the agency accepts that complete data plus a passed identity check is the confirmation). Off
-    /// by default: the guests then go only when the host confirms the check-in wizard. It changes nothing about who sends to the police: the
-    /// channel manager does. Written only by <c>IOrgGuestAutoSendSetting</c>.
-    /// </summary>
     public bool AutoSendGuestsToOctorate { get; set; }
 
-    /// <summary>When <see cref="AutoSendGuestsToOctorate"/> was last changed (UTC); <c>null</c> when it never was.</summary>
     public DateTime? AutoSendGuestsToOctorateChangedAt { get; set; }
 
-    /// <summary>Who changed <see cref="AutoSendGuestsToOctorate"/> last: the Auth0 subject of the account, not a foreign key.</summary>
     [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
     public string? AutoSendGuestsToOctorateChangedByUserId { get; set; }
 }

@@ -11,10 +11,6 @@ public class Guest : ITenantOwned
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
 
-    /// <summary>
-    /// Tenant key (TN-1). A guest record belongs to exactly one org: the org of the booking it was
-    /// created for, or the org that created it from the guest list. Never client-supplied.
-    /// </summary>
     public Guid OrgId { get; set; }
     public virtual Org Org { get; set; } = null!;
 
@@ -42,7 +38,6 @@ public class Guest : ITenantOwned
     [MaxLength(100)]
     public string Country { get; set; } = string.Empty;
 
-    // Alloggiati Web - Required fields for Italian police reporting
     public DateTime? DateOfBirth { get; set; }
 
     [MaxLength(100)]
@@ -63,37 +58,20 @@ public class Guest : ITenantOwned
 
     public DateTime? DocumentExpiryDate { get; set; }
 
-    /// <summary>Place (comune or state) that issued the document. Encrypted at rest like <see cref="DocumentNumber"/>.</summary>
     public string DocumentIssuingCountry { get; set; } = string.Empty;
 
     [MaxLength(500)]
     public string? DocumentScanUrl { get; set; }
 
-    // GDPR Compliance
-    /// <summary>
-    /// Timestamp when user gave consent for data processing
-    /// </summary>
     public DateTime? DataProcessingConsentDate { get; set; }
 
-    /// <summary>
-    /// IP address from which consent was given
-    /// </summary>
     [MaxLength(50)]
     public string ConsentIpAddress { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Date when data should be automatically deleted (GDPR retention policy)
-    /// </summary>
     public DateTime? DataRetentionExpiryDate { get; set; }
 
-    /// <summary>
-    /// Flag indicating user requested right to erasure (GDPR Article 17)
-    /// </summary>
     public bool ErasureRequested { get; set; } = false;
 
-    /// <summary>
-    /// Date when erasure was requested
-    /// </summary>
     public DateTime? ErasureRequestedDate { get; set; }
 
     /// <summary>
@@ -113,7 +91,6 @@ public class Guest : ITenantOwned
 
     public Gender? Gender { get; set; }
 
-    // GDPR Compliance Fields (GDPR Articles 6, 7, 13-17)
     public DateTime? ConsentDate { get; set; }
 
     [MaxLength(50)]
@@ -139,14 +116,9 @@ public class Guest : ITenantOwned
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
 
-    /// <summary>
-    /// Link to the CRM profile for this guest (NF-23, ADR-021): matched by composite key hash,
-    /// aggregates stays and marketing consent across bookings. Null for existing guests (lazy matching).
-    /// </summary>
     public Guid? GuestCrmProfileId { get; set; }
     public virtual GuestCrmProfile? CrmProfile { get; set; }
 
-    /// <summary>Copy of this guest for another booking of the same org (the copy keeps <see cref="OrgId"/>).</summary>
     public Guest CreateSnapshot(DateTime now) => new()
     {
         OrgId = OrgId,
