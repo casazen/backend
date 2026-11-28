@@ -203,6 +203,50 @@ public class DocumentOcrServiceTests
         Assert.Null(result.Fields.DateOfIssue);
     }
 
+    [Fact]
+    public async Task ObserveAsync_AutomaticReadingMissesTheNames_TheBlockLayoutReadsThem()
+    {
+        var reader = new NamesOnlyInLayoutReader();
+        var service = new DocumentOcrService(NullLogger<DocumentOcrService>.Instance, reader, timeProvider: Clock);
+        using var photo = new MemoryStream(TestImages.Png(64, 40, seed: 5));
+
+        var result = await service.ObserveAsync(photo);
+
+        Assert.Equal("ROSSI", result.Fields?.Surname);
+        Assert.Equal("MARIO", result.Fields?.GivenNames);
+        Assert.Equal("IdentityCard", result.Fields?.DocumentKind);
+        Assert.True(reader.LayoutReads > 0);
+    }
+
+    [Fact]
+    public async Task ObserveAsync_NoLayoutReadingHasTheNames_NoNameIsInvented()
+    {
+        var reader = new NamesOnlyInLayoutReader { LayoutText = "CARTA DI IDENTITA\nCA12345ZZ" };
+        var service = new DocumentOcrService(NullLogger<DocumentOcrService>.Instance, reader, timeProvider: Clock);
+        using var photo = new MemoryStream(TestImages.Png(64, 40, seed: 6));
+
+        var result = await service.ObserveAsync(photo);
+
+        Assert.Null(result.Fields?.GivenNames);
+        Assert.Null(result.Fields?.Surname);
+    }
+
+    private sealed class NamesOnlyInLayoutReader : IPageTextReader
+    {
+        public string LayoutText { get; init; } = ItalianCard;
+
+        public int LayoutReads { get; private set; }
+
+        public Task<string?> ReadPageAsync(GrayBitmap page, CancellationToken cancellationToken) =>
+            Task.FromResult<string?>("CARTA DI IDENTITA\nCA12345ZZ\nSCADENZA / EXPIRY\n11.03.2032");
+
+        public Task<string?> ReadLayoutAsync(GrayBitmap page, bool sparse, CancellationToken cancellationToken)
+        {
+            LayoutReads++;
+            return Task.FromResult<string?>(LayoutText);
+        }
+    }
+
     private sealed class InterruptedLayoutReader : IPageTextReader
     {
         public Task<string?> ReadPageAsync(GrayBitmap page, CancellationToken cancellationToken) =>
