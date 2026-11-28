@@ -36,18 +36,15 @@ public class LeasePeriodOverlapIntegrationTests(LeaseDraftFactory factory) : ICl
         var property = await factory.AddReadyPropertyAsync(_world.OrgId, _world.OwnerId);
         var anotherProperty = await factory.AddReadyPropertyAsync(_world.OrgId, _world.OwnerId);
 
-        // The first lease takes 1 November 2026 to 31 October 2030, and confirming it again changes nothing: it is not in its own way.
         var (first, _) = await CompleteAsync(client, property, startDate: "2026-11-01");
         await ConfirmAsync(client, first);
         await ConfirmAsync(client, first);
 
-        // The same days on another property, and the days that start the day after the first one ends: both go through.
         var (elsewhere, _) = await CompleteAsync(client, anotherProperty, startDate: "2026-11-01");
         await ConfirmAsync(client, elsewhere);
         var (following, _) = await CompleteAsync(client, property, startDate: "2030-11-01");
         await ConfirmAsync(client, following);
 
-        // A lease that starts in the middle of the first: the wizard says so as soon as the dates are there...
         var (second, secondVersion) = await CompleteAsync(client, property, startDate: "2027-06-01");
         var draft = await JsonAsync(await client.GetAsync($"/api/leases/{second}/draft"));
         var warning = draft.GetProperty("flow").GetProperty("periodConflict");
@@ -55,13 +52,11 @@ public class LeasePeriodOverlapIntegrationTests(LeaseDraftFactory factory) : ICl
         Assert.Equal("2026-11-01", warning.GetProperty("conflictingFrom").GetString());
         Assert.Equal("2030-10-31", warning.GetProperty("conflictingTo").GetString());
 
-        // ...the review lists it as a block, with the same facts...
         var review = await JsonAsync(await client.GetAsync($"/api/leases/{second}/review"));
         var block = Assert.Single(review.GetProperty("checks").EnumerateArray(), c => c.GetProperty("code").GetString() == "lease_overlap");
         Assert.Equal("Block", block.GetProperty("severity").GetString());
         Assert.Equal(first, block.GetProperty("params").GetProperty("conflictingLeaseId").GetGuid());
 
-        // ...and the confirmation is refused: 409, the other lease's id and days, no name of a person, nothing written.
         var problem = await ExpectProblemAsync(
             await client.PostAsync($"/api/leases/{second}/review/confirm", Body("{}")), HttpStatusCode.Conflict, "lease_period_overlaps");
         Assert.Equal(first, problem.GetProperty("conflictingLeaseId").GetGuid());
@@ -81,7 +76,6 @@ public class LeasePeriodOverlapIntegrationTests(LeaseDraftFactory factory) : ICl
         var property = await factory.AddReadyPropertyAsync(_world.OrgId, _world.OwnerId);
         var (mine, _) = await CompleteAsync(client, property, startDate: "2026-11-01");
 
-        // A request ahead of ours holds the lock of the days of the property and has written a lease on them that is not committed yet.
         await using var scope = factory.Services.CreateAsyncScope();
         var holder = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await using var held = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -102,12 +96,10 @@ public class LeasePeriodOverlapIntegrationTests(LeaseDraftFactory factory) : ICl
         var confirmation = client.PostAsync($"/api/leases/{mine}/review/confirm", Body("{}"));
         await Task.Delay(TimeSpan.FromSeconds(1.5));
 
-        // It waits for the lock: without it the lease that is not committed would not be seen and the confirmation would be over by now.
         Assert.False(confirmation.IsCompleted, "the confirmation waits for the lock of the days of the property");
 
         await held.CommitAsync();
 
-        // Once the request ahead has committed, ours sees its lease and is refused.
         var problem = await ExpectProblemAsync(await confirmation, HttpStatusCode.Conflict, "lease_period_overlaps");
         Assert.Equal(ahead.Id, problem.GetProperty("conflictingLeaseId").GetGuid());
         Assert.Equal("2027-01-01", problem.GetProperty("conflictingFrom").GetString());

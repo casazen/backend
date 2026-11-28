@@ -37,7 +37,6 @@ public class GuestVerificationFlowProofTests
     {
         await using var world = await World.CreateAsync();
 
-        // A capture to take again, a failed attempt, then a review: no code, and the review goes to the operator.
         var reviewed = await world.ReadyStayAsync("Anna", "Bianchi");
         world.Agent.Next(Outcome(IdentityVerificationResult.Recapture));
         world.Agent.Next(Outcome(IdentityVerificationResult.NotOk));
@@ -50,11 +49,9 @@ public class GuestVerificationFlowProofTests
         Assert.Equal(IdentityVerificationGuestResults.Operator, review.Result);
         Assert.Null(review.LockCode);
 
-        // A refusal of the consent: the operator, no code.
         var refused = await world.StayAsync("Bruno", "Conti");
         await world.Flow().RecordConsentAsync(refused, consentGiven: false, null, CancellationToken.None);
 
-        // An error of the verification: the operator, no code.
         var broken = await world.ReadyStayAsync("Carla", "Dini");
         world.Agent.Fail(new InvalidOperationException("model crashed"));
         var error = await world.SelfieAsync(broken);
@@ -67,7 +64,6 @@ public class GuestVerificationFlowProofTests
             [VerificationAlertReasons.Review, VerificationAlertReasons.ConsentRefused, VerificationAlertReasons.TechnicalError],
             world.Alerts.Select(a => a.Reason));
 
-        // A passed verification: the code in the answer and e-mailed at once, through the gate, one release per channel.
         var passed = await world.ReadyStayAsync("Dario", "Esposito");
         world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
         var ok = await world.SelfieAsync(passed);
@@ -83,14 +79,9 @@ public class GuestVerificationFlowProofTests
             releases.Select(r => r.Channel).Order(StringComparer.Ordinal));
     }
 
-    /// <summary>
-    /// Privacy rule (AC-NF50-6, AC-NF50-10): during the selfie step nothing is written to the storage, the log row holds codes and numbers, no
-    /// queue or log carries the selfie or the name of the guest, and the kept photo of the document is deleted once the verification passed.
-    /// </summary>
     [Fact]
     public async Task GuestVerificationFlow_NothingPersistedFromTheSelfie_Test()
     {
-        // The flow has no way to a job queue: nothing it handles can become the argument of a background job.
         Assert.DoesNotContain(
             typeof(IdentityVerificationFlowService).GetConstructors().SelectMany(c => c.GetParameters()),
             p => p.ParameterType == typeof(IBackgroundJobClient));
@@ -109,13 +100,11 @@ public class GuestVerificationFlowProofTests
         Assert.Equal(IdentityVerificationGuestResults.Ok, ok.Result);
         Assert.Equal(selfie, world.Agent.LastSelfie);
 
-        // No storage write, and the kept photo of the document is gone.
         Assert.Equal(puts, world.Storage.Puts);
         Assert.Empty(world.Storage.Objects);
         Assert.All(await world.Db.DocumentImages.ToListAsync(), image => Assert.NotNull(image.DeletedAt));
         Assert.Equal(documentCheck, session.DocumentCheckJson);
 
-        // The log row: codes, numbers, model and thresholds.
         var row = await world.Db.BiometricVerificationLogs.SingleAsync();
         Assert.Equal(VerificationMethod.Biometric, row.Method);
         Assert.Equal(BiometricOutcome.Accept, row.Outcome);
@@ -126,7 +115,6 @@ public class GuestVerificationFlowProofTests
             Assert.DoesNotContain("Ferrari", text, StringComparison.OrdinalIgnoreCase);
         }
 
-        // The queue holds the e-mail of the code only, and no log carries the selfie or the guest.
         Assert.All(world.Emails, e => Assert.DoesNotContain(marker[..32], e.Content.HtmlBody, StringComparison.Ordinal));
         Assert.All(world.Logs, line =>
         {
@@ -136,10 +124,6 @@ public class GuestVerificationFlowProofTests
         });
     }
 
-    /// <summary>
-    /// Privacy rule (ADR-013-R9, AC-NF50-7): no selfie is run without a recorded consent (409 <c>biometric_consent_required</c>), and a refused
-    /// consent or a consent without its version is not a consent: the guest is with the operator, or asked again, and the agent never runs.
-    /// </summary>
     [Fact]
     public async Task GuestVerificationFlow_SelfieWithoutConsent_IsRefusedAndNothingRuns_Test()
     {
@@ -155,13 +139,11 @@ public class GuestVerificationFlowProofTests
         Assert.Empty(world.Emails);
         Assert.False(await world.Db.BiometricVerificationLogs.AnyAsync());
 
-        // A consent without the version of its text is not recorded.
         var noVersion = await world.Flow().RecordConsentAsync(session, true, "  ", CancellationToken.None);
         Assert.Equal(BiometricConsentStatus.VersionRequired, noVersion.Status);
         Assert.Null(session.BiometricConsentAt);
         Assert.Equal(SelfieStepStatus.ConsentRequired, (await world.SelfieRawAsync(session)).Status);
 
-        // A refusal hands the verification to the operator: the selfie that follows is not run either.
         var refused = await world.Flow().RecordConsentAsync(session, false, null, CancellationToken.None);
         Assert.Equal(BiometricConsentStatus.Refused, refused.Status);
         Assert.NotNull(session.BiometricConsentRefusedAt);
@@ -174,16 +156,11 @@ public class GuestVerificationFlowProofTests
         Assert.Equal(VerificationAlertReasons.ConsentRefused, Assert.Single(world.Alerts).Reason);
     }
 
-    /// <summary>
-    /// Privacy rule (ADR-013-R9): a minor is never processed, whether the check-in data or the MRZ of the document say so: the answer is
-    /// <c>operator</c> (not 400), the agent never runs, nothing is kept, no code is given.
-    /// </summary>
     [Fact]
     public async Task BiometricMinor_ExcludedFromProcessing()
     {
         await using var world = await World.CreateAsync();
 
-        // The check-in data say the guest who verifies is a minor: the consent is not even recorded.
         var byData = await world.StayAsync("Ida", "Piccoli", new DateTime(2014, 3, 3));
         world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
         var consent = await world.Flow().RecordConsentAsync(byData, true, "TEST-biometric-v1", CancellationToken.None);
@@ -194,7 +171,6 @@ public class GuestVerificationFlowProofTests
         Assert.Equal(IdentityVerificationGuestResults.Operator, byDataSelfie.Result);
         Assert.Null(byDataSelfie.LockCode);
 
-        // The check-in data say an adult, the MRZ of the document says a minor: the photo is not kept and the selfie is not run.
         var byDocument = await world.StayAsync("Luca", "Adulti");
         Assert.Equal(
             BiometricConsentStatus.Recorded,
@@ -218,10 +194,6 @@ public class GuestVerificationFlowProofTests
         Assert.False(await world.Db.BiometricVerificationLogs.AnyAsync());
     }
 
-    /// <summary>
-    /// Privacy rule (ADR-013-R6, R15): a property in Ticino (or in Switzerland with a canton CasaZen does not know) keeps no document: no photo in
-    /// the storage, no <see cref="DocumentImage"/> row; the selfie must come with the photo that was read (hash), or it is asked for or refused.
-    /// </summary>
     [Theory]
     [InlineData(null, null)]
     [InlineData("5192", "TI")]
@@ -243,7 +215,6 @@ public class GuestVerificationFlowProofTests
         Assert.Empty(await world.Db.DocumentImages.ToListAsync());
         Assert.True((await world.Flow().GetStateAsync(session, CancellationToken.None)).DocumentNotArchived);
 
-        // Without the photo it is asked again; with another photo it is refused; the agent has not run.
         world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
         Assert.Equal(SelfieStepStatus.DocumentPhotoRequired, (await world.SelfieRawAsync(session)).Status);
         var other = await world.SelfieRawAsync(session, documentPhoto: TestImages.Png(120, 80, seed: 10));
@@ -251,7 +222,6 @@ public class GuestVerificationFlowProofTests
         Assert.Null(other.LockCode);
         Assert.Equal(0, world.Agent.Calls);
 
-        // The photo that was read: the agent runs and the code is given; the storage has never seen a picture.
         var ok = await world.SelfieAsync(session, documentPhoto: photo);
         Assert.Equal(IdentityVerificationGuestResults.Ok, ok.Result);
         Assert.Equal(LockCode, ok.LockCode);
@@ -260,12 +230,6 @@ public class GuestVerificationFlowProofTests
         Assert.Empty(await world.Db.DocumentImages.ToListAsync());
     }
 
-    /// <summary>
-    /// Privacy rule (ADR-013-R6, R15; E29/F01/US01/T02, D6): the one resolver of the place of a Swiss property decides, and only a municipality the
-    /// host confirmed (stored) outside Ticino lets a document be kept. A place derived from the postal code, even outside Ticino (a postal code can
-    /// lie in two cantons, so the derived canton may be wrong), a postal code that leaves several municipalities open, a postal code the directory
-    /// does not have and a stored municipality in Ticino keep nothing: no photo in the storage, no row.
-    /// </summary>
     [Theory]
     [InlineData("8001", "Zürich", null, false)]
     [InlineData("6900", "Lugano", null, false)]
@@ -293,10 +257,6 @@ public class GuestVerificationFlowProofTests
         Assert.Equal(!kept, (await world.Flow().GetStateAsync(session, CancellationToken.None)).DocumentNotArchived);
     }
 
-    /// <summary>
-    /// Privacy rule (ADR-013-R2, R6): the photo of the document kept for the comparison is deleted on every way out of the verification, not only
-    /// when it passes: a review, the last failed attempt, an error, a refused consent, a request for the operator, a document of a minor.
-    /// </summary>
     [Theory]
     [InlineData("review")]
     [InlineData("last-attempt")]
@@ -343,11 +303,6 @@ public class GuestVerificationFlowProofTests
         Assert.False(await world.Db.AccessCodeReleaseLogs.AnyAsync());
     }
 
-    /// <summary>
-    /// Trust rule (AC-NF12-7, AC-NF50-4, review fix): the rejection of an operator holds for the booking, not for the session. A new link (the host,
-    /// the daily job) gives a new session, and the guest who is rejected finds «operator» in it: the consent is not recorded, the photo is not kept,
-    /// the agent does not run, a selfie that would pass opens no code; the verification restarts only when the operator asks for a new photo.
-    /// </summary>
     [Fact]
     public async Task GuestVerificationFlow_RejectedByAnOperator_NewLinkOpensNoCode_Test()
     {
@@ -358,14 +313,12 @@ public class GuestVerificationFlowProofTests
         var alertsBefore = world.Alerts.Count;
         var callsBefore = world.Agent.Calls;
 
-        // The operator rejects (the note is the operator's), then a new link replaces the session.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         Assert.True(await world.Queue().RecordManualVerificationAsync(first.BookingId, world.Scope, false, "Il volto non corrisponde", "auth0|operator"));
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var second = await world.NewLinkAsync(first);
         Assert.Contains(first.BookingId, await VerificationHandOff.BookingsWithOperatorAsync(world.Db, [first.BookingId], CancellationToken.None));
 
-        // In the new session: no consent, no photo kept, no agent, no code, even for a selfie that would pass.
         world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
         var consent = await world.Flow().RecordConsentAsync(second, true, "TEST-biometric-v1", CancellationToken.None);
         Assert.Equal(BiometricConsentStatus.Operator, consent.Status);
@@ -385,7 +338,6 @@ public class GuestVerificationFlowProofTests
         Assert.False(await world.Db.AccessCodeReleaseLogs.AnyAsync());
         Assert.Null(await world.AccessCodes().GetAccessCodeAsync(first.BookingId, "auth0|owner", world.Scope));
 
-        // The guest asks for a person again after the decision: the operators are told again, and the booking is in the queue once.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Flow().RequestOperatorAsync(second, CancellationToken.None);
         Assert.Equal(alertsBefore + 1, world.Alerts.Count);
@@ -393,12 +345,6 @@ public class GuestVerificationFlowProofTests
         Assert.Equal(first.BookingId, pending.BookingId);
     }
 
-    /// <summary>
-    /// Trust rule (review fix): a hand-off still open is the booking's too. A host's new link does not lose it from the queue (one entry, the
-    /// operators are not told twice) and does not start the verification again; the operator opens the way by asking for a new photo, which writes
-    /// an operator row that is not a decision (not counted, the gate stays shut), and the new session then verifies and gets the code, closing the
-    /// "To do".
-    /// </summary>
     [Fact]
     public async Task GuestVerificationFlow_OpenHandOff_SurvivesANewLinkUntilTheOperatorAsksForANewPhoto_Test()
     {
@@ -409,12 +355,10 @@ public class GuestVerificationFlowProofTests
         Assert.Single(world.Alerts);
         var callsBefore = world.Agent.Calls;
 
-        // The host sends a new link: the old session is expired, the hand-off is still in the queue, once.
         world.Clock.Advance(TimeSpan.FromHours(1));
         var second = await world.NewLinkAsync(first);
         Assert.Equal(first.BookingId, Assert.Single(await world.Queue().GetPendingVerificationsAsync("auth0|operator", world.Scope)).BookingId);
 
-        // The new session finds «operator», and asking for a person again does not alert twice.
         world.Agent.Next(Outcome(IdentityVerificationResult.Ok));
         Assert.Equal(IdentityVerificationGuestResults.Operator, (await world.SelfieAsync(second)).Result);
         Assert.Equal(callsBefore, world.Agent.Calls);
@@ -435,7 +379,6 @@ public class GuestVerificationFlowProofTests
         }, CancellationToken.None);
         Assert.Equal(1, await activities.CountUrgentAsync(world.Scope, CancellationToken.None));
 
-        // The operator asks for a new photo: a third link, an operator row that opens the way and is not a decision.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         var third = await world.PrepareNewLinkAsync(second);
         var checkIn = new Mock<IGuestCheckInService>();
@@ -454,7 +397,6 @@ public class GuestVerificationFlowProofTests
         Assert.Equal(0, metrics.OperatorDecisions);
         Assert.False(await VerificationHandOff.IsWithOperatorAsync(world.Db, first.BookingId, CancellationToken.None));
 
-        // In the third session the verification runs again, passes, gives the code and closes the "To do" of the hand-off.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         Assert.Equal(
             BiometricConsentStatus.Recorded,
@@ -479,7 +421,6 @@ public class GuestVerificationFlowProofTests
         new VerificationThresholds(0.85, 0.70, 0.7, 3, CaptureQualityRules.Version, Provisional: true),
         840);
 
-    /// <summary>One org on the Agency plan (the biometric verification on by default), a property with a lock code, the flow and its fakes.</summary>
     private sealed class World : IAsyncDisposable
     {
         private readonly DbContextOptions<AppDbContext> _options =
@@ -564,7 +505,6 @@ public class GuestVerificationFlowProofTests
             AccessCodes(),
             new InternalActivityService(Db, NullLogger<InternalActivityService>.Instance, Clock));
 
-        /// <summary>A property (in another country when said) with a lock code, and the municipality of its canton when there is one.</summary>
         public async Task<Guid> AddPropertyAsync(string country, string? municipalityCode, string? canton)
         {
             var property = NewProperty(Guid.NewGuid(), country, municipalityCode);
@@ -577,10 +517,6 @@ public class GuestVerificationFlowProofTests
             return property.Id;
         }
 
-        /// <summary>
-        /// A property in Switzerland at <paramref name="postalCode"/> and <paramref name="city"/>, with the municipality the host confirmed when there
-        /// is one, over a small directory of the official kind: Zürich (ZH) and Lugano, Massagno and Paradiso, the three municipalities of the postal code 6900 (TI).
-        /// </summary>
         public async Task<Guid> AddSwissPropertyAsync(string postalCode, string city, string? storedMunicipality)
         {
             var property = NewProperty(Guid.NewGuid(), "CH", storedMunicipality);
@@ -614,7 +550,6 @@ public class GuestVerificationFlowProofTests
             return property.Id;
         }
 
-        /// <summary>A confirmed stay of an adult booker with an open check-in session (loaded as the public endpoint loads it).</summary>
         public async Task<GuestCheckInSession> StayAsync(string firstName, string lastName, DateTime? dateOfBirth = null, Guid? propertyId = null)
         {
             var guest = new Guest
@@ -648,7 +583,6 @@ public class GuestVerificationFlowProofTests
             return await LoadAsync(session.Id);
         }
 
-        /// <summary>A stay whose guest gave the consent and uploaded the document (kept encrypted: the property is not in Ticino).</summary>
         public async Task<GuestCheckInSession> ReadyStayAsync(string firstName, string lastName)
         {
             var session = await StayAsync(firstName, lastName);
@@ -661,14 +595,12 @@ public class GuestVerificationFlowProofTests
             return session;
         }
 
-        /// <summary>A new link of the booking: the open session is expired, a new one replaces it (loaded as the public endpoint loads it).</summary>
         public async Task<GuestCheckInSession> NewLinkAsync(GuestCheckInSession previous)
         {
             var added = await PrepareNewLinkAsync(previous);
             return await LoadAsync(added.Id);
         }
 
-        /// <summary>The session a new link would add, written (the previous one expired), for a fake <c>IssueLinkAsync</c> to hand back.</summary>
         public async Task<GuestCheckInSession> PrepareNewLinkAsync(GuestCheckInSession previous)
         {
             var open = await Db.GuestCheckInSessions.Where(s => s.BookingId == previous.BookingId && s.Status != GuestCheckInSessionStatus.Scaduto).ToListAsync();
@@ -750,14 +682,12 @@ public class GuestVerificationFlowProofTests
                 .SingleAsync(s => s.Id == sessionId);
     }
 
-    /// <summary>An agent that answers a script, accepts every capture and keeps the last selfie it read (to prove what reached it).</summary>
     private sealed class ScriptedAgent : IIdentityVerificationAgent
     {
         private readonly Queue<Func<IdentityVerificationOutcome>> _answers = new();
 
         public byte[]? LastSelfie { get; private set; }
 
-        /// <summary>How many times a verification ran (the selfie reached the agent).</summary>
         public int Calls { get; private set; }
 
         public void Next(IdentityVerificationOutcome outcome) => _answers.Enqueue(() => outcome);
@@ -777,7 +707,6 @@ public class GuestVerificationFlowProofTests
         }
     }
 
-    /// <summary>The alerts raised, in order, and the "To do" items closed.</summary>
     private sealed class RecordingAlerts : List<(Guid SessionId, string Reason)>, IVerificationOperatorAlerts
     {
         public List<Guid> Resolved { get; } = [];
@@ -795,7 +724,6 @@ public class GuestVerificationFlowProofTests
         }
     }
 
-    /// <summary>An MRZ that reads the booker of every stay of the test as a valid, unexpired Italian identity card (born on <see cref="DateOfBirth"/>).</summary>
     private sealed class ReadableMrz : IMrzExtractionService
     {
         public DateTime DateOfBirth { get; set; } = new(1990, 1, 1);
@@ -821,7 +749,6 @@ public class GuestVerificationFlowProofTests
         };
     }
 
-    /// <summary>A private bucket in memory, counting the writes.</summary>
     private sealed class MemoryStorage : IFileStorage
     {
         public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
@@ -856,7 +783,6 @@ public class GuestVerificationFlowProofTests
             Task.FromResult<Uri?>(null);
     }
 
-    /// <summary>A logger that keeps every formatted line, to prove what is (not) written.</summary>
     private sealed class ListLogger<T>(List<string> lines) : ILogger<T>
     {
         public IDisposable? BeginScope<TState>(TState state)

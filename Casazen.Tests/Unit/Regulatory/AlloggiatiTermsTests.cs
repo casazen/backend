@@ -9,10 +9,10 @@ namespace Casazen.Tests.Unit.Regulatory;
 public class AlloggiatiTermsTests
 {
     [Theory]
-    [InlineData(2026, 3, 29, 2026, 3, 28, 23)] // day of the switch to summer time: midnight is still CET
-    [InlineData(2026, 3, 30, 2026, 3, 29, 22)] // first day of CEST
-    [InlineData(2026, 10, 25, 2026, 10, 24, 22)] // day of the switch back: midnight is still CEST
-    [InlineData(2026, 10, 26, 2026, 10, 25, 23)] // first day of CET
+    [InlineData(2026, 3, 29, 2026, 3, 28, 23)]
+    [InlineData(2026, 3, 30, 2026, 3, 29, 22)]
+    [InlineData(2026, 10, 25, 2026, 10, 24, 22)]
+    [InlineData(2026, 10, 26, 2026, 10, 25, 23)]
     public void StartOfDayUtc_AroundDaylightSavingChanges_ReturnsRomeMidnight(
         int year, int month, int day, int utcYear, int utcMonth, int utcDay, int utcHour)
     {
@@ -85,8 +85,6 @@ public class AlloggiatiTermsTests
     [InlineData(AlloggiatiWebStatus.InviatoManualmente, AlloggiatiWebStatus.InviatoManualmente)]
     public void Effective_NoShow_OwesNothingUnlessTheCommunicationWasSent(AlloggiatiWebStatus? stored, AlloggiatiWebStatus? sent)
     {
-        // NF-45: past the arrival day and the legal term, a no-show is neither "to send manually" nor a failure: not due. A communication
-        // sent or declared sent anyway stays visible.
         var checkIn = new DateTime(2026, 7, 2, 0, 0, 0, DateTimeKind.Utc);
         var today = new DateTime(2026, 7, 9, 0, 0, 0, DateTimeKind.Utc);
 

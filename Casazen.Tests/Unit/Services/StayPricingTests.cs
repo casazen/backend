@@ -13,7 +13,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class StayPricingTests
 {
-    // A Monday: 2026-10-12 is a Monday, 2026-10-16 a Friday, 2026-10-17 a Saturday, 2026-10-18 a Sunday.
     private static readonly DateOnly Monday = new(2026, 10, 12);
 
     private static DateOnly Day(int offsetFromMonday) => Monday.AddDays(offsetFromMonday);
@@ -21,8 +20,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_NoSurcharge_IsTheNightlyRateTimesTheNightsForEveryStartDayAndLength()
     {
-        // The non-regression of the task: 14 start days x 1..15 nights, rates with cents, surcharge 0: the lodging is
-        // exactly rate x nights and no night is a "weekend night".
         foreach (var rate in new[] { 0m, 1m, 99.99m, 150m, 187.50m, 100000m })
         {
             for (var start = 0; start < 14; start++)
@@ -43,7 +40,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_NegativeSurcharge_IsTreatedAsNone()
     {
-        // The forms and the service refuse it; a faulty caller still cannot make a night cheaper than its rate.
         var lodging = StayPricing.Lodging(Day(4), 3, nightlyRate: 100m, weekendSurchargePercent: -10m);
 
         Assert.Equal(300m, lodging.Total);
@@ -51,16 +47,16 @@ public class StayPricingTests
     }
 
     [Theory]
-    [InlineData(0, 1, 0)] // Monday, one night
-    [InlineData(4, 1, 1)] // Friday, one night
-    [InlineData(5, 1, 1)] // Saturday, one night
-    [InlineData(6, 1, 0)] // Sunday, one night
-    [InlineData(4, 3, 2)] // Friday to Monday: Friday and Saturday
-    [InlineData(3, 3, 2)] // Thursday to Sunday: Thursday, Friday and Saturday
-    [InlineData(0, 7, 2)] // a full week has exactly two
-    [InlineData(1, 4, 1)] // Tuesday to Saturday: only the Friday
-    [InlineData(5, 2, 1)] // Saturday to Monday: only the Saturday
-    [InlineData(6, 8, 2)] // Sunday to Monday of the week after: one Friday and one Saturday
+    [InlineData(0, 1, 0)]
+    [InlineData(4, 1, 1)]
+    [InlineData(5, 1, 1)]
+    [InlineData(6, 1, 0)]
+    [InlineData(4, 3, 2)]
+    [InlineData(3, 3, 2)]
+    [InlineData(0, 7, 2)]
+    [InlineData(1, 4, 1)]
+    [InlineData(5, 2, 1)]
+    [InlineData(6, 8, 2)]
     public void Lodging_WithSurcharge_CountsTheFridayAndSaturdayNights(int startOffset, int nights, int expectedWeekendNights)
     {
         var lodging = StayPricing.Lodging(Day(startOffset), nights, nightlyRate: 100m, weekendSurchargePercent: 15m);
@@ -74,7 +70,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_FridayToMonday_AtFifteenPercent_PricesTwoWeekendNightsAndOneOrdinary()
     {
-        // 3 nights from Friday 16 to Monday 19 October 2026: Friday and Saturday are weekend nights, Sunday is not.
         var lodging = StayPricing.Lodging(Day(4), 3, nightlyRate: 150m, weekendSurchargePercent: 15m);
 
         Assert.Equal(1, lodging.WeekdayNights);
@@ -86,7 +81,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_SurchargeIsAppliedToTheNightAndRoundedToTheCent_SoTheTotalIsAnExactNumberOfCents()
     {
-        // 99.99 x 1.15 = 114.9885 -> 114.99; two such nights are 229.98, not the rounded 229.977.
         var lodging = StayPricing.Lodging(Day(4), 2, nightlyRate: 99.99m, weekendSurchargePercent: 15m);
 
         Assert.Equal(114.99m, lodging.WeekendNightlyRate);
@@ -109,7 +103,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_PercentageWithMoreThanTwoDecimals_IsKeptToTwoDecimalsHalfAwayFromZero()
     {
-        // The column holds two decimals: 0.005 % is stored 0.01 %, and 100 x 1.0001 = 100.01.
         var lodging = StayPricing.Lodging(Day(4), 1, nightlyRate: 100m, weekendSurchargePercent: 0.005m);
 
         Assert.Equal(100.01m, lodging.WeekendNightlyRate);
@@ -118,7 +111,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_StayWithoutWeekendNights_HasNoWeekendLineEvenWithASurcharge()
     {
-        // Monday to Thursday: nothing to surcharge.
         var lodging = StayPricing.Lodging(Day(0), 3, nightlyRate: 100m, weekendSurchargePercent: 20m);
 
         Assert.Equal(3, lodging.WeekdayNights);
@@ -130,8 +122,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_StayAcrossTheEndOfSummerTime_DatesAreCalendarDatesSoNoNightMoves()
     {
-        // The clocks go back on Sunday 25 October 2026. Stays are dates stored as midnight UTC of the Rome date: the Rome
-        // date of that value is the same date, so Friday 23 and Saturday 24 are the weekend nights of a stay 23 -> 27.
         var checkIn = new DateTime(2026, 10, 23, 0, 0, 0, DateTimeKind.Utc);
         var romeDate = RomeCalendar.DateInRome(checkIn);
 
@@ -146,7 +136,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_StayAcrossTheStartOfSummerTime_CountsTheSameWeekendNights()
     {
-        // The clocks go forward on Sunday 29 March 2026: Friday 27 and Saturday 28 are the weekend nights of 27 -> 30.
         var romeDate = RomeCalendar.DateInRome(new DateTime(2026, 3, 27, 0, 0, 0, DateTimeKind.Utc));
 
         var lodging = StayPricing.Lodging(romeDate, 3, nightlyRate: 100m, weekendSurchargePercent: 10m);
@@ -163,7 +152,6 @@ public class StayPricingTests
     [Fact]
     public void NightPrices_WithWeekendNights_GivesTheRateOfEachNightInOrder()
     {
-        // Thursday to Monday: Thu, Fri, Sat, Sun.
         var lodging = StayPricing.Lodging(Day(3), 4, nightlyRate: 100m, weekendSurchargePercent: 25m);
 
         var prices = StayPricing.NightPrices(Day(3), lodging);
@@ -179,8 +167,6 @@ public class StayPricingTests
 
         Assert.Equal([DayOfWeek.Friday, DayOfWeek.Saturday], weekend);
     }
-
-    // ─── Lines ──────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Lines_NoSurcharge_OneNightsLineCleaningTaxAndTotal_AddingUpToTheTotal()
@@ -211,7 +197,6 @@ public class StayPricingTests
             lines.Select(l => l.Kind));
         Assert.Equal(new QuoteLine(QuoteLineKind.Nights, 1, 15000, 15000), lines[0]);
         Assert.Equal(new QuoteLine(QuoteLineKind.WeekendNights, 2, 17250, 34500), lines[1]);
-        // 150 + 345 + 50 + 36 = 581.
         Assert.Equal(58100, lines[^1].AmountCents);
         AssertLinesAddUp(lines);
     }
@@ -257,12 +242,9 @@ public class StayPricingTests
         }
     }
 
-    // ─── Prices the host set for dates (a confirmed seasonal price, PC-15) ───
-
     [Fact]
     public void Lines_HostPricedNights_GetALineOfTheirOwnAndTheLinesStillAddUp()
     {
-        // Wednesday to Monday at 100 with 25 %: Wed 100, Thu 130 (host), Fri 125, Sat 130 (host), Sun 100.
         var hostPrices = new Dictionary<DateOnly, decimal> { [Day(3)] = 130m, [Day(5)] = 130m };
         var quote = Quote(Day(2), 5, rate: 100m, cleaning: 40m, surcharge: 25m, tax: Tax(9m), hostPrices);
 
@@ -321,7 +303,6 @@ public class StayPricingTests
     [Fact]
     public void Lodging_HostPriceOnAWeekendNight_IsNotRaisedByTheSurcharge()
     {
-        // Thursday to Monday at 100 with 25 %: Thursday 100, Friday 90 (the host's price), Saturday 125, Sunday 100.
         var hostPrices = new Dictionary<DateOnly, decimal> { [Day(4)] = 90m };
 
         var lodging = StayPricing.Lodging(Day(3), 4, nightlyRate: 100m, weekendSurchargePercent: 25m, hostPrices);

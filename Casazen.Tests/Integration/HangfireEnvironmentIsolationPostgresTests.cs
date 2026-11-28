@@ -35,11 +35,9 @@ public class HangfireEnvironmentIsolationPostgresTests : IAsyncLifetime
         var (testSettings, testStorage) = CreateStorage("casazen_test");
         var (prodSettings, prodStorage) = CreateStorage("casazen_prod");
 
-        // Production registers its recurring jobs and receives a job (e.g. a Stripe webhook).
         RecurringJobsRegistration.Configure(new RecurringJobManager(prodStorage), Mock.Of<IFeatureFlags>());
         new BackgroundJobClient(prodStorage).Enqueue(() => Console.WriteLine("prod webhook"));
 
-        // A test server comes up.
         using (var testConnection = testStorage.GetConnection())
             testConnection.AnnounceServer("test-server", new ServerContext { WorkerCount = 1, Queues = ["default"] });
 
@@ -47,12 +45,10 @@ public class HangfireEnvironmentIsolationPostgresTests : IAsyncLifetime
         Assert.Equal("hangfire_casazen_prod", prodSettings.Schema);
         Assert.Equal(new[] { "hangfire_casazen_prod", "hangfire_casazen_test" }, await HangfireSchemasAsync());
 
-        // The test worker cannot see production's queue or recurring jobs...
         Assert.Equal(0, testStorage.GetMonitoringApi().EnqueuedCount("default"));
         using (var testConnection = testStorage.GetConnection())
             Assert.Empty(testConnection.GetRecurringJobs());
 
-        // ...which stay in production, whose server list does not include the test server.
         Assert.Equal(1, prodStorage.GetMonitoringApi().EnqueuedCount("default"));
         using (var prodConnection = prodStorage.GetConnection())
             Assert.Contains(prodConnection.GetRecurringJobs(), job => job.Id == "direct-booking-charge");
@@ -64,7 +60,6 @@ public class HangfireEnvironmentIsolationPostgresTests : IAsyncLifetime
     {
         var connectionString = new NpgsqlConnectionStringBuilder(_database!.ConnectionString) { SearchPath = searchPath }
             .ConnectionString;
-        // Same resolution as Program.cs on Railway, where both environments run as Production.
         var schema = HangfireStorageSettings.ResolveSchema(null, connectionString, "Production");
         var settings = new HangfireStorageSettings(schema, HangfireStorageSettings.DefaultDistributedLockTimeout);
         var options = settings.CreateStorageOptions();

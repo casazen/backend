@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// ADR-004-R2: ConcordatoFacileGift unique OrgId constraint — an org can have at most one gift record.
-/// A second insert with the same OrgId throws <see cref="DbUpdateException"/>.
-/// </summary>
 public class ConcordatoFacileGiftTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
@@ -25,7 +21,6 @@ public class ConcordatoFacileGiftTests : IAsyncLifetime
     [PostgresFact]
     public async Task UniqueOrgConstraint_SecondGiftForSameOrg_ThrowsDbException()
     {
-        // Arrange: One org with one gift
         var orgId = Guid.NewGuid();
 
         await using (var db = _database!.CreateContext())
@@ -52,7 +47,6 @@ public class ConcordatoFacileGiftTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        // Act & Assert: Attempting to insert a second gift for the same org throws DbUpdateException
         await using (var db = _database.CreateContext())
         {
             db.ConcordatoFacileGifts.Add(new ConcordatoFacileGift
@@ -68,7 +62,6 @@ public class ConcordatoFacileGiftTests : IAsyncLifetime
             Assert.Contains("duplicate key", exception.InnerException?.Message ?? exception.Message, StringComparison.OrdinalIgnoreCase);
         }
 
-        // Verify: The first gift still exists and only one gift is in the database
         await using (var db = _database.CreateContext())
         {
             var gifts = await db.ConcordatoFacileGifts

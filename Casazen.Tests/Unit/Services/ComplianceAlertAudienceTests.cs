@@ -44,7 +44,6 @@ public class ComplianceAlertAudienceTests : IDisposable
 
     private static LegalDocumentService Legal => new(new ConfigurationBuilder().Build(), NullLogger<LegalDocumentService>.Instance);
 
-    /// <summary>The real evaluation of a permission, read fresh each time (no cache), as a job with no request would run it.</summary>
     private ContextAuthorizationService Permissions()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Authorization:UserCacheSeconds"] = "0" }).Build();
@@ -156,8 +155,6 @@ public class ComplianceAlertAudienceTests : IDisposable
 
     private static string[] Of(string names) => names.Split('|', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal).ToArray();
 
-    // ─── The one definition ───
-
     [Fact]
     public void RequiredPermissionOf_IsTheVerySamePermissionAsThePolicyOfTheDeclaration_ForTheTwoPoliceNotificationAlertsOnly()
     {
@@ -168,17 +165,11 @@ public class ComplianceAlertAudienceTests : IDisposable
         Assert.Equal(expected, ComplianceAlertAudience.RequiredPermissionOf(ComplianceAlertType.TicinoNotification));
         Assert.Equal(expected, ComplianceAlertAudience.RequiredPermissionOf(ComplianceAlertType.SwissNotification));
 
-        // The alerts of the Italian periods and of the connection keep the audience they always had.
         var others = Enum.GetValues<ComplianceAlertType>().Where(t => t is not (ComplianceAlertType.TicinoNotification or ComplianceAlertType.SwissNotification)).ToList();
         Assert.NotEmpty(others);
         Assert.All(others, type => Assert.Null(ComplianceAlertAudience.RequiredPermissionOf(type)));
     }
 
-    // ─── The audience: reach AND permission ───
-
-    // The people told about the alert of the police, and about an alert of the Italian deadlines, for each person in charge of the property. A collaborator without the license is told about the
-    // Italian alert and not about the police one; the administrators and the property manager hold it and are told about both; whoever does not reach the property (a name that is stale, a member
-    // who was deactivated) is told about neither, license or not; an administrator whose onboarding is not finished holds no permission, so the Italian alert reaches it and the police one does not.
     [Theory]
     [InlineData("collab", "admin|admin-not-onboarded|collab|owner", "admin|owner")]
     [InlineData("manager", "admin|admin-not-onboarded|manager|owner", "admin|manager|owner")]
@@ -201,7 +192,6 @@ public class ComplianceAlertAudienceTests : IDisposable
 
             Assert.Equal(Of(policeAudience), Names(police.UserIds));
 
-            // The e-mail is the address of the organization, whoever holds the permission: it is not a person.
             Assert.Equal(OrgAddress, Assert.Single(police.Emails));
             Assert.Equal(italian.Emails, police.Emails);
         }
@@ -213,11 +203,9 @@ public class ComplianceAlertAudienceTests : IDisposable
         await SeedAsync();
         await NameAsync("collab-licensed-other");
 
-        // The collaborator holds the permission and was given the OTHER property: the reach decides, the permission only narrows it.
         var police = await Resolver().ForPropertyAsync(_orgId, _propertyId, ComplianceAlertAudience.AlloggiatiSubmit, CancellationToken.None);
         Assert.DoesNotContain("collab-licensed-other", Names(police.UserIds));
 
-        // Put in charge of the property it was given, the same person is told: the permission and the grant both hold.
         await NameAsync("collab-licensed-other", propertyId: _otherPropertyId);
         var own = await Resolver().ForPropertyAsync(_orgId, _otherPropertyId, ComplianceAlertAudience.AlloggiatiSubmit, CancellationToken.None);
         Assert.Equal(Of("admin|collab-licensed-other|owner"), Names(own.UserIds));
@@ -231,7 +219,6 @@ public class ComplianceAlertAudienceTests : IDisposable
 
         var police = await Resolver().ForPropertyAsync(_orgId, _propertyId, ComplianceAlertAudience.AlloggiatiSubmit, CancellationToken.None);
 
-        // The owner of before the team holds the license as the policy gives it to it (the role of its account), so it is told, with the administrators.
         Assert.Equal(Of("admin|legacy|owner"), Names(police.UserIds));
     }
 
@@ -261,8 +248,6 @@ public class ComplianceAlertAudienceTests : IDisposable
         Assert.Empty(police.UserIds);
     }
 
-    // ─── The phone and the bell tell the same people ───
-
     private InAppNotificationJob Bell(bool withTheEvaluation = true) =>
         new(_db, _clock, new NoOpInAppNotificationPublisher(), NullLogger<InAppNotificationJob>.Instance, withTheEvaluation ? Permissions() : null);
 
@@ -271,14 +256,12 @@ public class ComplianceAlertAudienceTests : IDisposable
 
     private static PushNotificationPayload Alert() => new("Titolo", "Testo", PushTypes.TicinoNotificationDue, null, PushRoutes.Properties);
 
-    /// <summary>The people the bell writes an entry for, for an event of this audience.</summary>
     private async Task<string[]> ToldByTheBellAsync(PushAudience audience, string key, bool withTheEvaluation = true)
     {
         await Bell(withTheEvaluation).CreateAsync(key, QueuedInAppNotification.From(audience, Alert(), Now), CancellationToken.None);
         return Names(await _db.InAppNotifications.AsNoTracking().Where(n => n.DeliveryKey == key).Select(n => n.UserId).ToListAsync());
     }
 
-    /// <summary>The people whose phone is pushed, for an event of this audience.</summary>
     private async Task<string[]> ToldByThePhoneAsync(PushAudience audience, string key, bool withTheEvaluation = true)
     {
         var before = _expo.Messages.Count;
@@ -307,7 +290,6 @@ public class ComplianceAlertAudienceTests : IDisposable
         await NameAsync("collab");
         var italian = PushAudience.PropertyHosts(_propertyId);
 
-        // Nothing changes for the audience with no required permission: the person in charge, the administrators (whatever their onboarding) and nobody else.
         Assert.Equal(Of("admin|admin-not-onboarded|collab|owner"), await ToldByTheBellAsync(italian, "italian-bell"));
         Assert.Equal(Of("admin|admin-not-onboarded|collab|owner"), await ToldByThePhoneAsync(italian, "italian-phone"));
     }
@@ -326,7 +308,6 @@ public class ComplianceAlertAudienceTests : IDisposable
         Assert.Equal(Of("admin|collab-licensed|owner"), await ToldByTheBellAsync(police, "licensed-bell"));
         Assert.Equal(Of("admin|collab-licensed|owner"), await ToldByThePhoneAsync(police, "licensed-phone"));
 
-        // The licensed collaborator who lost the property (a stale name) and the deactivated one are never told, license or not.
         await NameAsync("collab-licensed-other");
         Assert.Equal(Of("admin|owner"), await ToldByTheBellAsync(police, "stale-bell"));
         await NameAsync("collab-deactivated");
@@ -353,7 +334,6 @@ public class ComplianceAlertAudienceTests : IDisposable
         await SeedAsync();
         await NameAsync("collab");
 
-        // Every person with the permission is gone: the owner and the administrators were deactivated. Only a collaborator without the license is left in charge.
         foreach (var member in await _db.OrgMembers.Where(m => m.Role == OrgRole.Owner || m.Role == OrgRole.Admin).ToListAsync())
             member.Status = OrgMemberStatus.Deactivated;
         await _db.SaveChangesAsync();
@@ -366,8 +346,6 @@ public class ComplianceAlertAudienceTests : IDisposable
         Assert.Empty(await ToldByTheBellAsync(police, "nobody-bell"));
         Assert.Empty(await ToldByThePhoneAsync(police, "nobody-phone"));
     }
-
-    // ─── The permission rides the queue ───
 
     [Fact]
     public void ThePermissionOfTheAudience_TravelsInTheArgumentsOfTheTwoJobs_AndAJobQueuedBeforeItExistedNarrowsNobody()
@@ -382,7 +360,6 @@ public class ComplianceAlertAudienceTests : IDisposable
         Assert.Equal(plain, QueuedInAppNotification.From(plain, Alert(), Now).ToAudience());
         Assert.NotEqual(narrowed, plain);
 
-        // A job queued by the previous version has no permission in its arguments: it is the plain audience, as it was.
         var old = new QueuedPush { AudienceKind = PushAudienceKind.PropertyHosts, AudienceId = property };
         Assert.Null(old.ToAudience().RequiredPermission);
         Assert.Null(new QueuedInAppNotification { AudienceKind = PushAudienceKind.PropertyHosts, AudienceId = property }.ToAudience().RequiredPermission);

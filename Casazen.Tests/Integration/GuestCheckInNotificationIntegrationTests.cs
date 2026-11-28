@@ -13,12 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// The guest completes the online check-in on the public page and the host is told: the whole chain over the real pipeline, from the
-/// <c>POST /api/public/checkin/{token}</c> of the guest to the entry the host reads in the bell (<c>GET /api/me/notifications</c>),
-/// through the push queued by the service, the decorator and the notification job. The live message of the open web sessions is
-/// published by that job (<c>InAppNotificationJobPublishTests</c>); this proves the check-in reaches it at all, which it did not.
-/// </summary>
 public class GuestCheckInNotificationIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private readonly CasazenWebApplicationFactory _factory;
@@ -36,7 +30,6 @@ public class GuestCheckInNotificationIntegrationTests : IClassFixture<CasazenWeb
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        // The request queued the push and, next to it, the job of the bell: nothing else runs inside it.
         var key = PushDeliveryKeys.GuestCheckInCompleted(sessionId);
         var jobs = QueuedJobs(key);
         Assert.Equal([typeof(PushDeliveryJob), typeof(InAppNotificationJob)], jobs.Select(j => j.Type));
@@ -57,7 +50,6 @@ public class GuestCheckInNotificationIntegrationTests : IClassFixture<CasazenWeb
         Assert.Equal(seed.BookingId, item.GetProperty("entityId").GetGuid());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("readAt").ValueKind);
         Assert.Equal(1, (await host.GetFromJsonAsync<JsonElement>("/api/me/notifications/unread-count")).GetProperty("count").GetInt32());
-        // Neither the push text nor anything the guest typed is in the answer.
         foreach (var typed in new[] { "Luigi", "Verdi", "YA1234567", "check-in online" })
             Assert.DoesNotContain(typed, list.GetRawText(), StringComparison.OrdinalIgnoreCase);
     }
@@ -74,8 +66,6 @@ public class GuestCheckInNotificationIntegrationTests : IClassFixture<CasazenWeb
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Empty(QueuedJobs(PushDeliveryKeys.GuestCheckInCompleted(sessionId)));
     }
-
-    // ─── Helpers ───
 
     private async Task<(string Token, Guid SessionId)> IssueLinkAsync(Guid bookingId)
     {

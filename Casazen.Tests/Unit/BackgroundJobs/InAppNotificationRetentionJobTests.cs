@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.BackgroundJobs;
 
-/// <summary>
-/// UI-12a: the in-app notifications older than 90 days are deleted every night, whatever the state of the other flags (the
-/// deletion itself, on PostgreSQL, is proved in <c>InAppNotificationsPostgresTests</c>).
-/// </summary>
 public class InAppNotificationRetentionJobTests
 {
     private static (Mock<IRecurringJobManager> Manager, Dictionary<string, (Job Job, string Cron, RecurringJobOptions Options)> Scheduled) Register(
@@ -63,7 +59,6 @@ public class InAppNotificationRetentionJobTests
     [Fact]
     public void Cron_DoesNotShareTheMinuteOfTheOtherNightlyRetentions()
     {
-        // 03:00 GDPR retention, 03:30 SEO events: the three do not start together.
         Assert.NotEqual("0 3 * * *", InAppNotificationRetentionJob.Cron);
         Assert.NotEqual("30 3 * * *", InAppNotificationRetentionJob.Cron);
     }

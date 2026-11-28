@@ -24,19 +24,15 @@ internal sealed record HostScopeWorld(
     Property Hidden,
     Property OtherOrgProperty)
 {
-    /// <summary>The scope of the collaborator «Solo alcuni»: the properties it was given.</summary>
     public HostScope Restricted => new(OrgId, GrantedToUserId: CollaboratorId);
 
-    /// <summary>The scope of the owner, the administrators, the managers: the whole org.</summary>
     public HostScope OrgWide => new(OrgId);
 
-    /// <summary>The scope of an account in no org team that created the hidden property: the old rule.</summary>
     public HostScope OwnedByOwner => new(OrgId, OwnerId: OwnerUserId);
 }
 
 internal static class HostScopeScenario
 {
-    /// <summary>The instant the services run at: 2026-10-09 in Rome.</summary>
     public static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
 
     public static DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
@@ -82,10 +78,6 @@ internal static class HostScopeScenario
         return new HostScopeWorld(org.Id, otherOrg.Id, supplierOrg.Id, owner.Id, collaborator.Id, granted, hidden, foreign);
     }
 
-    /// <summary>
-    /// Two properties of an org that already exists (the HTTP tests build the org and its people through the real services),
-    /// each with everything the lists are made of. Returns them with the supplier org the interventions were requested from.
-    /// </summary>
     public static async Task<(Property Granted, Property Hidden, Guid SupplierOrgId)> SeedPropertiesOfAsync(
         AppDbContext db, Guid orgId, string creatorId)
     {
@@ -154,17 +146,13 @@ internal static class HostScopeScenario
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
-    /// <summary>Everything the lists are made of, for one property: its name says whose it is in the assertions.</summary>
     internal static void AddDataOf(AppDbContext db, Property property, Guid supplierOrgId)
     {
         var orgId = property.OrgId;
         var guest = new Guest { OrgId = orgId, FirstName = "Anna", LastName = property.Name, Email = $"{Guid.NewGuid():N}@example.com" };
 
-        // A confirmed stay that starts tomorrow (Rome): a check-in to complete, an arrival to come, revenue of the month.
         var upcoming = NewBooking(property, guest, BookingStatus.Confirmed, Day(2026, 10, 10), Day(2026, 10, 13));
-        // A stay already checked out, with the check-out record of the turnover still open.
         var closed = NewBooking(property, guest, BookingStatus.CheckedOut, Day(2026, 10, 1), Day(2026, 10, 4));
-        // A «pay at the property» request waiting for the host.
         var request = NewBooking(property, guest, BookingStatus.Pending, Day(2026, 11, 20), Day(2026, 11, 23));
         request.Source = BookingSource.Direct;
         request.PaymentOption = PaymentOption.OnSite;
@@ -174,7 +162,6 @@ internal static class HostScopeScenario
         db.Guests.Add(guest);
         db.Bookings.AddRange(upcoming, closed, request);
 
-        // Money of the stays, with the OTA withholding the withholding report is made of.
         foreach (var booking in new[] { upcoming, closed })
         {
             db.Payments.Add(new Payment

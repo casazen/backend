@@ -47,8 +47,6 @@ public class ListingTextsTests
         },
     };
 
-    // ─── What is stored ────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Normalize_Translations_AreCleanedKeyedByLanguageAndItalianKeepsOnlyTheTransport()
     {
@@ -188,8 +186,6 @@ public class ListingTextsTests
         Assert.Equal(SitePropertyProfileErrorCodes.TextTooLong, longer.Code);
     }
 
-    // ─── The origin of a text ──────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(null, TextOrigin.AutoTranslated, "Nuovo", TextOrigin.UserWritten)]
     [InlineData("Uguale", TextOrigin.AutoTranslated, "Uguale", TextOrigin.AutoTranslated)]
@@ -247,8 +243,6 @@ public class ListingTextsTests
         Assert.False(merged.Translations.ContainsKey("it"));
     }
 
-    // ─── The one reader ────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Resolver_Italian_ComesFromTheColumnsAndTheItalianPartsOfTheProfileTexts()
     {
@@ -263,7 +257,6 @@ public class ListingTextsTests
         Assert.Equal("Bus 12 dalla stazione", ListingTextResolver.Get(house, profile, "IT", ListingTextField.Transport));
         Assert.Equal("Non fumare.\nSilenzio dopo le 22.", ListingTextResolver.Get(house, profile, "it", ListingTextField.Rules));
 
-        // No headline written: the listing uses the name of the property.
         house.ListingTitle = null;
         Assert.Equal("Villa del Lago", ListingTextResolver.Get(house, profile, "it", ListingTextField.Title));
     }
@@ -278,27 +271,22 @@ public class ListingTextsTests
         Assert.Equal("A villa with a garden.", ListingTextResolver.Get(house, profile, "en", ListingTextField.Description));
         Assert.Equal("No smoking.", ListingTextResolver.Get(house, profile, "en", ListingTextField.Rules));
 
-        // Spaces, access and neighborhood were never written for English: the English parts of the profile texts are the field.
         Assert.Equal("Ground floor\nGarden", ListingTextResolver.Get(house, profile, "en", ListingTextField.Spaces));
         Assert.Equal("Key box", ListingTextResolver.Get(house, profile, "en", ListingTextField.Access));
         Assert.Equal("Lakefront\nNear the centre", ListingTextResolver.Get(house, profile, "en", ListingTextField.Neighborhood));
 
-        // The transport has no fall back, and neither has a language nobody wrote.
         Assert.Null(ListingTextResolver.Get(house, profile, "en", ListingTextField.Transport));
         Assert.Null(ListingTextResolver.Get(house, profile, "fr", ListingTextField.Title));
         Assert.Null(ListingTextResolver.Get(house, profile, "fr", ListingTextField.Spaces));
         Assert.Equal("Bord du lac", ListingTextResolver.Get(house, profile, "fr", ListingTextField.Neighborhood));
         Assert.Null(ListingTextResolver.Get(house, profile, "xx", ListingTextField.Title));
 
-        // What was written for the field wins over the fall back.
         var written = profile with
         {
             Translations = new Dictionary<string, ListingTexts> { ["en"] = new ListingTexts(Neighborhood: "By the lake") },
         };
         Assert.Equal("By the lake", ListingTextResolver.Get(house, written, "en", ListingTextField.Neighborhood));
     }
-
-    // ─── Storage and the public page ───────────────────────────────────────────────────────────────
 
     [Fact]
     public void Document_RoundTripsThroughTheColumn_AndKeepsOnlyOriginsOfTextsThatExist()

@@ -45,8 +45,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
         var body = await response.Content.ReadAsStringAsync();
         var booked = BookedDates(body);
         Assert.Equal([Day(from, 2), Day(from, 3), Day(from, 4), Day(from, 8)], booked);
-        // Dates only (and the minimum stay of the property, DB-03: a number, null when there is none): no summary of the feed,
-        // no source, no guest.
         using var json = JsonDocument.Parse(body);
         Assert.Equal(
             ["propertyId", "startDate", "endDate", "bookedDates", "minNights"],
@@ -60,14 +58,12 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
     {
         var property = await PublishedPropertyTests.SeedAsync(_factory, "bk05-holds");
         var from = NextYear(10, 1);
-        // Test TTL: DirectBooking:PendingTtlMinutes = 15.
         var expired = await SeedBookingAsync(property, from, from.AddDays(3), minutesAgo: 30, NewPaymentIntentId());
         await SeedBookingAsync(property, from.AddDays(5), from.AddDays(6), minutesAgo: 5, NewPaymentIntentId());
 
         var booked = await BookedDatesAsync(property.Id, from, from.AddDays(10));
 
         Assert.Equal([Day(from, 5)], booked);
-        // A read never cancels anything: the expiry is the job's (or the next checkout's) work.
         Assert.Equal(BookingStatus.Pending, (await LoadBookingAsync(expired)).Status);
     }
 
@@ -82,7 +78,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
 
         var booked = await BookedDatesAsync(property.Id, from, from.AddDays(10));
 
-        // The request waiting for the host holds its nights; the one past its deadline does not.
         Assert.Equal([Day(from, 0), Day(from, 1)], booked);
     }
 
@@ -109,8 +104,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task GetPropertyAvailability_PausedProperty_Returns404WithStableCode()
     {
-        // PC-03, A2-05: pausing hides a property from public availability (and the rest of the guest booking flow)
-        // exactly like an inactive or non-compliant one, without touching IsActive or ComplianceStatus.
         var property = await PublishedPropertyTests.SeedAsync(_factory, "bk05-paused");
         await WithDbAsync(db => db.Properties.Where(p => p.Id == property.Id).ExecuteUpdateAsync(set => set
             .SetProperty(p => p.IsPaused, true)
@@ -137,7 +130,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task GetPropertyAvailability_SlugInsteadOfId_Returns404()
     {
-        // R-03: the route takes the property id only (the page passes property.id, never the slug of its URL).
         using var anonymous = _factory.CreateClient();
 
         var response = await anonymous.GetAsync("/api/public/bookings/property/villa-mare/availability");
@@ -204,7 +196,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
             }
         }
 
-        // Every night that was free is now held by the checkout just created: the availability shows it at once.
         var after = await BookedDatesAsync(property.Id, from, to);
         Assert.Equal(Enumerable.Range(0, 16).Select(offset => Day(from, offset)).ToList(), after);
     }
@@ -212,7 +203,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task GetBookingStatus_LegacyAnonymousEndpoint_IsGone()
     {
-        // A9-39: GET /{bookingId}/status answered for any booking id without a token; the outcome page does not use it.
         var property = await PublishedPropertyTests.SeedAsync(_factory, "bk05-status");
         var bookingId = await SeedBookingAsync(
             property, NextYear(10, 1), NextYear(10, 3), minutesAgo: 1, NewPaymentIntentId());
@@ -256,7 +246,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
 
     private static string NewPaymentIntentId() => $"pi_bk05_{Guid.NewGuid():N}";
 
-    /// <summary>A "pay at the property" request whose deadline is <paramref name="minutesLeft"/> minutes away.</summary>
     private static void AsOnSiteRequest(Booking booking, int minutesLeft)
     {
         booking.PaymentOption = PaymentOption.OnSite;
@@ -283,10 +272,6 @@ public class PublicAvailabilityPostgresTests : IClassFixture<CasazenWebApplicati
         paymentOption = nameof(PaymentOption.Immediate),
     };
 
-    /// <summary>
-    /// A booking of the public checkout (Pending, Direct, Immediate) created <paramref name="minutesAgo"/> minutes ago,
-    /// with its PaymentIntent when given; <paramref name="configure"/> turns it into another kind of stay.
-    /// </summary>
     private async Task<Guid> SeedBookingAsync(
         Property property,
         DateTime checkIn,
@@ -404,7 +389,6 @@ public class PublicAvailabilityRateLimitPostgresTests
         return client.SendAsync(request);
     }
 
-    /// <summary>The integration host with two anonymous catalogue reads per client IP and window.</summary>
     public sealed class LowPublicReadLimitFactory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -421,7 +405,6 @@ public class PublicAvailabilityRateLimitPostgresTests
     }
 }
 
-/// <summary>A property shown on the booking site (active, compliance activated) of an org ready to take payments.</summary>
 internal static class PublishedPropertyTests
 {
     public static async Task<Property> SeedAsync(CasazenWebApplicationFactory factory, string label)

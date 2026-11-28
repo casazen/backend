@@ -43,13 +43,11 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 {
     private static int _inMemoryWarningWritten;
 
-    /// <summary>In-memory key ring shared by all the test hosts of the process (see <see cref="ConfigureWebHost"/>).</summary>
     public static IDataProtectionProvider SharedDataProtectionProvider { get; } = TestDataProtection.Shared;
 
     private readonly object _databaseLock = new();
     private PostgresTestDatabase? _database;
 
-    /// <summary>Name of the InMemory store of this factory; used only when the host runs without PostgreSQL.</summary>
     private readonly string _inMemoryStoreName = $"casazen-it-{Guid.NewGuid():N}";
 
     public CasazenWebApplicationFactory()
@@ -59,16 +57,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
     public Mock<IBackgroundJobClient> BackgroundJobClientMock { get; } = new();
 
-    /// <summary>
-    /// Loads the 40 official rows of <see cref="ComuneTestData"/> into the test database at startup (SU-04): the comuni the
-    /// tests need, resolved through the real import. A suite that tests the list not being imported returns false.
-    /// </summary>
     protected virtual bool SeedComuneSample => true;
 
-    /// <summary>True when the app runs on a dedicated PostgreSQL database; false only for the local InMemory fallback.</summary>
     public bool UsesPostgreSql { get; }
 
-    /// <summary>Name of the dedicated PostgreSQL database, once the host has been created.</summary>
     public string? DatabaseName => _database?.DatabaseName;
 
     /// <summary>
@@ -100,7 +92,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["DirectBooking:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:RateLimitPermitLimit"] = "1000",
                 ["CheckIn:SubmitRateLimitPermitLimit"] = "1000",
-                // Requests without a test peer share one partition: keep the per-IP limits out of the way (FD-10).
                 ["RateLimiting:PublicRead:PermitLimit"] = "1000",
                 ["RateLimiting:PublicBookingLookup:PermitLimit"] = "1000",
                 ["RateLimiting:PublicGuestBookingLookup:PermitLimit"] = "1000",
@@ -123,13 +114,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:PublicSupplierBookingCreate:PermitLimit"] = "1000",
                 ["RateLimiting:SupplierBookingCreatePerEmail:PermitLimit"] = "1000",
                 ["RateLimiting:SupplierBookingManagePerEmail:PermitLimit"] = "1000",
-                // SP-10: with Features:SupplierShowcaseBooking on, the version of the privacy notice is required at startup (the
-                // booking records it); the key of the e-mail index is required outside Development and Testing and is set here so
-                // the tests index the addresses the way a real environment does.
                 ["Suppliers:Showcase:PrivacyNoticeVersion"] = "2026-11-test",
                 ["Suppliers:CustomerIndexKey"] = "test-customer-index-key-0123456789abcdef",
-                // The official comuni list is not loaded into every test database (7,894 rows): tests that need comuni seed the
-                // few they use (ComuneTestData) or import the official file themselves.
                 ["Comuni:SeedOnStartup"] = "false",
                 ["Billing:Prices:Starter"] = "price_test_starter",
                 ["Billing:Prices:Pro"] = "price_test_pro",
@@ -137,7 +123,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["Seo:BootstrapOnStartup"] = "false",
                 ["Billing:PlatformVatNumber"] = "IT12345678901",
                 ["App:PublicSiteBaseUrl"] = "https://casazen-app.vercel.app",
-                // Base domain of the org subdomains: no default in code (D3, SE-03), the tests configure one.
                 ["PublicHost:BaseDomain"] = "casazen.it",
                 ["App:ApiBaseUrl"] = "https://casazen-api-test.up.railway.app",
                 ["Storage:Provider"] = "FileSystem",
@@ -174,8 +159,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             RemoveAllOf<IDataProtectionProvider>(services);
             services.AddSingleton<IDataProtectionProvider>(SharedDataProtectionProvider);
 
-            // Initialize Hangfire with in-memory storage for integration tests
-            // This allows services to enqueue background jobs without a real Hangfire server
             GlobalConfiguration.Configuration.UseInMemoryStorage();
 
             RemoveService<IBackgroundJobClient>(services);
@@ -223,7 +206,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             ape.Setup(s => s.CheckUploadedApeAsync(It.IsAny<IFormFile>(), It.IsAny<ApeRegistryContext?>()))
                 .ReturnsAsync(ApeUploadCheck.Passed);
             services.AddSingleton(ape.Object);
-            // The public register of the APE is never asked from a test: a suite that needs it gives its own answer.
             RemoveAllOf<IApeRegistryLookup>(services);
             services.AddSingleton(Mock.Of<IApeRegistryLookup>());
         });
@@ -300,7 +282,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         }
         catch (Exception ex) when (IsDuplicateKey(ex))
         {
-            // Parallel test already seeded the same user/org — re-query for committed values
             db.ChangeTracker.Clear();
             var slug = $"test-org-{ownerId}";
             org = await db.Orgs.FirstOrDefaultAsync(o => o.Slug == slug);
@@ -311,7 +292,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         return org;
     }
 
-    // InMemory reports a duplicate key as ArgumentException; PostgreSQL as a unique violation (23505).
     private static bool IsDuplicateKey(Exception ex) =>
         (ex is ArgumentException && ex.Message.Contains("same key", StringComparison.OrdinalIgnoreCase))
         || ex is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } };
@@ -372,7 +352,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
         }
         catch (IOException)
         {
-            // Best effort: a leftover temp folder must not fail the test run.
         }
 
         PostgresTestDatabase? database;
@@ -466,7 +445,6 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
 
 }
 
-/// <summary>Imports the official sample of the comuni list when the host starts (see <see cref="CasazenWebApplicationFactory.SeedComuneSample"/>).</summary>
 internal sealed class ComuneSampleSeeder(IServiceProvider serviceProvider) : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -495,15 +473,12 @@ internal sealed class InMemoryReferenceDataSeeder(IServiceProvider serviceProvid
         if (!db.Database.IsInMemory() || await db.Roles.AnyAsync(cancellationToken))
             return;
 
-        // EnsureCreated would seed the same rows, but only into a store nobody has touched yet; this works in any state.
         var model = db.GetService<IDesignTimeModel>().Model;
         foreach (var entityType in model.GetEntityTypes())
         {
             foreach (var row in entityType.GetSeedData())
             {
                 var entity = Activator.CreateInstance(entityType.ClrType, nonPublic: true)!;
-                // Only the columns: a seed row also carries the navigation lists of the model (shared objects), and adding
-                // them would attach and change the seed of the model itself, which every other host of the process reads.
                 foreach (var (name, value) in row.Where(column => entityType.FindProperty(column.Key) is not null))
                     entityType.ClrType.GetProperty(name)!.SetValue(entity, value);
                 db.Add(entity);

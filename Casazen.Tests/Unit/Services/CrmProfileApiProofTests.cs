@@ -13,12 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F01/US03/T01 (NF-88, AC-NF88-4 to AC-NF88-6): the proofs of the profile API of the CRM, the read model behind <c>GET api/crm/guests</c>,
-/// <c>GET api/crm/guests/{id}</c> and <c>PUT api/crm/guests/{id}/tags</c>. A collaborator limited to some properties sees only the guests of
-/// those properties, with figures computed over their bookings; a profile of another org is as good as missing; and nothing of the registration
-/// of a guest (document, birth, place of birth, citizenship, notes) reaches the answer. On EF InMemory, the real service over the real keyed index.
-/// </summary>
 public class CrmProfileApiProofTests
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -51,7 +45,6 @@ public class CrmProfileApiProofTests
                 PropertyId = granted.Id,
             });
 
-            // One person, two guest records: Anna Rossi at the house of the collaborator, Annamaria Segreta (the primary guest of the profile) at the other.
             var atGranted = CrmTestWorld.AddGuest(seed, orgId, "Anna", "Rossi", "anna.rossi@example.com");
             var atHidden = CrmTestWorld.AddGuest(seed, orgId, "Annamaria", "Segreta", "anna.segreta@example.com");
             CrmTestWorld.AddBooking(seed, atGranted, granted.Id, BookingStatus.CheckedOut, BookingSource.Direct, -30, 2, 200m);
@@ -61,7 +54,6 @@ public class CrmProfileApiProofTests
             atHidden.GuestCrmProfileId = shared.Id;
             seed.GuestCrmProfiles.Add(shared);
 
-            // Another person, who stayed at the other house only; a lead with no guest; a guest of another org.
             var rival = CrmProfileApiWorld.AddPerson(seed, orgId, "Bruno", "Verdi", hidden);
             var lead = CrmProfileApiWorld.NewProfile(orgId, null, stays: 0, spend: 0m);
             seed.GuestCrmProfiles.Add(lead);
@@ -84,7 +76,6 @@ public class CrmProfileApiProofTests
         await using var db = CrmTestWorld.Open(store);
         var service = CrmProfileApiWorld.ReadService(db, clock);
 
-        // The list: the person, with what happened at the house of the collaborator.
         var limited = await service.ListAsync(restricted, NoFilter, 1, 50, Ct);
         var item = Assert.Single(limited.Items);
         Assert.Equal(1, limited.TotalCount);
@@ -94,7 +85,6 @@ public class CrmProfileApiProofTests
         Assert.Equal(200m, item.TotalSpend);
         Assert.Equal("Direct", Assert.Single(item.Channels));
 
-        // The whole org sees the three profiles of the org (not the one of the other org), with the totals stored on the profile.
         var whole = await service.ListAsync(orgWide, NoFilter, 1, 50, Ct);
         Assert.Equal(3, whole.TotalCount);
         Assert.True(whole.Items.Select(i => i.Id).ToHashSet().SetEquals([sharedId, rivalId, leadId]));
@@ -107,18 +97,15 @@ public class CrmProfileApiProofTests
         Assert.Equal("l***@example.com", wholeLead.EmailMasked);
         Assert.Equal(GuestContactLegalBasis.None, wholeLead.EmailBasis);
 
-        // A collaborator with no property is never widened to the org.
         var none = await service.ListAsync(noProperty, NoFilter, 1, 50, Ct);
         Assert.Empty(none.Items);
         Assert.Equal(0, none.TotalCount);
 
-        // The search finds the name of a guest the collaborator reaches and nothing of the others.
         Assert.Single((await service.ListAsync(restricted, new CrmProfileFilter(Search: "anna ross"), 1, 50, Ct)).Items);
         Assert.Empty((await service.ListAsync(restricted, new CrmProfileFilter(Search: "Segreta"), 1, 50, Ct)).Items);
         Assert.Empty((await service.ListAsync(restricted, new CrmProfileFilter(Search: "Bruno"), 1, 50, Ct)).Items);
         Assert.Single((await service.ListAsync(orgWide, new CrmProfileFilter(Search: "Segreta"), 1, 50, Ct)).Items);
 
-        // The detail: the stay of the house of the collaborator, the link to the record it reaches; the others are not found.
         var detail = await service.GetAsync(restricted, sharedId, Ct);
         Assert.Equal("Trullo", Assert.Single(detail.Stays).PropertyName);
         Assert.Equal(1, detail.Totals.Stays);
@@ -158,11 +145,9 @@ public class CrmProfileApiProofTests
         await using var db = CrmTestWorld.Open(store);
         var service = CrmProfileApiWorld.ReadService(db, clock);
 
-        // The list of an org holds its own profiles only.
         Assert.Equal(profileB, Assert.Single((await service.ListAsync(scopeB, NoFilter, 1, 50, Ct)).Items).Id);
         Assert.Equal(profileA, Assert.Single((await service.ListAsync(scopeA, NoFilter, 1, 50, Ct)).Items).Id);
 
-        // The detail and the tags of the other org's profile: 404, in both directions.
         var detailMissing = await Assert.ThrowsAsync<NotFoundException>(() => service.GetAsync(scopeB, profileA, Ct));
         Assert.Equal("crm_profile_not_found", detailMissing.Code);
         Assert.Equal("CrmProfileNotFound", detailMissing.MessageKey);
@@ -175,7 +160,6 @@ public class CrmProfileApiProofTests
             Assert.All(await check.GuestCrmProfiles.AsNoTracking().ToListAsync(Ct), profile => Assert.Equal("[]", profile.TagsJson));
         }
 
-        // In the right org it works, and the limits of the tags hold.
         await service.SetTagsAsync(scopeA, profileA, ["vip", "famiglia"], Ct);
         Assert.Equal("vip,famiglia", string.Join(',', (await service.GetAsync(scopeA, profileA, Ct)).Tags));
         var duplicate = await Assert.ThrowsAsync<DomainRuleException>(() => service.SetTagsAsync(scopeA, profileA, ["Vip", "vip"], Ct));
@@ -252,12 +236,6 @@ public class CrmProfileApiProofTests
             Assert.DoesNotContain(secret, json, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// Privacy rule: what a guest asked to be forgotten does not come back through the CRM. A guest whose data were anonymized, that was deleted
-    /// or that asked for the erasure gives no name and none of its contacts is shown (the erasure does not reach the contacts yet); and the
-    /// filter «reachable by e-mail» and the search by an exact e-mail address or phone number read the same contacts as the screen: the profile is
-    /// not kept by an address its item does not show, and the address and the number are not found. A guest that is not erased is, as the control.
-    /// </summary>
     [Fact]
     public async Task CrmProfiles_ContactsOfAnErasedGuest_AreNeitherShownNorFoundNorCounted_Test()
     {
@@ -272,7 +250,6 @@ public class CrmProfileApiProofTests
         Guid controlId;
         await using (var seed = CrmTestWorld.Open(store))
         {
-            // Three people whose only guest is erased, one way each (anonymized, deleted, asked for the erasure), and one who is not.
             var people = new[] { ("Elena", "Anonimizzata"), ("Dario", "Eliminato"), ("Alba", "Richiesta") };
             for (var n = 0; n < people.Length; n++)
             {
@@ -308,7 +285,6 @@ public class CrmProfileApiProofTests
         await using var db = CrmTestWorld.Open(store);
         var service = CrmProfileApiWorld.ReadService(db, clock);
 
-        // The filter says what the item says: only the control can be written to by e-mail; the erased ones show no address and are not reachable.
         var reachable = await service.ListAsync(scope, new CrmProfileFilter(ReachableByEmail: true), 1, 50, Ct);
         var listed = Assert.Single(reachable.Items);
         Assert.Equal(controlId, listed.Id);
@@ -322,7 +298,6 @@ public class CrmProfileApiProofTests
             Assert.Equal(string.Empty, item.DisplayName);
         });
 
-        // The search finds the address and the number of the control, and nothing of the erased guests: not the address, not the number, not the name.
         Assert.Equal(controlId, Assert.Single((await service.ListAsync(scope, new CrmProfileFilter(Search: controlEmail), 1, 50, Ct)).Items).Id);
         Assert.Equal(controlId, Assert.Single((await service.ListAsync(scope, new CrmProfileFilter(Search: controlPhone), 1, 50, Ct)).Items).Id);
         foreach (var (email, phone) in erasedContacts)
@@ -333,16 +308,11 @@ public class CrmProfileApiProofTests
 
         Assert.Empty((await service.ListAsync(scope, new CrmProfileFilter(Search: "Richiesta"), 1, 50, Ct)).Items);
 
-        // The detail shows the contacts of the control and none of the erased guests.
         Assert.Equal(2, (await service.GetAsync(scope, controlId, Ct)).Contacts.Count);
         foreach (var profileId in erasedProfiles)
             Assert.Empty((await service.GetAsync(scope, profileId, Ct)).Contacts);
     }
 
-    /// <summary>
-    /// An address that may receive marketing (soft opt-in) and a number, both given by the guest and found by their keyed hash, as the contact
-    /// service writes them.
-    /// </summary>
     private static void AddMarketableContacts(
         AppDbContext db,
         ICrmContactIndex index,

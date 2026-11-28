@@ -8,7 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>A source that serves nothing and only says who may read it: the part of a source the access decision looks at.</summary>
 internal sealed class StubArchiveSource(ArchiveDocumentType type, string contextKey, string permissionKey) : IDocumentArchiveSource
 {
     public ArchiveDocumentType Type => type;
@@ -22,16 +21,10 @@ internal sealed class StubArchiveSource(ArchiveDocumentType type, string context
     public Task<ArchiveFile?> OpenAsync(Guid id, HostScope scope, CancellationToken cancellationToken) => Task.FromResult<ArchiveFile?>(null);
 }
 
-/// <summary>
-/// NF-99, E07/F03/US03/T01: which types of the document archive a caller may read. The decision is the permission of the area each source belongs
-/// to, asked for the caller; the roles used here are the real ones (the seeded roles and the bootstrap of the owner), so a change of what the
-/// Accountant holds changes these tests at the right place.
-/// </summary>
 public class DocumentArchiveAccessTests
 {
     private const string User = "auth0|someone";
 
-    /// <summary>The sources the archive has now.</summary>
     private static IReadOnlyList<IDocumentArchiveSource> Current()
     {
         var db = HostScopeScenario.NewInMemoryDb();
@@ -52,11 +45,9 @@ public class DocumentArchiveAccessTests
         new StubArchiveSource(ArchiveDocumentType.IstatProof, OrgRoleCatalog.ShortRent, "guest.read"),
     ];
 
-    /// <summary>The permissions a role holds in each context, from the real catalog of the seeded roles.</summary>
     private static List<(string Context, IReadOnlyList<string> Permissions)> SeededHolding(string roleKey) =>
         [.. OrgRoleCatalog.SeededRoles.Where(r => r.RoleKey == roleKey).Select(r => (r.ContextKey, r.Permissions))];
 
-    /// <summary>The owner of both areas, from the bootstrap the token completes the contexts with.</summary>
     private static List<(string Context, IReadOnlyList<string> Permissions)> OwnerHolding() =>
         [.. ContextAccessBootstrap.BuildFallbackAccess(["PropertyOwner", "LongTermLandlord"]).Select(c => (c.ContextKey, c.Permissions))];
 
@@ -130,7 +121,6 @@ public class DocumentArchiveAccessTests
     [Fact]
     public async Task APermissionCountsInTheContextThatGrantsIt()
     {
-        // lease.read of the short-rent context says nothing about the leases; payment.read of the long-rent one says nothing about the payments.
         var types = await TypesAsync(
             Current(), Holding([(OrgRoleCatalog.ShortRent, ["lease.read"]), (OrgRoleCatalog.LongRent, ["payment.read"])]));
 
@@ -150,7 +140,6 @@ public class DocumentArchiveAccessTests
         var other = await TypesAsync(sources, Holding([(OrgRoleCatalog.ShortRent, ["ota.read"])]));
         var both = await TypesAsync(sources, Holding([(OrgRoleCatalog.ShortRent, ["payment.read", "ota.read"])]));
 
-        // The service reads every source of an allowed type, so one permission must not open the other source.
         Assert.Empty(one);
         Assert.Empty(other);
         Assert.Equal(new[] { ArchiveDocumentType.Invoice }, both);

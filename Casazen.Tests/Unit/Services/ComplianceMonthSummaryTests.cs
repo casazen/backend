@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F02/US02/T02 (NF-52, AC-NF52-2): the month as the summary tells it, taken from the coverage report and never made greener than it is. The stays are the
-/// ones that owe a communication, the open items are what has no proof or is held only by the channel manager, and «complete» is the report's own word.
-/// </summary>
 public class ComplianceMonthSummaryTests
 {
     private static ComplianceReportRow Row(

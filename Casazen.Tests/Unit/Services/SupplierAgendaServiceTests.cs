@@ -23,14 +23,11 @@ public class SupplierAgendaServiceTests
     private static readonly Guid OrgA = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
     private static readonly Guid OrgB = Guid.Parse("00000000-0000-0000-0000-0000000000b2");
 
-    // Thursday 8 October 2026, 12:00 in Rome (summer time).
     private static readonly DateTimeOffset Instant = new(2026, 10, 8, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly Today = new(2026, 10, 8);
 
     private readonly string _databaseName = Guid.NewGuid().ToString();
     private readonly FakeTimeProvider _clock = new(Instant);
-
-    // ─── Weekly hours ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetHoursAsync_ASupplierThatNeverSavedAny_HasNoBandAndNoConfiguredMoment_AndNothingIsWritten()
@@ -66,13 +63,12 @@ public class SupplierAgendaServiceTests
         var before = await RowsAsync(OrgA);
         var mondayMorning = before.Single(row => row.Weekday == DayOfWeek.Monday && row.StartMinute == 8 * 60);
 
-        // Monday morning ends later, the afternoon and Tuesday are gone, Friday is new.
         await Service().ReplaceHoursAsync(OrgA, Hours(Day(DayOfWeek.Monday, Band(8, 14)), Day(DayOfWeek.Friday, Band(9, 12))));
 
         var after = await RowsAsync(OrgA);
         Assert.Equal(2, after.Count);
         var kept = after.Single(row => row.Weekday == DayOfWeek.Monday);
-        Assert.Equal(mondayMorning.Id, kept.Id); // the same row, not a new one
+        Assert.Equal(mondayMorning.Id, kept.Id);
         Assert.Equal(14 * 60, kept.EndMinute);
         Assert.Contains(after, row => row.Weekday == DayOfWeek.Friday && row.StartMinute == 9 * 60 && row.EndMinute == 12 * 60);
     }
@@ -147,8 +143,6 @@ public class SupplierAgendaServiceTests
         Assert.Equal(Instant.UtcDateTime, settings.CreatedAt);
     }
 
-    // ─── Time off ────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task AddTimeOffAsync_AValidPeriod_IsStoredAndListed()
     {
@@ -167,9 +161,9 @@ public class SupplierAgendaServiceTests
     [Fact]
     public async Task ListTimeOffAsync_OnlyWhatHasNotEnded_ByFirstDay_AndNeverTheOthersEntries()
     {
-        await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 7)); // over
+        await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 7));
         await SeedTimeOffAsync(OrgA, new DateOnly(2026, 12, 24), new DateOnly(2026, 12, 26));
-        await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 6), new DateOnly(2026, 10, 8)); // ends today: still counts
+        await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 6), new DateOnly(2026, 10, 8));
         await SeedTimeOffAsync(OrgB, new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 2));
 
         var listed = await Service().ListTimeOffAsync(OrgA);
@@ -196,8 +190,8 @@ public class SupplierAgendaServiceTests
         for (var i = 0; i < SupplierAgendaLimits.MaxTimeOffEntries; i++)
             await SeedTimeOffAsync(OrgA, Today.AddDays(10 + i), Today.AddDays(10 + i));
         for (var i = 0; i < 5; i++)
-            await SeedTimeOffAsync(OrgA, Today.AddDays(-30 - i), Today.AddDays(-30 - i)); // history: does not count
-        await SeedTimeOffAsync(OrgB, Today.AddDays(10), Today.AddDays(10)); // another supplier: does not count
+            await SeedTimeOffAsync(OrgA, Today.AddDays(-30 - i), Today.AddDays(-30 - i));
+        await SeedTimeOffAsync(OrgB, Today.AddDays(10), Today.AddDays(10));
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(
             () => Service().AddTimeOffAsync(OrgA, new SupplierTimeOffInput(Today.AddDays(200), Today.AddDays(200), null, null)));
@@ -206,7 +200,6 @@ public class SupplierAgendaServiceTests
         Assert.Equal(SupplierAgendaLimits.MaxTimeOffEntries, ex.MessageArgs.Single());
         Assert.Equal(SupplierAgendaLimits.MaxTimeOffEntries, (await Service().ListTimeOffAsync(OrgA)).Count);
 
-        // Another supplier is not stopped by it.
         await Service().AddTimeOffAsync(OrgB, new SupplierTimeOffInput(Today.AddDays(200), Today.AddDays(200), null, null));
     }
 
@@ -227,8 +220,6 @@ public class SupplierAgendaServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => Service().DeleteTimeOffAsync(OrgA, mine.Id));
         await Assert.ThrowsAsync<NotFoundException>(() => Service().DeleteTimeOffAsync(OrgA, Guid.NewGuid()));
     }
-
-    // ─── Blocks and extra openings ───────────────────────────────────────────────
 
     [Fact]
     public async Task AddBlockAsync_ABlockAndAnExtraOpening_AreStoredAsManualWindows()
@@ -252,7 +243,7 @@ public class SupplierAgendaServiceTests
     {
         var kept = await SeedWindowAsync(OrgA, "2026-10-12T08:00:00Z", "2026-10-12T09:00:00Z", SupplierBusyWindowKind.Block);
         var earlier = await SeedWindowAsync(OrgA, "2026-10-09T08:00:00Z", "2026-10-09T09:00:00Z", SupplierBusyWindowKind.ExtraOpening);
-        await SeedWindowAsync(OrgA, "2026-10-01T08:00:00Z", "2026-10-01T09:00:00Z", SupplierBusyWindowKind.Block); // over
+        await SeedWindowAsync(OrgA, "2026-10-01T08:00:00Z", "2026-10-01T09:00:00Z", SupplierBusyWindowKind.Block);
         await SeedWindowAsync(OrgA, "2026-10-12T10:00:00Z", "2026-10-12T11:00:00Z", SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed);
         await SeedWindowAsync(OrgB, "2026-10-12T08:00:00Z", "2026-10-12T09:00:00Z", SupplierBusyWindowKind.Block);
 
@@ -278,15 +269,15 @@ public class SupplierAgendaServiceTests
     {
         for (var i = 0; i < SupplierAgendaLimits.MaxManualWindows; i++)
             await SeedWindowAsync(OrgA, $"2026-11-{1 + i % 28:00}T{8 + i / 28:00}:00:00Z", $"2026-11-{1 + i % 28:00}T{8 + i / 28:00}:30:00Z", SupplierBusyWindowKind.Block);
-        await SeedWindowAsync(OrgA, "2026-09-01T08:00:00Z", "2026-09-01T09:00:00Z", SupplierBusyWindowKind.Block); // over: not counted
-        await SeedWindowAsync(OrgA, "2026-10-12T10:00:00Z", "2026-10-12T11:00:00Z", SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed); // the feed's: not counted
+        await SeedWindowAsync(OrgA, "2026-09-01T08:00:00Z", "2026-09-01T09:00:00Z", SupplierBusyWindowKind.Block);
+        await SeedWindowAsync(OrgA, "2026-10-12T10:00:00Z", "2026-10-12T11:00:00Z", SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed);
         var input = new SupplierBlockInput(SupplierBusyWindowKind.Block, Utc("2026-12-01T08:00:00Z"), Utc("2026-12-01T09:00:00Z"), null);
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => Service().AddBlockAsync(OrgA, input));
 
         Assert.Equal(SupplierAgendaErrors.BlockLimitReached, ex.Code);
         Assert.Equal(SupplierAgendaLimits.MaxManualWindows, ex.MessageArgs.Single());
-        await Service().AddBlockAsync(OrgB, input); // another supplier is free to add
+        await Service().AddBlockAsync(OrgB, input);
     }
 
     [Fact]
@@ -305,13 +296,10 @@ public class SupplierAgendaServiceTests
 
         Assert.Empty(await Service().ListBlocksAsync(OrgA));
         await Assert.ThrowsAsync<NotFoundException>(() => Service().DeleteBlockAsync(OrgA, mine.Id));
-        // The engagement of the feed and the other supplier's block are still there.
         await using var db = CreateDb();
         Assert.True(await db.SupplierBusyWindows.Where(w => w.OrgId == OrgA).AnyAsync(w => w.Id == feed.Id));
         Assert.True(await db.SupplierBusyWindows.Where(w => w.OrgId == OrgB).AnyAsync(w => w.Id == theirs.Id));
     }
-
-    // ─── Rules ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetRulesAsync_ASupplierThatNeverSavedAny_GetsTheDefaults_AndNothingIsWritten()
@@ -357,7 +345,7 @@ public class SupplierAgendaServiceTests
         await Service().ReplaceRulesAsync(OrgA, new SupplierRulesInput(45, 8, 2, 90, 15));
 
         await using var db = CreateDb();
-        var row = await db.SupplierSettings.Where(s => s.OrgId == OrgA).SingleAsync(); // one row, not two
+        var row = await db.SupplierSettings.Where(s => s.OrgId == OrgA).SingleAsync();
         Assert.Equal(45, row.BufferMinutes);
         Assert.Equal(2, row.ParallelJobs);
         Assert.Equal(120, row.RespondWithinMinutes);
@@ -406,24 +394,18 @@ public class SupplierAgendaServiceTests
         Assert.Equal(1, await db.SupplierSettings.Where(s => s.OrgId == OrgA).CountAsync());
     }
 
-    // ─── Calendar ────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetCalendarAsync_PutsTogetherWhatTouchesTheRange_AndLeavesTheRestOut()
     {
         await Service().ReplaceHoursAsync(OrgA, DemoWeek());
-        // Time off: one inside, one that starts before the range and ends inside it, one that ends the day before it, one after.
         await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 14), new DateOnly(2026, 10, 15));
         await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 10), new DateOnly(2026, 10, 12));
         await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 5), new DateOnly(2026, 10, 11));
         await SeedTimeOffAsync(OrgA, new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 3));
-        // Days: one closed by hand, one by the feed after the range, one open (not an override), one far away.
         await SeedDayAsync(OrgA, new DateOnly(2026, 10, 13), false, SupplierAvailabilitySource.Manual);
         await SeedDayAsync(OrgA, new DateOnly(2026, 10, 20), false, SupplierAvailabilitySource.ICalFeed);
         await SeedDayAsync(OrgA, new DateOnly(2026, 10, 16), true, SupplierAvailabilitySource.Manual);
         await SeedDayAsync(OrgA, new DateOnly(2026, 11, 20), false, SupplierAvailabilitySource.Manual);
-        // The range starts at 22:00 UTC on the 11th (00:00 on the 12th in Rome). Windows: one inside, one that crosses that
-        // instant, one that ends exactly at it, one of the feed, one after the range, one of another supplier.
         var inside = await SeedWindowAsync(OrgA, "2026-10-13T08:00:00Z", "2026-10-13T09:00:00Z", SupplierBusyWindowKind.Block);
         var crossing = await SeedWindowAsync(OrgA, "2026-10-11T21:00:00Z", "2026-10-11T23:00:00Z", SupplierBusyWindowKind.Block);
         var endsAtStart = await SeedWindowAsync(OrgA, "2026-10-11T20:00:00Z", "2026-10-11T22:00:00Z", SupplierBusyWindowKind.Block);
@@ -485,7 +467,7 @@ public class SupplierAgendaServiceTests
         await SeedRequestAsync(world, OrgA, ServiceRequestStatus.Rifiutato);
         await SeedRequestAsync(world, OrgB, ServiceRequestStatus.Richiesto);
         var later = await SeedStayAsync(checkOut: new DateOnly(2026, 11, 30));
-        await SeedRequestAsync(later, OrgA, ServiceRequestStatus.Richiesto); // outside the range
+        await SeedRequestAsync(later, OrgA, ServiceRequestStatus.Richiesto);
 
         var calendar = await Service().GetCalendarAsync(OrgA, new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 18));
 
@@ -497,8 +479,6 @@ public class SupplierAgendaServiceTests
         Assert.All(calendar.Requests, request => Assert.Equal("cleaning", request.Category));
         Assert.Contains(calendar.Requests, request => request.Status == ServiceRequestStatus.PresoInCarico);
     }
-
-    // ─── The input of the planner, and the plan ──────────────────────────────────
 
     [Fact]
     public async Task BuildPlanningInputAsync_ASupplierThatNeverConfiguredAnything_HasTheDefaultRulesAndNoHours()
@@ -521,7 +501,7 @@ public class SupplierAgendaServiceTests
         await Service().ReplaceHoursAsync(OrgA, DemoWeek());
         await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 14), new DateOnly(2026, 10, 15));
         await SeedDayAsync(OrgA, new DateOnly(2026, 10, 13), false, SupplierAvailabilitySource.Manual);
-        await SeedDayAsync(OrgA, new DateOnly(2026, 10, 16), true, SupplierAvailabilitySource.Manual); // open: no override
+        await SeedDayAsync(OrgA, new DateOnly(2026, 10, 16), true, SupplierAvailabilitySource.Manual);
         await SeedWindowAsync(OrgA, "2026-10-13T08:00:00Z", "2026-10-13T09:00:00Z", SupplierBusyWindowKind.Block);
         await SeedWindowAsync(OrgA, "2026-10-17T08:00:00Z", "2026-10-17T10:00:00Z", SupplierBusyWindowKind.ExtraOpening);
         await SeedWindowAsync(OrgA, "2026-10-13T12:00:00Z", "2026-10-13T13:00:00Z", SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed);
@@ -529,7 +509,7 @@ public class SupplierAgendaServiceTests
         var world = await SeedStayAsync(checkOut: new DateOnly(2026, 10, 14));
         await SeedRequestAsync(world, OrgA, ServiceRequestStatus.Richiesto);
         await SeedRequestAsync(world, OrgA, ServiceRequestStatus.InCorso);
-        await SeedRequestAsync(world, OrgA, ServiceRequestStatus.Completato); // done: not a job any more
+        await SeedRequestAsync(world, OrgA, ServiceRequestStatus.Completato);
         await SeedRequestAsync(world, OrgB, ServiceRequestStatus.Richiesto);
 
         var input = await Service().BuildPlanningInputAsync(OrgA, new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 18));
@@ -543,11 +523,11 @@ public class SupplierAgendaServiceTests
         Assert.Contains(input.Occupancies, o => o.Kind == SupplierOccupancyKind.Block && o.StartUtc == Utc("2026-10-13T08:00:00Z"));
         Assert.Contains(input.Occupancies, o => o.Kind == SupplierOccupancyKind.External && o.StartUtc == Utc("2026-10-13T12:00:00Z"));
         var jobs = input.Occupancies.Where(o => o.Kind == SupplierOccupancyKind.Request).ToList();
-        Assert.Equal(2, jobs.Count); // the requested and the in-progress ones
+        Assert.Equal(2, jobs.Count);
         Assert.All(jobs, job =>
         {
             Assert.Equal(new DateOnly(2026, 10, 14), job.Day);
-            Assert.False(job.HasInterval); // a request of today has a day, not hours
+            Assert.False(job.HasInterval);
         });
         Assert.Equal(4, input.Occupancies.Count);
     }
@@ -562,31 +542,30 @@ public class SupplierAgendaServiceTests
     [Fact]
     public async Task PlanAsync_TheRowsOfTheAgenda_BecomeTheSlotsAndTheClosuresOfTheDays()
     {
-        // Now is Thursday 8 October 12:00 in Rome. Rules: no buffer, 2 jobs a day, no notice, step 60.
         await Service().ReplaceRulesAsync(OrgA, new SupplierRulesInput(0, 2, 0, 35, 60));
         await Service().ReplaceHoursAsync(OrgA, DemoWeek());
-        await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 12)); // Monday: time off
-        await SeedDayAsync(OrgA, new DateOnly(2026, 10, 13), false, SupplierAvailabilitySource.ICalFeed); // Tuesday: closed by the feed
-        await SeedWindowAsync(OrgA, "2026-10-14T07:00:00Z", "2026-10-14T08:00:00Z", SupplierBusyWindowKind.Block); // Wednesday 09:00-10:00
-        await SeedWindowAsync(OrgA, "2026-10-18T08:00:00Z", "2026-10-18T10:00:00Z", SupplierBusyWindowKind.ExtraOpening); // Sunday 10:00-12:00
-        var world = await SeedStayAsync(checkOut: new DateOnly(2026, 10, 15)); // Thursday: two jobs, the day is full
+        await SeedTimeOffAsync(OrgA, new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 12));
+        await SeedDayAsync(OrgA, new DateOnly(2026, 10, 13), false, SupplierAvailabilitySource.ICalFeed);
+        await SeedWindowAsync(OrgA, "2026-10-14T07:00:00Z", "2026-10-14T08:00:00Z", SupplierBusyWindowKind.Block);
+        await SeedWindowAsync(OrgA, "2026-10-18T08:00:00Z", "2026-10-18T10:00:00Z", SupplierBusyWindowKind.ExtraOpening);
+        var world = await SeedStayAsync(checkOut: new DateOnly(2026, 10, 15));
         await SeedRequestAsync(world, OrgA, ServiceRequestStatus.Richiesto);
         await SeedRequestAsync(world, OrgA, ServiceRequestStatus.PresoInCarico);
 
         var plans = await Service().PlanAsync(OrgA, new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 18), new SupplierSlotQuery(60));
 
         Assert.Equal(7, plans.Count);
-        Assert.Equal(SupplierDayClosure.TimeOff, plans[0].Closure); // Mon 12
-        Assert.Equal(SupplierDayClosure.DayClosed, plans[1].Closure); // Tue 13
-        Assert.Null(plans[2].Closure); // Wed 14: the block takes 09:00 only
+        Assert.Equal(SupplierDayClosure.TimeOff, plans[0].Closure);
+        Assert.Equal(SupplierDayClosure.DayClosed, plans[1].Closure);
+        Assert.Null(plans[2].Closure);
         Assert.DoesNotContain(plans[2].Slots, slot => slot.StartUtc == Utc("2026-10-14T07:00:00Z"));
         Assert.Contains(plans[2].Slots, slot => slot.StartUtc == Utc("2026-10-14T06:00:00Z"));
-        Assert.Equal(SupplierDayClosure.MaxJobsReached, plans[3].Closure); // Thu 15
-        Assert.Null(plans[4].Closure); // Fri 16: 5 slots in the morning and 4 in the afternoon
+        Assert.Equal(SupplierDayClosure.MaxJobsReached, plans[3].Closure);
+        Assert.Null(plans[4].Closure);
         Assert.Equal(5 + 4, plans[4].Slots.Count);
-        Assert.Null(plans[5].Closure); // Sat 17: 08:00-14:00
+        Assert.Null(plans[5].Closure);
         Assert.Equal(6, plans[5].Slots.Count);
-        Assert.Null(plans[6].Closure); // Sun 18: opened by the extra opening
+        Assert.Null(plans[6].Closure);
         Assert.Equal(
             [Utc("2026-10-18T08:00:00Z"), Utc("2026-10-18T09:00:00Z")],
             plans[6].Slots.Select(slot => slot.StartUtc));
@@ -600,8 +579,6 @@ public class SupplierAgendaServiceTests
         Assert.All(plans, plan => Assert.True(plan.IsClosed));
         Assert.Equal(SupplierDayClosure.NoHours, plans[2].Closure);
     }
-
-    // ─── SP-04: requests with a time ─────────────────────────────────────────────
 
     [Fact]
     public async Task BuildPlanningInputAsync_ARequestWithATimeOccupiesItsHours_AndOneWithoutOccupiesOnlyItsDay()
@@ -663,18 +640,16 @@ public class SupplierAgendaServiceTests
     [Fact]
     public async Task PlanAsync_ATimedRequest_TakesItsHoursAndTheBufferOutOfTheSlots()
     {
-        // Thursday 15 October, hours 08-13 and 14-18, no notice, 30 minutes of buffer, step 60.
         await Service().ReplaceRulesAsync(OrgA, new SupplierRulesInput(30, 3, 0, 35, 60));
         await Service().ReplaceHoursAsync(OrgA, DemoWeek());
         var world = await SeedStayAsync(checkOut: new DateOnly(2026, 10, 14));
-        await SeedRequestAsync(world, OrgA, ServiceRequestStatus.PresoInCarico, Utc("2026-10-15T08:00:00Z"), Utc("2026-10-15T10:00:00Z")); // 10:00-12:00 in Rome
+        await SeedRequestAsync(world, OrgA, ServiceRequestStatus.PresoInCarico, Utc("2026-10-15T08:00:00Z"), Utc("2026-10-15T10:00:00Z"));
 
         var plan = Assert.Single(await Service().PlanAsync(OrgA, new DateOnly(2026, 10, 15), new DateOnly(2026, 10, 15), new SupplierSlotQuery(120)));
 
         Assert.DoesNotContain(plan.Slots, slot => slot.StartUtc == Utc("2026-10-15T08:00:00Z"));
-        // 08:00-10:00 in Rome ends exactly when the request starts, but not 30 minutes before it: the buffer takes it.
         Assert.DoesNotContain(plan.Slots, slot => slot.StartUtc == Utc("2026-10-15T06:00:00Z"));
-        Assert.Contains(plan.Slots, slot => slot.StartUtc == Utc("2026-10-15T12:00:00Z")); // 14:00-16:00 in Rome
+        Assert.Contains(plan.Slots, slot => slot.StartUtc == Utc("2026-10-15T12:00:00Z"));
     }
 
     [Fact]
@@ -697,7 +672,6 @@ public class SupplierAgendaServiceTests
     public async Task GetCalendarAsync_ARequestWithATime_CarriesItsHours_AndItsDayIsTheRomeDayOfItsStart()
     {
         var world = await SeedStayAsync(checkOut: new DateOnly(2026, 10, 14));
-        // 23:30 UTC on the 15th is 01:30 on the 16th in Rome.
         var late = await SeedRequestAsync(world, OrgA, ServiceRequestStatus.PresoInCarico, Utc("2026-10-15T23:30:00Z"), Utc("2026-10-16T01:30:00Z"));
         var plain = await SeedRequestAsync(world, OrgA, ServiceRequestStatus.Richiesto);
         await SeedRequestAsync(world, OrgA, ServiceRequestStatus.Annullato, Utc("2026-10-15T08:00:00Z"), Utc("2026-10-15T10:00:00Z"));
@@ -714,8 +688,6 @@ public class SupplierAgendaServiceTests
         Assert.False(dated.HasHours);
         Assert.Equal(new DateOnly(2026, 10, 14), dated.Date);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private SupplierAgendaService Service()
     {
@@ -735,7 +707,6 @@ public class SupplierAgendaServiceTests
     private static DateTime Utc(string value) =>
         DateTime.Parse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
 
-    /// <summary>The week of the demo: Monday to Friday 08:00-13:00 and 14:00-18:00, Saturday 08:00-14:00.</summary>
     private static SupplierHoursInput DemoWeek() => Hours(
         Day(DayOfWeek.Monday, Band(8, 13), Band(14, 18)),
         Day(DayOfWeek.Tuesday, Band(8, 13), Band(14, 18)),
@@ -788,7 +759,6 @@ public class SupplierAgendaServiceTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A host with a property and a stay checking out on <paramref name="checkOut"/> (stored as UTC midnight, the convention of stay dates).</summary>
     private async Task<(Guid HostOrgId, Guid PropertyId, Guid BookingId)> SeedStayAsync(DateOnly checkOut)
     {
         await using var db = CreateDb();

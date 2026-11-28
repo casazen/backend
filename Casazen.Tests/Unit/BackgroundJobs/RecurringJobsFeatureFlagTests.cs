@@ -60,7 +60,6 @@ public class RecurringJobsFeatureFlagTests
     [Fact]
     public void Configure_RliProviderOff_DoesNotPollTheProviderAndRemovesTheOldSchedule()
     {
-        // LT-01: with the provider path off every lease is registered manually; nothing to poll.
         var (manager, registered) = Manager();
 
         RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
@@ -85,7 +84,6 @@ public class RecurringJobsFeatureFlagTests
     [Fact]
     public void Configure_ESignProviderOff_DoesNotWatchTheProviderAndRemovesTheOldSchedule()
     {
-        // LT-02: with the provider path off every contract is signed offline; no lease waits for a provider.
         var (manager, registered) = Manager();
 
         RecurringJobsRegistration.Configure(manager.Object, Flags(otaPartnerApi: false));
@@ -106,8 +104,6 @@ public class RecurringJobsFeatureFlagTests
         manager.Verify(m => m.RemoveIfExists(LeaseSignStatusPollingJob.RecurringJobId), Times.Never);
     }
 
-    // ─── SP-04 (D8): the automatic cancellation of the requests nobody answered ───
-
     [Fact]
     public void Configure_SupplierRequestAutoCancelOff_DoesNotScheduleTheJobAndRemovesTheScheduleOfAnEarlierDeploy()
     {
@@ -118,7 +114,6 @@ public class RecurringJobsFeatureFlagTests
         Assert.Equal("service-request-auto-cancel", ServiceRequestAutoCancelJob.RecurringJobId);
         Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, registered);
         manager.Verify(m => m.RemoveIfExists(ServiceRequestAutoCancelJob.RecurringJobId), Times.Once);
-        // The rest of the schedule is not touched by the flag.
         Assert.Contains("ical-supplier-sync", registered);
     }
 
@@ -150,8 +145,6 @@ public class RecurringJobsFeatureFlagTests
         Assert.DoesNotContain(ServiceRequestAutoCancelJob.RecurringJobId, registered);
     }
 
-    // ─── LR-12: the retention of the abandoned lease drafts is always registered ───
-
     [Fact]
     public void Configure_TheDraftRetention_IsAlwaysScheduledDailyAt0350Utc_AndNeverRemoved()
     {
@@ -170,8 +163,6 @@ public class RecurringJobsFeatureFlagTests
         manager.Verify(m => m.RemoveIfExists(LeaseDraftRetentionJob.RecurringJobId), Times.Never);
     }
 
-    // ─── SP-10: the upkeep of the bookings from the suppliers' public showcases is always on ───
-
     [Fact]
     public void Configure_TheShowcaseBookingUpkeep_IsRegisteredWhateverTheFlagsSay_AndNeverRemoved()
     {
@@ -188,7 +179,6 @@ public class RecurringJobsFeatureFlagTests
 
             RecurringJobsRegistration.Configure(manager.Object, flags);
 
-            // A booking made while SupplierShowcaseBooking was on has to lapse and be reminded of after the flag is turned off.
             Assert.Contains(ServiceRequestExpiryJob.RecurringJobId, registered);
             Assert.Contains(ServiceRequestReminderJob.RecurringJobId, registered);
             manager.Verify(m => m.RemoveIfExists(ServiceRequestExpiryJob.RecurringJobId), Times.Never);
@@ -217,8 +207,6 @@ public class RecurringJobsFeatureFlagTests
         Assert.Equal(TimeZoneInfo.Utc, scheduled[ServiceRequestReminderJob.RecurringJobId].Options.TimeZone);
     }
 
-    // ─── SP-BKP: the groups of backup suppliers are followed whatever the flag of their creation says ───
-
     [Fact]
     public void Configure_TheBackupGroupsJob_IsRegisteredWhateverTheFlagsSay_EveryFiveMinutes_AndNeverRemoved()
     {
@@ -238,7 +226,6 @@ public class RecurringJobsFeatureFlagTests
 
             RecurringJobsRegistration.Configure(manager.Object, flags);
 
-            // A group made while SupplierRequestBackups was on has to be followed to the end after the flag is turned off.
             Assert.Equal("*/5 * * * *", scheduled[ServiceRequestGroupJob.RecurringJobId].Cron);
             Assert.Equal(TimeZoneInfo.Utc, scheduled[ServiceRequestGroupJob.RecurringJobId].Options.TimeZone);
             manager.Verify(m => m.RemoveIfExists(ServiceRequestGroupJob.RecurringJobId), Times.Never);

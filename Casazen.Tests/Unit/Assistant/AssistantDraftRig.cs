@@ -51,7 +51,6 @@ internal sealed class AssistantDraftRig : IDisposable
 
     public Mock<INotificationPreferenceService> Preferences { get; } = new();
 
-    /// <summary>Every event the preferences were asked who to tell about.</summary>
     public List<NotificationEventContext> Asked { get; } = [];
 
     public Mock<IBackgroundJobClient> Jobs { get; } = new();
@@ -68,10 +67,8 @@ internal sealed class AssistantDraftRig : IDisposable
 
     public Booking ChannelBooking { get; private set; } = null!;
 
-    /// <summary>The conversation of a channel on the house the collaborator was given, linked to the booking of Giulia Verdi.</summary>
     public OtaMessageThread Thread { get; private set; } = null!;
 
-    /// <summary>A conversation of a channel on the house the collaborator was not given.</summary>
     public OtaMessageThread HiddenThread { get; private set; } = null!;
 
     public MessageThreadKey Key => MessageThreadKey.ForOta(Thread.Id);
@@ -90,8 +87,6 @@ internal sealed class AssistantDraftRig : IDisposable
     }
 
     public void Dispose() => Db.Dispose();
-
-    // ─── The services ───
 
     public InternalActivityService Activities() => new(Db, NullLogger<InternalActivityService>.Instance, Clock);
 
@@ -143,8 +138,6 @@ internal sealed class AssistantDraftRig : IDisposable
             Microsoft.Extensions.Options.Options.Create(options ?? new AssistantOptions()),
             NullLogger<AssistantDraftService>.Instance,
             Clock);
-
-    // ─── The data ───
 
     /// <summary>
     /// The org with the host's name, Giulia Verdi's booking from Airbnb on the given house, its conversation, a conversation on the hidden house, a fact of the parking that names the
@@ -209,15 +202,12 @@ internal sealed class AssistantDraftRig : IDisposable
         UpdatedAt = Now.UtcDateTime.AddDays(-1),
     };
 
-    /// <summary>A message of the guest in <paramref name="thread"/> (the conversation of Giulia Verdi when not given), <paramref name="minutesAgo"/> minutes before now.</summary>
     public Task<OtaMessage> GuestWritesAsync(string text, int minutesAgo = 5, OtaMessageThread? thread = null) =>
         AddMessageAsync(thread ?? Thread, OtaMessageDirection.Inbound, MessageOrigin.Guest, text, minutesAgo, OtaMessageDeliveryState.Sent);
 
-    /// <summary>A message of the host side in the conversation of Giulia Verdi.</summary>
     public Task<OtaMessage> HostWritesAsync(string text, int minutesAgo, OtaMessageDeliveryState state = OtaMessageDeliveryState.Sent) =>
         AddMessageAsync(Thread, OtaMessageDirection.Outbound, MessageOrigin.Person, text, minutesAgo, state);
 
-    /// <summary>An automatic message of CasaZen (the check-in link, E23/F01/US01/T01) in the conversation of Giulia Verdi: no person wrote it, and it answers nobody.</summary>
     public Task<OtaMessage> AutomationWritesAsync(string text, int minutesAgo) =>
         AddMessageAsync(Thread, OtaMessageDirection.Outbound, MessageOrigin.Automation, text, minutesAgo, OtaMessageDeliveryState.Sent);
 
@@ -249,15 +239,10 @@ internal sealed class AssistantDraftRig : IDisposable
         return message;
     }
 
-    /// <summary>Everything the provider was given: the instructions and the request of every call.</summary>
     public string EverythingSentToTheProvider() =>
         string.Join("\n", Ai.Calls.Select(call => $"{call.Request.SystemPrompt}\n{call.Request.Prompt}"));
 }
 
-/// <summary>
-/// An AI provider that answers what the test set: the classification to a call of the Economy tier, the draft to a call of the Standard tier, and records every request. It can say
-/// it is not configured, or throw.
-/// </summary>
 internal sealed class ScriptedAiProvider : IAiProvider
 {
     public const string ParkingClassification =
@@ -274,7 +259,6 @@ internal sealed class ScriptedAiProvider : IAiProvider
 
     public Queue<string> DraftResponses { get; } = new();
 
-    /// <summary>Answers of the classification given before <see cref="Classification"/>, one per call.</summary>
     public Queue<string> ClassificationResponses { get; } = new();
 
     public Exception? Throw { get; set; }

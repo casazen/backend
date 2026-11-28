@@ -21,20 +21,14 @@ public class OrgBillingAdminAuthorizationHandlerTests
 {
     private const string Sub = "auth0|billing-matrix";
 
-    /// <summary>
-    /// <c>name, JWT roles, DB role of the user, DB memberships as "context/roleKey", passes the policy</c>. Written out
-    /// by hand, not derived from the handler's own rules.
-    /// </summary>
     public static IEnumerable<object[]> Scenarios()
     {
-        // ── JWT roles only (no DB membership) ───────────────────────────────────────────────
         yield return Row("jwt: no role", [], UserRole.None, [], false);
         yield return Row("jwt: PropertyOwner", ["PropertyOwner"], UserRole.PropertyOwner, [], true);
         yield return Row("jwt: LongTermLandlord", ["LongTermLandlord"], UserRole.LongTermLandlord, [], true);
         yield return Row("jwt: Admin", ["Admin"], UserRole.Admin, [], true);
         yield return Row("jwt: PropertyOwner + PropertyManager", ["PropertyOwner", "PropertyManager"], UserRole.PropertyOwner, [], true);
         yield return Row("jwt: LongTermLandlord + PropertyManager", ["LongTermLandlord", "PropertyManager"], UserRole.LongTermLandlord, [], true);
-        // D12: a property manager runs the properties, not the plan and the invoices.
         yield return Row("jwt: PropertyManager only (D12)", ["PropertyManager"], UserRole.PropertyManager, [], false);
         yield return Row("jwt: PropertyManager only, DB role None", ["PropertyManager"], UserRole.None, [], false);
         yield return Row("jwt: PropertyManager + Staff", ["PropertyManager", "Staff"], UserRole.PropertyManager, [], false);
@@ -44,14 +38,12 @@ public class OrgBillingAdminAuthorizationHandlerTests
         yield return Row("jwt: PropertyOwner + Staff (a denied role wins)", ["PropertyOwner", "Staff"], UserRole.PropertyOwner, [], false);
         yield return Row("jwt: LongTermLandlord + Guest (a denied role wins)", ["LongTermLandlord", "Guest"], UserRole.LongTermLandlord, [], false);
 
-        // ── DB memberships only (the JWT carries no role) ───────────────────────────────────
         yield return Row("db: short-rent/property_owner", [], UserRole.PropertyOwner, ["short-rent/property_owner"], true);
         yield return Row("db: long-rent/long_term_landlord", [], UserRole.LongTermLandlord, ["long-rent/long_term_landlord"], true);
         yield return Row("db: admin/platform_admin", [], UserRole.Admin, ["admin/platform_admin"], true);
         yield return Row("db: both owner memberships", [], UserRole.PropertyOwner, ["short-rent/property_owner", "long-rent/long_term_landlord"], true);
         yield return Row("db: owner membership, DB role None", [], UserRole.None, ["short-rent/property_owner"], true);
 
-        // A member of the org: any other role key of a host context, whatever the DB role of the user.
         yield return Row("db: short-rent/property_manager", [], UserRole.None, ["short-rent/property_manager"], false);
         yield return Row("db: short-rent/staff", [], UserRole.None, ["short-rent/staff"], false);
         yield return Row("db: short-rent/accountant", [], UserRole.None, ["short-rent/accountant"], false);
@@ -64,18 +56,15 @@ public class OrgBillingAdminAuthorizationHandlerTests
         yield return Row("db: member, DB role Staff", [], UserRole.Staff, ["short-rent/staff"], false);
         yield return Row("db: member, DB role PropertyOwner", [], UserRole.PropertyOwner, ["short-rent/staff"], false);
 
-        // A role key is the owner's only in its own context; other contexts never give billing rights.
         yield return Row("db: owner key of the other context (short-rent/long_term_landlord)", [], UserRole.None, ["short-rent/long_term_landlord"], false);
         yield return Row("db: owner key of the other context (long-rent/property_owner)", [], UserRole.None, ["long-rent/property_owner"], false);
         yield return Row("db: platform_admin key in a rental context", [], UserRole.None, ["short-rent/platform_admin"], false);
         yield return Row("db: admin context, role other than platform_admin", [], UserRole.None, ["admin/support"], false);
         yield return Row("db: supplier/supplier", [], UserRole.Supplier, ["supplier/supplier"], false);
 
-        // The DB role of the user still vetoes an owner membership (Staff and Guest are never billing administrators).
         yield return Row("db: owner membership but DB role Staff", [], UserRole.Staff, ["short-rent/property_owner"], false);
         yield return Row("db: owner membership but DB role Guest", [], UserRole.Guest, ["short-rent/property_owner"], false);
 
-        // ── JWT and DB together ─────────────────────────────────────────────────────────────
         yield return Row("both: PropertyManager jwt + property_manager membership", ["PropertyManager"], UserRole.PropertyManager, ["short-rent/property_manager"], false);
         yield return Row("both: PropertyManager jwt + staff membership", ["PropertyManager"], UserRole.None, ["short-rent/staff"], false);
         yield return Row("both: PropertyManager jwt + owner membership", ["PropertyManager"], UserRole.PropertyOwner, ["short-rent/property_owner"], true);
@@ -84,11 +73,9 @@ public class OrgBillingAdminAuthorizationHandlerTests
         yield return Row("both: PropertyOwner jwt + owner membership", ["PropertyOwner"], UserRole.PropertyOwner, ["short-rent/property_owner"], true);
         yield return Row("both: Supplier jwt + staff membership", ["Supplier"], UserRole.None, ["short-rent/staff"], false);
 
-        // ── The account context (AM-01): the owner and the administrator hold org.billing.manage ───────────
         yield return Row("db: account/org_owner", [], UserRole.None, ["account/org_owner"], true);
         yield return Row("db: account/org_admin", [], UserRole.None, ["account/org_admin"], true);
         yield return Row("db: account/org_admin + short-rent/property_manager (the administrator)", [], UserRole.None, ["account/org_admin", "short-rent/property_manager"], true);
-        // The accountant reads the invoices and manages nothing; the other roles have no account membership at all.
         yield return Row("db: account/org_accountant", [], UserRole.None, ["account/org_accountant"], false);
         yield return Row("db: account/org_accountant + short-rent/accountant (the accountant)", [], UserRole.None, ["account/org_accountant", "short-rent/accountant"], false);
         yield return Row("db: an owner key in the account context (account/property_owner)", [], UserRole.None, ["account/property_owner"], false);
@@ -97,7 +84,6 @@ public class OrgBillingAdminAuthorizationHandlerTests
         yield return Row("both: PropertyManager jwt + account/org_admin", ["PropertyManager"], UserRole.None, ["account/org_admin"], true);
         yield return Row("both: PropertyManager jwt + account/org_accountant", ["PropertyManager"], UserRole.None, ["account/org_accountant"], false);
 
-        // The property manager in the account context (AM-02c, AM-D12): the trusted suppliers only, never the billing.
         yield return Row("db: account/org_manager", [], UserRole.None, ["account/org_manager"], false);
         yield return Row(
             "db: account/org_manager + both property_manager rows (the property manager)",
@@ -113,8 +99,6 @@ public class OrgBillingAdminAuthorizationHandlerTests
     [InlineData("org.members.manage", false)]
     public async Task HandleAsync_AccountMembershipOfAnyRole_PassesOnlyWithBillingManage(string permission, bool allowed)
     {
-        // The policy evaluates org.billing.manage: a role of the account context that holds it passes without being one
-        // of the known role keys (a role added later cannot be forgotten by the policy), one that does not never does.
         var snapshot = new UserAuthorizationSnapshot(
             Exists: true,
             IsActive: true,
@@ -132,7 +116,6 @@ public class OrgBillingAdminAuthorizationHandlerTests
     [Fact]
     public async Task HandleAsync_BillingManageOutsideTheAccountContext_DoesNotPass()
     {
-        // org.billing.manage counts in the account context only, like every permission in its own context.
         var snapshot = new UserAuthorizationSnapshot(
             Exists: true,
             IsActive: true,
@@ -182,7 +165,6 @@ public class OrgBillingAdminAuthorizationHandlerTests
             Memberships: [Access(contextKey, roleKey)],
             OrgMember: new OrgMemberSnapshot(Guid.NewGuid(), role, OrgMemberStatus.Active));
         var handler = CreateHandler(snapshot);
-        // The platform admin role is not an org role and always counts (AM-02, tested below): it is left out here.
         var context = Context(
         [
             new Claim(ClaimTypes.Role, "PropertyOwner"),
@@ -230,8 +212,6 @@ public class OrgBillingAdminAuthorizationHandlerTests
 
         Assert.True(context.HasSucceeded);
     }
-
-    // ─── AM-02: a token role left over by the move to another org ──────────────────────────────────────
 
     private static UserAuthorizationSnapshot MemberSnapshot(OrgRole role, params string[] memberships) => new(
         Exists: true,
@@ -368,7 +348,6 @@ public class OrgBillingAdminAuthorizationHandlerTests
     [Fact]
     public async Task HandleAsync_MemberRefusedByMembership_DoesNotReachOnboardingGateNorOrgResolution()
     {
-        // A member is refused before anything is read about the org: no side effect (the org is provisioned on resolve).
         var orgResolver = new Mock<IOrgContextResolver>(MockBehavior.Strict);
         var gate = new Mock<IHostOnboardingGate>(MockBehavior.Strict);
         var handler = CreateHandler(Snapshot(UserRole.None, ["short-rent/staff"]), orgResolver, gate);

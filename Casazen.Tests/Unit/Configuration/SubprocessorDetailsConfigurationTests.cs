@@ -111,8 +111,6 @@ public class SubprocessorDetailsConfigurationTests
     [Fact]
     public void Build_CommittedDefaultsWithoutDetectableRegion_SupabaseAuth0AndRailwayStayPending()
     {
-        // A custom Auth0 domain, a direct Supabase host and Railway without a replica region say nothing about where
-        // the data is: the region is not deduced, the entries stay "in definizione" until the product owner sets it.
         var items = LegalSubprocessorCatalog.Build(Appsettings(new()
         {
             ["Auth0:Domain"] = "login.casazen.example",
@@ -153,7 +151,6 @@ public class SubprocessorDetailsConfigurationTests
     [Fact]
     public void Appsettings_SubprocessorList_StaysUnpublishedUntilTheProductOwnerSetsTheDate()
     {
-        // EffectiveAt (and a new Version when the list changes) is the product owner's decision, not the code's.
         Assert.True(string.IsNullOrWhiteSpace(Appsettings()["Legal:Documents:Subprocessors:EffectiveAt"]));
     }
 

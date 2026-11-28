@@ -29,8 +29,6 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
 
     private static DateOnly Today => TimeProvider.System.TodayInRomeAsDateOnly();
 
-    // ─── The unique index on the event ───────────────────────────────────────────
-
     [PostgresFact]
     public async Task UniqueIndex_RefusesTheSameOccurrenceTwice_ButNotTwoWindowsSetByHand_NorTheSameEventOfAnotherSupplier()
     {
@@ -40,14 +38,12 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
 
         await SaveAsync(db => db.SupplierBusyWindows.Add(Feed(orgA, "uid-1", start)));
 
-        // The same supplier, UID and start: the unique index refuses it, whatever the end.
         var duplicate = await Assert.ThrowsAsync<DbUpdateException>(
             () => SaveAsync(db => db.SupplierBusyWindows.Add(Feed(orgA, "uid-1", start, hours: 3))));
         var postgres = Assert.IsType<PostgresException>(duplicate.InnerException);
         Assert.Equal(PostgresErrorCodes.UniqueViolation, postgres.SqlState);
         Assert.Equal("UIX_SupplierBusyWindows_OrgId_ExternalUid_StartUtc", postgres.ConstraintName);
 
-        // A series repeats the UID with other starts; another supplier may have the same event; the windows set by hand have no UID.
         await SaveAsync(db =>
         {
             db.SupplierBusyWindows.Add(Feed(orgA, "uid-1", start.AddDays(1)));
@@ -76,8 +72,6 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         Assert.Contains(definitions, d => d.Contains("IX_SupplierBusyWindows_OrgId_StartUtc", StringComparison.Ordinal));
     }
 
-    // ─── The lock ────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task TheSync_WaitsForTheCalendarSyncLockOfItsSupplier_ThenWritesItsWindows()
     {
@@ -85,7 +79,6 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         var day = Today.AddDays(9);
         factory.Feeds[url] = () => FeedOf(Timed("meeting", day, "100000", "110000"));
 
-        // Another connection holds the lock of this supplier, as a write of the agenda would.
         await using var holder = new NpgsqlConnection(await ConnectionStringAsync());
         await holder.OpenAsync();
         await using var holderTransaction = await holder.BeginTransactionAsync();
@@ -96,7 +89,7 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         await Task.Delay(300);
 
         Assert.False(pending.IsCompleted, "the sync did not wait for the lock of the supplier's calendar");
-        Assert.Equal(1, factory.Downloads(url)); // the download is outside the lock: it is already done
+        Assert.Equal(1, factory.Downloads(url));
         Assert.Equal((0, 0, 0, 0), await SupplierAgendaTestData.CountsAsync(factory, orgId));
 
         await holderTransaction.CommitAsync();
@@ -167,7 +160,6 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         var bothDownloading = new Barrier(2);
         factory.Feeds[url] = () =>
         {
-            // Both runs hold the downloaded feed before either writes: without the lock the second insert would hit the index.
             bothDownloading.SignalAndWait(TimeSpan.FromSeconds(30));
             return FeedOf(
                 Timed("one", day, "080000", "090000"),
@@ -217,7 +209,6 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
 
         var again = await WindowsAsync(orgId);
         Assert.Equal(2, again.Count);
-        // Exact equality: the instants of a feed are whole seconds, which the microsecond column keeps as they are.
         Assert.Equal(
             first.Select(w => (w.Id, w.ExternalUid, w.StartUtc, w.EndUtc, w.Label, w.Kind, w.Source, w.CreatedAt)),
             again.Select(w => (w.Id, w.ExternalUid, w.StartUtc, w.EndUtc, w.Label, w.Kind, w.Source, w.CreatedAt)));
@@ -237,12 +228,10 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         var written = await WindowsAsync(orgId);
         await SyncAsync(orgId);
 
-        // About 18 months of days; the same rows the second time.
         Assert.InRange(written.Count, 500, 600);
         Assert.Equal(written.Select(w => w.Id), (await WindowsAsync(orgId)).Select(w => w.Id));
         Assert.Equal(written.Count, written.Select(w => w.StartUtc).Distinct().Count());
 
-        // The series ends after ten occurrences: the others go, the first ten stay as the same rows.
         factory.Feeds[url] = () => FeedOf(Series("daily", first, "100000", "110000", count: 10));
         await SyncAsync(orgId);
 
@@ -264,14 +253,11 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         await SyncAsync(orgId);
 
         var windows = (await WindowsAsync(orgId)).ToDictionary(w => w.ExternalUid!);
-        // The hour that happens twice is its first pass; the one that does not exist is read before the change.
         Assert.Equal(RomeCalendar.ToUtc(autumn, new TimeOnly(2, 30)), windows["autumn"].StartUtc);
         Assert.Equal(TimeSpan.FromHours(2), windows["autumn"].EndUtc - windows["autumn"].StartUtc);
         Assert.Equal(RomeCalendar.ToUtc(spring, new TimeOnly(2, 30)), windows["spring"].StartUtc);
         Assert.Equal(RomeCalendar.ToUtc(spring, new TimeOnly(4, 30)), windows["spring"].EndUtc);
     }
-
-    // ─── The pipeline on PostgreSQL ──────────────────────────────────────────────
 
     [PostgresFact]
     public async Task TheCalendarOfTheConsole_ListsTheEngagements_AndTheSuppliersCannotReachEachOthers()
@@ -295,8 +281,6 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         Assert.Equal(HttpStatusCode.NotFound, steal.StatusCode);
         Assert.Single(await WindowsAsync(aOrg));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 
@@ -384,7 +368,6 @@ public class SupplierCalendarSyncHoursPostgresTests(SupplierCalendarSyncPostgres
         throw new TimeoutException($"Fewer than {count} sessions waited on the lock of the supplier's calendar.");
     }
 
-    /// <summary>The last Sunday of <paramref name="month"/> (the day the clock changes in March and October) that is still ahead.</summary>
     private static DateOnly NextLastSundayOf(int month)
     {
         for (var year = Today.Year; ; year++)

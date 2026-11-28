@@ -118,7 +118,6 @@ public class TouristTaxExemptionPermissionTests
         },
     };
 
-    /// <summary>The booking of the caller's org on a property the caller reaches.</summary>
     private static IHostResourceLookup Lookup()
     {
         var lookup = new Mock<IHostResourceLookup>();
@@ -128,7 +127,6 @@ public class TouristTaxExemptionPermissionTests
         return lookup.Object;
     }
 
-    /// <summary>The caller holds every permission asked, except <c>guest.read</c> when <paramref name="holdsGuestRead"/> is false.</summary>
     private static IAuthorizationService Authorization(bool holdsGuestRead)
     {
         var authorization = new Mock<IAuthorizationService>();
@@ -139,7 +137,6 @@ public class TouristTaxExemptionPermissionTests
         return authorization.Object;
     }
 
-    /// <summary>The tax of a stay of one guest, exempt for a health reason the host chose (nothing to pay).</summary>
     private static StayTouristTaxView Tax() => new(
         BookingId,
         TouristTaxQuoteStatus.Calculated,
@@ -159,7 +156,6 @@ public class TouristTaxExemptionPermissionTests
         null,
         false);
 
-    /// <summary>A stay of one guest, exempt from the tax for a health reason the host chose.</summary>
     private static CheckInState State()
     {
         var exempt = new StayGuest

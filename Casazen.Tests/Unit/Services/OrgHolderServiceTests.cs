@@ -6,11 +6,6 @@ using static Casazen.Tests.Unit.Services.OrgTeamTestData;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// AM-03 (S5): who is the holder of an org, the person the RLI delega and the IMU communication may be given by. With a team
-/// it is the owner and the administrators of the org, no longer whoever created the property; an account in no team keeps the
-/// old rule (the creator is the landlord).
-/// </summary>
 public class OrgHolderServiceTests
 {
     private const string Creator = "auth0|creator";
@@ -43,9 +38,7 @@ public class OrgHolderServiceTests
         await using var _ = db;
         await AddMemberOfAsync(db, orgId, "auth0|member", role);
 
-        // The member is not the creator of the property: the role alone decides.
         Assert.Equal(expected, await new OrgHolderService(db).IsHolderAsync("auth0|member", orgId, Creator));
-        // And being the creator does not make a member of the team the holder.
         Assert.Equal(expected, await new OrgHolderService(db).IsHolderAsync("auth0|member", orgId, "auth0|member"));
     }
 

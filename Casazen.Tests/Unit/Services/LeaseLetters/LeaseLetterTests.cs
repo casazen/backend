@@ -11,12 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.LeaseLetters;
 
-/// <summary>
-/// LR-OPS-1: the letters CasaZen prepares for the landlord are drafts until the product owner approves their text on the host. The files
-/// committed in <c>Casazen.Web/LeaseLetters</c> are complete and not approved, no committed configuration approves them, a letter that is not
-/// approved is printed with the watermark and the closing marker, the reason of the first expiry is the only one printed, a datum the contract
-/// lacks is «[da completare]», and no fiscal code or e-mail of a party is ever in a letter.
-/// </summary>
 public class LeaseLetterTests
 {
     private const string TenantFiscalCode = "VRDGLI85C41H501Z";
@@ -94,7 +88,6 @@ public class LeaseLetterTests
         Assert.Null(approved.Watermark);
         Assert.DoesNotContain("BOZZA", TextOf(approved), StringComparison.Ordinal);
 
-        // The same on the real PDF: the marker is text in the page, so it stays if the text is copied.
         var pdf = PdfTestReader.Text(new MigraDocPdfDocumentRenderer().Render(draft));
         Assert.Contains("BOZZA", pdf, StringComparison.Ordinal);
     }
@@ -164,8 +157,6 @@ public class LeaseLetterTests
         Assert.DoesNotContain(TenantFiscalCode, text, StringComparison.Ordinal);
         Assert.DoesNotContain(TenantEmail, text, StringComparison.Ordinal);
     }
-
-    // ---- helpers -------------------------------------------------------------------------------------------------
 
     private static HashSet<string> FirstPeriodFlags(LeaseDisdettaReason reason) =>
         [LeaseLetterFlags.FirstPeriod, LeaseLetterFlags.Reason(reason)];

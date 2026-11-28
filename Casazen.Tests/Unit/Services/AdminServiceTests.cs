@@ -39,19 +39,12 @@ public class AdminServiceTests
     private static AdminService CreateService(AppDbContext ctx, TimeProvider? clock = null) =>
         new AdminService(ctx, new Mock<ILogger<AdminService>>().Object, clock);
 
-    /// <summary>Authenticated tenant context: the global query filter is ON and scoped to one org.</summary>
     private sealed class AuthenticatedTenantContext(Guid orgId) : ITenantContext
     {
         public Guid? OrgId { get; } = orgId;
         public bool FilterEnabled => true;
     }
 
-    // ─── GetStatsAsync ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// QA-CLOCK: the check-in date is date-only and is compared with today's date in Europe/Rome. At 23:30 UTC Rome is
-    /// already on the next day: the comparison with the UTC instant counted today's arrivals as upcoming, at noon it did not.
-    /// </summary>
     [Theory]
     [InlineData("2026-09-25T12:00:00Z")]
     [InlineData("2026-09-24T23:30:00Z")]
@@ -73,14 +66,11 @@ public class AdminServiceTests
     [Fact]
     public async Task GetStatsAsync_EmptyDatabase_ReturnsZeroStats()
     {
-        // Arrange
         using var ctx = CreateInMemoryContext(nameof(GetStatsAsync_EmptyDatabase_ReturnsZeroStats));
         var service = CreateService(ctx);
 
-        // Act
         var stats = await service.GetStatsAsync();
 
-        // Assert
         Assert.Equal(0, stats.TotalProperties);
         Assert.Equal(0, stats.TotalBookings);
         Assert.Equal(0m, stats.TotalRevenue);
@@ -91,30 +81,25 @@ public class AdminServiceTests
     [Fact]
     public async Task GetStatsAsync_WithProperties_ReturnsCinBreakdown()
     {
-        // Arrange
         using var ctx = CreateInMemoryContext(nameof(GetStatsAsync_WithProperties_ReturnsCinBreakdown));
 
         ctx.Properties.AddRange(
-            new Property { Name = "P1", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },  // valid
-            new Property { Name = "P2", OwnerId = "o1", Address = "a", City = "Roma", CinCode = null },                  // missing
-            new Property { Name = "P3", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "INVALID" },             // invalid
-            new Property { Name = "P4", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT123450123456789" }    // invalid: old invented format
+            new Property { Name = "P1", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT058091C27G5FFZDZ" },
+            new Property { Name = "P2", OwnerId = "o1", Address = "a", City = "Roma", CinCode = null },
+            new Property { Name = "P3", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "INVALID" },
+            new Property { Name = "P4", OwnerId = "o1", Address = "a", City = "Roma", CinCode = "IT123450123456789" }
         );
         await ctx.SaveChangesAsync();
 
         var service = CreateService(ctx);
 
-        // Act
         var stats = await service.GetStatsAsync();
 
-        // Assert
         Assert.Equal(4, stats.CinTotal);
         Assert.Equal(1, stats.CinValid);
         Assert.Equal(1, stats.CinMissing);
         Assert.Equal(2, stats.CinInvalid);
     }
-
-    // ─── F-H1 regression: admin reads must bypass the tenant filter (cross-org) ──
 
     [Fact]
     public async Task GetStatsAsync_AuthenticatedAdminContext_ReturnsPlatformWideTotalsAcrossAllOrgs()
@@ -147,7 +132,6 @@ public class AdminServiceTests
             new Payment { Id = Guid.NewGuid(), OrgId = orgA, BookingId = bookingA.Id, Amount = 100m, Status = PaymentStatus.Completed },
             new Payment { Id = Guid.NewGuid(), OrgId = orgB, BookingId = bookingB.Id, Amount = 150m, Status = PaymentStatus.Completed });
 
-        // TN-2: OtaIntegrations is tenant-filtered too; the OTA health counters must stay platform-wide.
         ctx.OtaIntegrations.AddRange(
             new OtaIntegration { OrgId = orgA, PropertyId = propA.Id, Platform = "Airbnb", ExternalPropertyId = "a" },
             new OtaIntegration { OrgId = orgB, PropertyId = propB.Id, Platform = "Booking", ExternalPropertyId = "b" });
@@ -161,10 +145,8 @@ public class AdminServiceTests
 
         var service = CreateService(ctx);
 
-        // Act
         var stats = await service.GetStatsAsync();
 
-        // Assert — platform-wide totals span BOTH orgs.
         Assert.Equal(2, stats.TotalProperties);
         Assert.Equal(2, stats.TotalBookings);
         Assert.Equal(2, stats.UpcomingCheckIns);
@@ -239,12 +221,9 @@ public class AdminServiceTests
         Assert.Equal(2, items.Count());
     }
 
-    // ─── GetCinComplianceAsync ──────────────────────────────────────────────
-
     [Fact]
     public async Task GetCinComplianceAsync_FilterValid_ReturnsOnlyValidProperties()
     {
-        // Arrange
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_FilterValid_ReturnsOnlyValidProperties));
 
         ctx.Properties.AddRange(
@@ -256,10 +235,8 @@ public class AdminServiceTests
 
         var service = CreateService(ctx);
 
-        // Act
         var (items, total) = await service.GetCinComplianceAsync("valid", 1, 20);
 
-        // Assert
         Assert.Equal(1, total);
         Assert.Single(items);
         Assert.Equal("valid", items.First().CinStatus);
@@ -268,7 +245,6 @@ public class AdminServiceTests
     [Fact]
     public async Task GetCinComplianceAsync_FilterMissing_ReturnsOnlyMissingProperties()
     {
-        // Arrange
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_FilterMissing_ReturnsOnlyMissingProperties));
 
         ctx.Properties.AddRange(
@@ -279,10 +255,8 @@ public class AdminServiceTests
 
         var service = CreateService(ctx);
 
-        // Act
         var (items, total) = await service.GetCinComplianceAsync("missing", 1, 20);
 
-        // Assert
         Assert.Equal(1, total);
         Assert.Equal("missing", items.First().CinStatus);
     }
@@ -290,7 +264,6 @@ public class AdminServiceTests
     [Fact]
     public async Task GetCinComplianceAsync_FilterInvalid_ReturnsOnlyInvalidProperties()
     {
-        // Arrange
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_FilterInvalid_ReturnsOnlyInvalidProperties));
 
         ctx.Properties.AddRange(
@@ -301,10 +274,8 @@ public class AdminServiceTests
 
         var service = CreateService(ctx);
 
-        // Act
         var (items, total) = await service.GetCinComplianceAsync("invalid", 1, 20);
 
-        // Assert
         Assert.Equal(1, total);
         Assert.Equal("invalid", items.First().CinStatus);
     }
@@ -312,11 +283,9 @@ public class AdminServiceTests
     [Fact]
     public async Task GetCinComplianceAsync_UnknownStatus_ThrowsArgumentException()
     {
-        // Arrange
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_UnknownStatus_ThrowsArgumentException));
         var service = CreateService(ctx);
 
-        // Act + Assert
         await Assert.ThrowsAsync<ArgumentException>(
             () => service.GetCinComplianceAsync("unknown-status", 1, 20));
     }
@@ -324,7 +293,6 @@ public class AdminServiceTests
     [Fact]
     public async Task GetCinComplianceAsync_NullFilter_ReturnsAllProperties()
     {
-        // Arrange
         using var ctx = CreateInMemoryContext(nameof(GetCinComplianceAsync_NullFilter_ReturnsAllProperties));
 
         ctx.Properties.AddRange(
@@ -335,10 +303,8 @@ public class AdminServiceTests
 
         var service = CreateService(ctx);
 
-        // Act
         var (items, total) = await service.GetCinComplianceAsync(null, 1, 20);
 
-        // Assert
         Assert.Equal(2, total);
     }
 }

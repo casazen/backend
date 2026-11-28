@@ -3,12 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// Decision D3 (SE-02, SE-03): no domain of CasaZen is written in the application code or in the committed configuration.
-/// Links are built from <c>App:PublicSiteBaseUrl</c> (<c>PublicSiteLinks</c>), the org subdomains from
-/// <c>PublicHost:BaseDomain</c>, both without default. The scan covers the three application projects (sources,
-/// <c>appsettings.json</c>, resources, email templates); tests and <c>appsettings.Testing.json</c> are fixtures.
-/// </summary>
 public class NoHardcodedPublicDomainTests
 {
     private static readonly Regex Domain = new(@"casazen\.app", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -22,7 +16,6 @@ public class NoHardcodedPublicDomainTests
         "https://casazen.app/roles",
         "https://casazen.app/email",
         "https://casazen.app/name",
-        // Owner portal custom claims (ADR-011-R7)
         "https://casazen.app/context",
         "https://casazen.app/owner_id",
         "https://casazen.app/agency_ids",
@@ -95,9 +88,7 @@ public class NoHardcodedPublicDomainTests
     private static bool IsExcluded(string relativePath) =>
         relativePath.Contains("/bin/", StringComparison.Ordinal)
         || relativePath.Contains("/obj/", StringComparison.Ordinal)
-        // Migrations are history: their snapshots describe old schemas, never URLs.
         || relativePath.Contains("/Migrations/", StringComparison.Ordinal)
-        // Test and local-only configuration: fixtures, never deployed (appsettings.Development.json is not committed).
         || relativePath.EndsWith("appsettings.Testing.json", StringComparison.Ordinal)
         || relativePath.EndsWith("appsettings.Development.json", StringComparison.Ordinal);
 

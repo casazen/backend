@@ -44,7 +44,6 @@ public class OrgDomainActivationIntegrationTests : IClassFixture<CasazenWebAppli
         Assert.True(status.GetProperty("autoCheckActive").GetBoolean());
         Assert.False(status.GetProperty("activationAvailable").GetBoolean());
         Assert.Equal(JsonValueKind.Null, status.GetProperty("checkedAt").ValueKind);
-        // A domain that is not served is not "your site" yet.
         Assert.Equal(JsonValueKind.Null, config.GetProperty("publicUrls").GetProperty("customDomainUrl").ValueKind);
     }
 
@@ -228,8 +227,6 @@ public class OrgDomainActivationIntegrationTests : IClassFixture<CasazenWebAppli
         Assert.Equal("Il dominio personalizzato non è valido.", problem.GetProperty("detail").GetString());
     }
 
-    // ─── Arrange ───────────────────────────────────────────────────────────────────────────────────
-
     private async Task<Arrangement> ArrangeAsync(Doubles doubles)
     {
         var ownerId = $"auth0|activation-{Guid.NewGuid():N}";
@@ -291,14 +288,12 @@ public class OrgDomainActivationIntegrationTests : IClassFixture<CasazenWebAppli
         await db.SaveChangesAsync();
     }
 
-    /// <summary>DNS and Vercel in one double: what the records say and which domains Vercel has, per test.</summary>
     private sealed class Doubles : IDnsTxtLookup, IDnsRecordLookup, IVercelDomainsClient
     {
         public Dictionary<string, string[]> Txt { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public Dictionary<string, string[]> Cname { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>Domains on the Vercel project and whether Vercel has verified them.</summary>
         public Dictionary<string, bool> VercelDomains { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         public bool VercelConfigured { get; set; }

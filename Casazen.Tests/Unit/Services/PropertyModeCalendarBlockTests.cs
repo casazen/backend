@@ -19,20 +19,11 @@ using static Casazen.Tests.Unit.Services.PropertyModeHarness;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PM-02: the calendar block of a property that goes long-term (<see cref="CalendarBlockReason.ModeChange"/>). The portals
-/// read it through the iCal export (a neutral all-day event from the night before the change, a stable UID), the single
-/// occupancy rule takes its nights, and the host can neither create it nor remove it by hand: it goes away with the return to short
-/// stays. Its other life (written at the programming, kept when applied, removed on cancel or failure) is in
-/// <see cref="PropertyModeScheduleTests"/> and <see cref="PropertyModeApplyTests"/>.
-/// </summary>
 public class PropertyModeCalendarBlockTests : IDisposable
 {
     private readonly PropertyModeHarness _h = new();
 
     public void Dispose() => _h.Dispose();
-
-    // ─── The iCal export ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Export_TheBlockOfAChangeToLong_IsAnAllDayEventFromTheDayForTwoYearsWithTheNeutralSummary()
@@ -48,7 +39,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
         Assert.Contains("DTSTART;VALUE=DATE:20261019", lines);
         Assert.Contains("DTEND;VALUE=DATE:20281020", lines);
         Assert.Contains("SUMMARY:Occupato", lines);
-        // Never the reason nor the word "mode".
         Assert.DoesNotContain(lines, l => l.Contains("ModeChange", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -85,13 +75,9 @@ public class PropertyModeCalendarBlockTests : IDisposable
         await _h.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
         _h.Db.ChangeTracker.Clear();
 
-        // The booking checks and the public availability read the blocks through PropertyOccupancy: a stay on the closed
-        // nights is refused, including the night that checks out on the day of the change. The night before that is free.
         Assert.True(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(19), Day(21))));
         Assert.False(await _h.Db.CalendarBlocks.AnyAsync(PropertyOccupancy.BlockTakesNightIn(property.Id, Day(17), Day(19))));
     }
-
-    // ─── The host cannot touch it ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Create_TheHostChoosesTheReasonModeChange_Is422InvalidReason()
@@ -156,8 +142,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
         Assert.Equal(CalendarBlockReason.ModeChange, Assert.Single(blocks).ManualReason);
     }
 
-    // ─── The channel manager is told (E08/F05/US02, NF-78) ─────────────────────────────────────────
-
     /// <summary>
     /// PROOF TEST: data rule. The block a property that goes long-term gets, and its removal, are told to the channel manager in the very save of the change (the process of the
     /// calendar change exists together with the mode change, never without it) and run once after the commit: a property on the channel manager does not stay sellable on the portals.
@@ -169,7 +153,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
         var property = await _h.SeedPropertyAsync();
         var told = new ToldChannelManager(_h, property.Id);
 
-        // Programming a change to long-term writes the block from the night before its day for two years, and the change that closes those nights on the channel manager.
         var scheduled = await told.Service.ScheduleAsync(property.Id, RentalMode.Long, Day(20), UserId);
 
         var block = Assert.Single(await told.Db().CalendarBlocks.AsNoTracking().ToListAsync());
@@ -183,7 +166,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
         Assert.Equal(DateOnly.FromDateTime(block.EndUtc).AddDays(-1), chunks[^1].ToDate);
         told.VerifyRuns(Times.Once());
 
-        // Cancelling it opens the nights again: a change of its own, in the save of the cancellation.
         await told.Service.CancelAsync(property.Id, scheduled.Id, UserId);
 
         Assert.Empty(await told.Db().CalendarBlocks.AsNoTracking().ToListAsync());
@@ -195,7 +177,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
     [Fact]
     public async Task TheChannelManagerIsToldWhenTheChangeIsApplied_ToLongTermAndBackToShortStays()
     {
-        // Back to short stays: the block goes and the nights open again, on the channel manager too.
         var back = await _h.SeedPropertyAsync(RentalMode.Long);
         var toldBack = new ToldChannelManager(_h, back.Id);
         await _h.SeedManualBlockAsync(back, Day(-30), Day(700), CalendarBlockReason.ModeChange);
@@ -208,7 +189,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
         Assert.Contains("\"action\":\"removed\"", reopened.SummaryJson);
         toldBack.VerifyRuns(Times.Once());
 
-        // To long-term with no block yet (the change was written by hand): the block is written and told.
         var forth = await _h.SeedPropertyAsync();
         var toldForth = new ToldChannelManager(_h, forth.Id);
         await _h.SeedChangeAsync(forth, RentalMode.Long, Today);
@@ -221,10 +201,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
         toldForth.VerifyRuns(Times.Once());
     }
 
-    /// <summary>
-    /// Where the property books (a lookup that may call the channel manager) is asked once for each operation, before the transaction and the dates lock of the change of mode and
-    /// before anything is staged: nothing of the unit of work is changed yet when the channel manager is asked, and the recorder does not ask again.
-    /// </summary>
     [Fact]
     public async Task TheChannelManagerIsAskedOnce_BeforeTheTransactionAndBeforeAnythingIsStaged()
     {
@@ -259,7 +235,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
     private CalendarBlockService NewBlocks() =>
         new(_h.Db, Mock.Of<ICheckoutHoldExpiryService>(), NullLogger<CalendarBlockService>.Instance, _h.Clock);
 
-    /// <summary>The mode change service with the real recorder of the calendar changes: the channel manager answers that the property books there (or not), a job client is watched.</summary>
     private sealed class ToldChannelManager
     {
         private readonly PropertyModeHarness _harness;
@@ -288,7 +263,6 @@ public class PropertyModeCalendarBlockTests : IDisposable
 
         public Mock<IBackgroundJobClient> Jobs { get; } = new();
 
-        /// <summary>A context of its own on the same database: what is saved, whatever the service still tracks.</summary>
         public AppDbContext Db() => _harness.SecondContext();
 
         public void VerifyRuns(Times times) =>

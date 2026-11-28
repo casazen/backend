@@ -40,7 +40,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
 
     private HttpClient Collaborator(World world) => factory.CreateAuthenticatedClient(world.CollaboratorId);
 
-    /// <summary>An org with its owner, a collaborator limited to the first of two properties full of data.</summary>
     private async Task<World> NewWorldAsync(bool limited = true)
     {
         await EnsureSeedsAsync();
@@ -85,13 +84,10 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(code, problem.GetProperty("code").GetString());
     }
 
-    // --- GET /api/dashboard/today ---------------------------------------------------------------------
-
     [Fact]
     public async Task Today_TheOwnerSeesTheWholeOrg_TheCollaboratorOnlyItsProperty_WithoutTheMoneyItCannotRead()
     {
         var world = await NewWorldAsync();
-        // A confirmed stay of the first property whose payment failed: the owner is told, the collaborator (no payment.read) is not.
         var failedBookingId = await AddStayWithAFailedPaymentAsync(world);
         using var owner = Owner(world);
         using var collaborator = Collaborator(world);
@@ -99,7 +95,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var ownerDay = await JsonAsync(await owner.GetAsync("/api/dashboard/today"));
         var collaboratorDay = await JsonAsync(await collaborator.GetAsync("/api/dashboard/today"));
 
-        // The shape the Home reads.
         Assert.Matches(@"^\d{4}-\d{2}-\d{2}$", ownerDay.GetProperty("today").GetString());
         foreach (var list in new[] { "arrivals", "departures", "upcoming", "approvals", "todo" })
         {
@@ -120,7 +115,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             1,
             collaboratorTodo.Count(i => i.GetProperty("action").GetString() == "ConfirmPropertyReady"));
 
-        // Every thing to do says what it lacks, where it leads (a key and ids, never a path), and its place in the order.
         foreach (var item in ownerTodo)
         {
             Assert.NotEmpty(item.GetProperty("missing").EnumerateArray());
@@ -132,13 +126,11 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var priorities = ownerTodo.Select(i => i.GetProperty("priority").GetInt32()).ToList();
         Assert.Equal(priorities.Order(), priorities);
 
-        // The failed payment: only for who may read payments.
         Assert.Contains(
             ownerTodo,
             i => i.GetProperty("action").GetString() == "ReviewFailedPayment" && i.GetProperty("bookingId").GetGuid() == failedBookingId);
         Assert.DoesNotContain(collaboratorTodo, i => i.GetProperty("action").GetString() == "ReviewFailedPayment");
 
-        // Nothing of the hidden property reaches the collaborator, in any list.
         var text = collaboratorDay.GetRawText();
         Assert.DoesNotContain(world.HiddenId.ToString(), text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(world.HiddenBookingId.ToString(), text, StringComparison.OrdinalIgnoreCase);
@@ -183,8 +175,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         return booking.Id;
     }
 
-    // --- GET /api/dashboard/kpis ----------------------------------------------------------------------
-
     [Fact]
     public async Task Kpis_Next30DaysWithTheComparison_OwnerGetsTheMoney_CollaboratorDoesNot()
     {
@@ -200,7 +190,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(2, ownerKpis.GetProperty("propertyCount").GetInt32());
         Assert.Equal(1, collaboratorKpis.GetProperty("propertyCount").GetInt32());
 
-        // The three numbers of the Home: occupancy and revenue as before, the cash, the share of the booking site.
         Assert.True(ownerKpis.GetProperty("revenue").TryGetProperty("amountCents", out _));
         var collected = ownerKpis.GetProperty("collected");
         Assert.Equal("EUR", collected.GetProperty("currency").GetString());
@@ -208,7 +197,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var direct = ownerKpis.GetProperty("directShare");
         Assert.True(direct.GetProperty("stays").GetInt32() >= direct.GetProperty("directStays").GetInt32());
 
-        // The period before: the same days in number, ending the day this one starts.
         var previous = ownerKpis.GetProperty("previous");
         Assert.Equal(30, previous.GetProperty("period").GetProperty("nights").GetInt32());
         Assert.Equal(
@@ -216,7 +204,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             DateOnly.Parse(previous.GetProperty("period").GetProperty("to").GetString()!));
         Assert.True(previous.TryGetProperty("occupancy", out _));
 
-        // No payment.read: no cash, now or before.
         Assert.Equal(JsonValueKind.Null, collaboratorKpis.GetProperty("collected").ValueKind);
         Assert.Equal(JsonValueKind.Null, collaboratorKpis.GetProperty("previous").GetProperty("collected").ValueKind);
     }
@@ -248,7 +235,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.All(
             one.GetProperty("recentBookings").EnumerateArray(),
             stay => Assert.Equal(world.HiddenId, stay.GetProperty("propertyId").GetGuid()));
-        // The collaborator was not given that property, and an unknown one is the same: one 404, nothing tells them apart.
         await AssertProblemAsync(await collaborator.GetAsync($"/api/dashboard/kpis?propertyId={world.HiddenId}"), HttpStatusCode.NotFound, "not_found");
         await AssertProblemAsync(await owner.GetAsync($"/api/dashboard/kpis?propertyId={Guid.NewGuid()}"), HttpStatusCode.NotFound, "not_found");
         Assert.Equal(HttpStatusCode.OK, (await collaborator.GetAsync($"/api/dashboard/kpis?propertyId={world.GrantedId}")).StatusCode);
@@ -265,8 +251,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
 
         await AssertProblemAsync(await owner.GetAsync($"/api/dashboard/kpis{query}"), HttpStatusCode.BadRequest, "dashboard_invalid_period");
     }
-
-    // --- GET /api/compliance/summary ------------------------------------------------------------------
 
     [Fact]
     public async Task Cockpit_EveryItemSaysWhatItLacks_AndTheOldFieldsAreThere()
@@ -292,8 +276,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(0, limited.GetProperty("propertiesPending").GetProperty("count").GetInt32());
     }
 
-    // --- GET /api/bookings/search ---------------------------------------------------------------------
-
     [Fact]
     public async Task BookingSearch_APageOfBookings_WithTheCodeOfEach_InsideTheScope()
     {
@@ -309,10 +291,8 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(6, all.GetProperty("totalCount").GetInt32());
         Assert.Equal(6, all.GetProperty("items").GetArrayLength());
         Assert.All(all.GetProperty("items").EnumerateArray(), b => Assert.Matches(BookingCodeShape, b.GetProperty("bookingCode").GetString()));
-        // The collaborator: the three bookings of its property, never one of the other.
         Assert.Equal(3, mine.GetProperty("totalCount").GetInt32());
         Assert.All(mine.GetProperty("items").EnumerateArray(), b => Assert.Equal(world.GrantedId, b.GetProperty("propertyId").GetGuid()));
-        // Latest check-in first.
         var checkIns = all.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("checkInDate").GetDateTime()).ToList();
         Assert.Equal(checkIns.OrderByDescending(d => d), checkIns);
     }
@@ -336,7 +316,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.All(pending.GetProperty("items").EnumerateArray(), b => Assert.Equal("Pending", b.GetProperty("status").GetString()));
         Assert.Equal(4, two.GetProperty("totalCount").GetInt32());
         Assert.Equal(4, commas.GetProperty("totalCount").GetInt32());
-        // The guests of the scenario are named after their property.
         Assert.Equal(3, byName.GetProperty("totalCount").GetInt32());
         Assert.All(byName.GetProperty("items").EnumerateArray(), b => Assert.Equal(world.GrantedId, b.GetProperty("propertyId").GetGuid()));
         Assert.Equal(world.HiddenBookingId, Assert.Single(byCodeSearch.GetProperty("items").EnumerateArray()).GetProperty("id").GetGuid());
@@ -360,7 +339,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
 
         Assert.Equal(0, byCode.GetProperty("totalCount").GetInt32());
         Assert.Equal(0, byName.GetProperty("totalCount").GetInt32());
-        // The property itself, as in the plain list.
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync($"/api/bookings/search?propertyId={world.HiddenId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await collaborator.GetAsync($"/api/bookings/search?propertyId={Guid.NewGuid()}")).StatusCode);
     }
@@ -377,7 +355,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             await owner.GetAsync("/api/bookings/search?status=3"), HttpStatusCode.BadRequest, "booking_list_invalid_status");
         await AssertProblemAsync(
             await owner.GetAsync("/api/bookings/search?from=2026-11-01&to=2026-10-01"), HttpStatusCode.BadRequest, "booking_list_invalid_range");
-        // A date that is not a date is a validation error of the framework, with the code of every other one.
         await AssertProblemAsync(
             await owner.GetAsync("/api/bookings/search?from=ieri"), HttpStatusCode.BadRequest, "validation_error");
     }
@@ -399,8 +376,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Matches(BookingCodeShape, one.GetProperty("bookingCode").GetString());
     }
 
-    // --- GET /api/payments ----------------------------------------------------------------------------
-
     [Fact]
     public async Task Payments_RowsWithTheGuestAndThePropertyAndTheAmountsInCents_StillTheFieldsTheWebAppReads()
     {
@@ -412,17 +387,14 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(4, rows.Count);
         foreach (var row in rows)
         {
-            // What the web app reads today (a superset of the old entity's fields it uses).
             foreach (var field in new[] { "id", "bookingId", "amount", "status", "method", "createdAt", "updatedAt", "refundedAmount", "description" })
                 Assert.True(row.TryGetProperty(field, out _), field);
-            // What the new screens read.
             Assert.Matches(BookingCodeShape, row.GetProperty("bookingCode").GetString());
             Assert.StartsWith("Anna ", row.GetProperty("guestName").GetString());
             Assert.Contains(row.GetProperty("propertyName").GetString(), new[] { "Trullo", "Casa Bianca" });
             Assert.Equal(row.GetProperty("amount").GetDecimal() * 100m, row.GetProperty("amountCents").GetInt64());
             Assert.Equal("EUR", row.GetProperty("currency").GetString());
             Assert.Equal("Completed", row.GetProperty("status").GetString());
-            // The entity came with its whole booking and the Stripe account of the host: not any more.
             Assert.False(row.TryGetProperty("booking", out _));
             Assert.False(row.TryGetProperty("stripeAccountId", out _));
             Assert.False(row.TryGetProperty("orgId", out _));
@@ -437,7 +409,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
 
         var ofBooking = (await JsonAsync(await owner.GetAsync($"/api/payments?bookingId={world.HiddenBookingId}"))).EnumerateArray().ToList();
         var ofProperty = (await JsonAsync(await owner.GetAsync($"/api/payments?propertyId={world.GrantedId}"))).EnumerateArray().ToList();
-        // The payments of the scenario were settled on 5 October 2026.
         var inPeriod = (await JsonAsync(await owner.GetAsync("/api/payments?from=2026-10-05&to=2026-10-05"))).EnumerateArray().ToList();
         var before = (await JsonAsync(await owner.GetAsync("/api/payments?to=2026-10-04"))).EnumerateArray().ToList();
         var after = (await JsonAsync(await owner.GetAsync("/api/payments?from=2026-10-06"))).EnumerateArray().ToList();
@@ -462,12 +433,9 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             await owner.GetAsync("/api/payments?from=2026-11-01&to=2026-10-01"), HttpStatusCode.BadRequest, "payment_list_invalid_range");
         Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/payments?bookingId={Guid.NewGuid()}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/payments?propertyId={Guid.NewGuid()}")).StatusCode);
-        // payment.read is not a collaborator's permission, whatever property it was given.
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync("/api/payments")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync($"/api/payments?bookingId={world.GrantedBookingId}")).StatusCode);
     }
-
-    // --- SR-03b: stays and interventions around today, relative to the real clock ---------------------------------
 
     private sealed record Around(
         Guid Upcoming,
@@ -480,10 +448,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Guid LeavesToday,
         Guid SupplierOrgId);
 
-    /// <summary>
-    /// Stays around today (the real Europe/Rome day) on the two properties: the ones the chips and the Home are made of. The
-    /// collaborator reaches the first property only, so exactly one of them (<c>UpcomingHidden</c>) is out of its sight.
-    /// </summary>
     private async Task<Around> AddStaysAroundTodayAsync(World world)
     {
         using var scope = factory.Services.CreateScope();
@@ -535,7 +499,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             upcoming.Id, upcomingHidden.Id, arrivesToday.Id, inHouse.Id, completed.Id, cancelled.Id, request.Id, leavesToday.Id, supplierOrgId);
     }
 
-    /// <summary>The supplier org the interventions of the scenario were requested from.</summary>
     private async Task<Guid> SupplierOrgIdAsync(World world)
     {
         using var scope = factory.Services.CreateScope();
@@ -571,7 +534,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         };
         if (proposal)
         {
-            // A proposal has its start, end and instant together (CK_ServiceRequests_ProposedInterval).
             request.ProposedStartUtc = DateTime.UtcNow.AddDays(3);
             request.ProposedEndUtc = DateTime.UtcNow.AddDays(3).AddHours(2);
             request.ProposedAt = DateTime.UtcNow;
@@ -581,8 +543,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         await db.SaveChangesAsync();
         return request.Id;
     }
-
-    // --- GET /api/dashboard/overview ------------------------------------------------------------------------
 
     [Fact]
     public async Task Overview_TheOwnerGetsTheMoney_TheCollaboratorDoesNot_EverythingElseIsThereForBoth()
@@ -595,7 +555,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var ownerHome = await JsonAsync(await owner.GetAsync("/api/dashboard/overview?period=Next30Days"));
         var collaboratorHome = await JsonAsync(await collaborator.GetAsync("/api/dashboard/overview?period=Next30Days"));
 
-        // The period, and the one before it with the same number of nights.
         Assert.Equal("Next30Days", ownerHome.GetProperty("period").GetProperty("kind").GetString());
         Assert.Equal(30, ownerHome.GetProperty("period").GetProperty("nights").GetInt32());
         Assert.Equal(30, ownerHome.GetProperty("previous").GetProperty("period").GetProperty("nights").GetInt32());
@@ -606,7 +565,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(2, ownerHome.GetProperty("propertyCount").GetInt32());
         Assert.Equal(1, collaboratorHome.GetProperty("propertyCount").GetInt32());
 
-        // The money, each saying what it counts, the difference worked out by the server.
         var revenue = ownerHome.GetProperty("revenue");
         Assert.Equal("accrual", revenue.GetProperty("basis").GetString());
         Assert.Equal("EUR", revenue.GetProperty("currency").GetString());
@@ -615,7 +573,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal("cash", ownerHome.GetProperty("collected").GetProperty("basis").GetString());
         Assert.True(ownerHome.GetProperty("occupancy").TryGetProperty("deltaPoints", out _));
 
-        // The chart adds up to the revenue, to the cent, and so does the one of the period before.
         var series = ownerHome.GetProperty("series");
         Assert.Equal("week", series.GetProperty("unit").GetString());
         var buckets = series.GetProperty("buckets").EnumerateArray().ToList();
@@ -626,7 +583,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             buckets.Sum(b => b.GetProperty("previousAmount").GetDecimal()));
         Assert.All(buckets, b => Assert.Matches(@"^\d{4}-W\d{2}$", b.GetProperty("label").GetString()));
 
-        // No payment.read: no money at all, not even a null; but the rest.
         foreach (var money in new[] { "revenue", "collected", "series" })
             Assert.False(collaboratorHome.TryGetProperty(money, out _), money);
         Assert.False(collaboratorHome.GetProperty("previous").TryGetProperty("revenue", out _));
@@ -650,16 +606,11 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var collaboratorAfter = await JsonAsync(await collaborator.GetAsync("/api/dashboard/overview?period=Next30Days"));
 
         static int Upcoming(JsonElement home, string field) => home.GetProperty("upcoming").GetProperty(field).GetInt32();
-        // Arriving in the next 30 days: today's, the two upcoming ones and the request waiting for the host (not the stay that
-        // arrived two days ago, nor the one that is over, nor the cancelled one).
         Assert.Equal(4, Upcoming(ownerAfter, "count") - Upcoming(ownerBefore, "count"));
         Assert.Equal(1, Upcoming(ownerAfter, "pendingApproval") - Upcoming(ownerBefore, "pendingApproval"));
-        // The collaborator: the same but for the upcoming stay of the property it was not given.
         Assert.Equal(3, Upcoming(collaboratorAfter, "count") - Upcoming(collaboratorBefore, "count"));
         Assert.Equal(1, Upcoming(collaboratorAfter, "pendingApproval") - Upcoming(collaboratorBefore, "pendingApproval"));
 
-        // Revenue by accrual over the next 30 days: 500 + 300 + 450, and the night of today of the stay that arrived two days ago
-        // (400 / 3).
         var ownerGain = ownerAfter.GetProperty("revenue").GetProperty("amount").GetDecimal()
             - ownerBefore.GetProperty("revenue").GetProperty("amount").GetDecimal();
         Assert.InRange(ownerGain, 1383.32m, 1383.34m);
@@ -667,7 +618,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             ownerAfter.GetProperty("revenue").GetProperty("amount").GetDecimal(),
             ownerAfter.GetProperty("series").GetProperty("buckets").EnumerateArray().Sum(b => b.GetProperty("amount").GetDecimal()));
 
-        // The next arrivals, soonest first: today's, then the upcoming ones; never one of the hidden property for the collaborator.
         var next = ownerAfter.GetProperty("nextArrivals").EnumerateArray().ToList();
         Assert.Equal(3, next.Count);
         Assert.Equal(around.ArrivesToday, next[0].GetProperty("bookingId").GetGuid());
@@ -694,8 +644,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal("2026-10-31", period.GetProperty("to").GetString());
         Assert.Equal(31, period.GetProperty("nights").GetInt32());
         Assert.Equal(31, custom.GetProperty("previous").GetProperty("period").GetProperty("nights").GetInt32());
-        // Each of the two properties has two confirmed stays of 300 in October 2026 (10 to 13 October and 1 to 4 October); the
-        // request of November is not revenue.
         Assert.Equal(1200m, custom.GetProperty("revenue").GetProperty("amount").GetDecimal());
         var year = await JsonAsync(await owner.GetAsync("/api/dashboard/overview?period=Custom&from=2026-01-01&to=2026-12-31"));
         Assert.Equal("month", year.GetProperty("series").GetProperty("unit").GetString());
@@ -718,7 +666,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             await AssertProblemAsync(await owner.GetAsync($"/api/dashboard/overview?{query}"), HttpStatusCode.BadRequest, "dashboard_invalid_period");
         }
 
-        // The old endpoint is what it was: a free period is not one of its periods.
         await AssertProblemAsync(
             await owner.GetAsync("/api/dashboard/kpis?period=Custom&from=2026-10-01&to=2026-10-31"), HttpStatusCode.BadRequest, "dashboard_invalid_period");
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/dashboard/kpis?period=Next30Days")).StatusCode);
@@ -737,7 +684,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(1, one.GetProperty("propertyCount").GetInt32());
         Assert.NotEmpty(one.GetProperty("nextArrivals").EnumerateArray());
         Assert.All(one.GetProperty("nextArrivals").EnumerateArray(), n => Assert.Equal(world.HiddenId, n.GetProperty("propertyId").GetGuid()));
-        // The collaborator was not given that property, and an unknown one is the same: one 404, nothing tells them apart.
         await AssertProblemAsync(
             await collaborator.GetAsync($"/api/dashboard/overview?propertyId={world.HiddenId}"), HttpStatusCode.NotFound, "not_found");
         await AssertProblemAsync(await owner.GetAsync($"/api/dashboard/overview?propertyId={Guid.NewGuid()}"), HttpStatusCode.NotFound, "not_found");
@@ -751,8 +697,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
 
         Assert.Equal(HttpStatusCode.Forbidden, (await supplier.GetAsync("/api/dashboard/overview")).StatusCode);
     }
-
-    // --- GET /api/dashboard/today, completed -----------------------------------------------------------------
 
     [Fact]
     public async Task Today_TheInterventionsOfTheDay_TheAlloggiatiOfEachArrival_TheCleaningOfEachDeparture()
@@ -770,7 +714,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var ownerDay = await JsonAsync(await owner.GetAsync("/api/dashboard/today"));
         var collaboratorDay = await JsonAsync(await collaborator.GetAsync("/api/dashboard/today"));
 
-        // The interventions of the day: a list like the others, by time.
         var services = ownerDay.GetProperty("services");
         Assert.True(services.GetProperty("count").GetInt32() >= 3);
         var ids = services.GetProperty("items").EnumerateArray().Select(s => s.GetProperty("id").GetGuid()).ToList();
@@ -783,7 +726,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal("Trullo", item.GetProperty("propertyName").GetString());
         Assert.False(string.IsNullOrWhiteSpace(item.GetProperty("supplierName").GetString()));
         Assert.Matches(@"^\d{4}-\d{2}-\d{2}T", item.GetProperty("scheduledStart").GetString());
-        // The collaborator's day has the interventions of its property only.
         var mine = collaboratorDay.GetProperty("services").GetProperty("items").EnumerateArray().Select(s => s.GetProperty("id").GetGuid()).ToList();
         Assert.Contains(today, mine);
         Assert.DoesNotContain(hiddenToday, mine);
@@ -808,7 +750,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
     [Fact]
     public async Task Today_TheThingsToDoAboutAnIntervention_EachWithItsRequest_ForWhoReachesTheProperty()
     {
-        // No stays around today here: the list of things to do is cut at twenty, and this test is about the three about interventions.
         var world = await NewWorldAsync();
         var supplierOrgId = await SupplierOrgIdAsync(world);
         var proposal = await AddServiceRequestAsync(world, supplierOrgId, world.GrantedId, ServiceRequestStatus.Richiesto, proposal: true);
@@ -829,7 +770,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(amount, confirm.GetProperty("serviceRequestId").GetGuid());
         Assert.Equal(toPay, pay.GetProperty("serviceRequestId").GetGuid());
         Assert.Equal((1, 5, 6), (respond.GetProperty("priority").GetInt32(), confirm.GetProperty("priority").GetInt32(), pay.GetProperty("priority").GetInt32()));
-        // Never a path; what it lacks says why it is there.
         Assert.Contains(respond.GetProperty("missing").EnumerateArray(), m => m.GetProperty("code").GetString() == "proposal_not_answered");
         Assert.Contains(confirm.GetProperty("missing").EnumerateArray(), m => m.GetProperty("code").GetString() == "final_amount_not_confirmed");
         Assert.Contains(pay.GetProperty("missing").EnumerateArray(), m => m.GetProperty("code").GetString() == "service_not_paid");
@@ -838,15 +778,12 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var priorities = ownerTodo.Select(i => i.GetProperty("priority").GetInt32()).ToList();
         Assert.Equal(priorities.Order(), priorities);
 
-        // The collaborator is told about the property it reaches, and nothing of the other.
         var reachable = collaboratorTodo.Where(i => i.GetProperty("serviceRequestId").ValueKind == JsonValueKind.String)
             .Select(i => i.GetProperty("serviceRequestId").GetGuid()).ToList();
         Assert.Contains(proposal, reachable);
         Assert.Contains(amount, reachable);
         Assert.DoesNotContain(toPay, reachable);
     }
-
-    // --- GET /api/bookings/search, counts and the plain list ---------------------------------------------------------
 
     private static readonly string[] Chips = ["all", "toConfirm", "upcoming", "inProgress", "completed", "cancelled"];
 
@@ -865,14 +802,10 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var ownerAfter = await JsonAsync(await owner.GetAsync("/api/bookings/counts"));
         var collaboratorAfter = await JsonAsync(await collaborator.GetAsync("/api/bookings/counts"));
 
-        // Eight stays were added: a request to answer, two to come, three in progress (the one that arrives today, the one in the
-        // house and the one that leaves today), one over and one cancelled.
         var gained = Chips.Select(chip => Count(ownerAfter, chip) - Count(ownerBefore, chip)).ToArray();
         Assert.Equal(new[] { 8, 1, 2, 3, 1, 1 }, gained);
-        // The collaborator: the same but for the upcoming stay of the property it was not given.
         var collaboratorGained = Chips.Select(chip => Count(collaboratorAfter, chip) - Count(collaboratorBefore, chip)).ToArray();
         Assert.Equal(new[] { 7, 1, 1, 3, 1, 1 }, collaboratorGained);
-        // The counter of all and the total of the list say the same.
         var search = await JsonAsync(await owner.GetAsync("/api/bookings/search?pageSize=100"));
         Assert.Equal(Count(ownerAfter, "all"), search.GetProperty("totalCount").GetInt32());
     }
@@ -906,10 +839,8 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Contains(around.LeavesToday, inProgress);
         Assert.Contains(around.Completed, completed);
         Assert.Contains(around.Cancelled, cancelled);
-        // A booking is in one chip at most.
         var all = new[] { toConfirm, upcoming, inProgress, completed, cancelled }.SelectMany(ids => ids).ToList();
         Assert.Equal(all.Count, all.Distinct().Count());
-        // The chips combine with the other filters.
         var airbnbInProgress = await JsonAsync(await owner.GetAsync("/api/bookings/search?view=inProgress&channel=Airbnb"));
         Assert.Equal(around.ArrivesToday, Assert.Single(airbnbInProgress.GetProperty("items").EnumerateArray()).GetProperty("id").GetGuid());
         var airbnbCounts = await JsonAsync(await owner.GetAsync("/api/bookings/counts?channel=Airbnb"));
@@ -931,7 +862,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         var byTotal = await JsonAsync(await owner.GetAsync("/api/bookings/search?sort=total:desc&pageSize=100"));
         var byGuest = await JsonAsync(await owner.GetAsync("/api/bookings/search?sort=guest&pageSize=100"));
 
-        // Arriving in the next week, soonest first: today's, the two upcoming ones; the days are the check-in days.
         var arrivingIds = arriving.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()).ToList();
         var expected = new[] { around.ArrivesToday, around.Upcoming, around.UpcomingHidden };
         Assert.Equal(expected, arrivingIds.Where(expected.Contains));
@@ -940,18 +870,15 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.All(checkIns, day => Assert.InRange(DateOnly.FromDateTime(day), today, today.AddDays(6)));
         Assert.DoesNotContain(around.InHouse, arrivingIds);
         Assert.DoesNotContain(around.Request, arrivingIds);
-        // Entered by the host, from a local source, or from Expedia (NF-78: the portals have a channel of their own, Expedia is asked by name).
         var otherIds = others.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()).ToList();
         Assert.Contains(around.InHouse, otherIds);
         Assert.Contains(around.Cancelled, otherIds);
         Assert.DoesNotContain(around.ArrivesToday, otherIds);
         Assert.DoesNotContain(around.Completed, otherIds);
         Assert.All(others.GetProperty("items").EnumerateArray(), b => Assert.Contains(b.GetProperty("channel").GetString(), new[] { "Manual", "Other", "Expedia" }));
-        // Without the name of the portal, «other» no longer returns the Expedia stay.
         var withoutExpediaIds = withoutExpedia.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()).ToList();
         Assert.Contains(around.InHouse, withoutExpediaIds);
         Assert.DoesNotContain(around.Cancelled, withoutExpediaIds);
-        // The order: the total, biggest first, and the guest by last name.
         var totals = byTotal.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("totalPrice").GetDecimal()).ToList();
         Assert.Equal(totals.OrderByDescending(t => t), totals);
         var lastNames = byGuest.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("guest").GetProperty("lastName").GetString()!.ToLowerInvariant()).ToList();
@@ -982,7 +909,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal("Manual", inHouse.GetProperty("channel").GetString());
         Assert.Equal("None", inHouse.GetProperty("paymentState").GetString());
         Assert.Equal(0m, inHouse.GetProperty("paidAmount").GetDecimal());
-        // Without payment.read the state of the payment is there, the amount is not.
         var same = collaboratorRows[around.ArrivesToday];
         Assert.Equal("Partial", same.GetProperty("paymentState").GetString());
         Assert.Equal(JsonValueKind.Null, same.GetProperty("paidAmount").ValueKind);
@@ -1009,7 +935,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             await owner.GetAsync("/api/bookings/search?arrivalFrom=2026-11-01&arrivalTo=2026-10-01"), HttpStatusCode.BadRequest, "booking_list_invalid_range");
         await AssertProblemAsync(await owner.GetAsync("/api/bookings/counts?channel=Foo"), HttpStatusCode.BadRequest, "booking_list_invalid_channel");
         await AssertProblemAsync(await owner.GetAsync("/api/bookings/counts?status=Done"), HttpStatusCode.BadRequest, "booking_list_invalid_status");
-        // The counters take no chip, order or page: what they do not take the binder ignores.
         Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/bookings/counts?view=upcoming&sort=total&page=3")).StatusCode);
     }
 
@@ -1061,7 +986,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
                 search.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()),
                 plain.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()));
             Assert.Equal(search.GetProperty("totalCount").GetInt32(), plain.GetProperty("totalCount").GetInt32());
-            // The rows of the plain list carry what the rows of the search carry.
             foreach (var row in plain.GetProperty("items").EnumerateArray())
             {
                 Assert.True(row.TryGetProperty("channel", out _));
@@ -1070,14 +994,11 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
             }
         }
 
-        // Narrowed by property and by page, as it always was.
         var mine = await JsonAsync(await collaborator.GetAsync($"/api/bookings?propertyId={world.GrantedId}&pageSize=2&page=2"));
         Assert.Equal((2, 2), (mine.GetProperty("page").GetInt32(), mine.GetProperty("pageSize").GetInt32()));
         Assert.Equal(2, mine.GetProperty("items").GetArrayLength());
         Assert.All(mine.GetProperty("items").EnumerateArray(), b => Assert.Equal(world.GrantedId, b.GetProperty("propertyId").GetGuid()));
     }
-
-    // --- GET /api/payments, a page at a time ---------------------------------------------------------------------
 
     [Fact]
     public async Task Payments_WithoutAPage_TheArrayOfAlways_WithAPage_AnObjectLikeTheBookings()
@@ -1096,15 +1017,12 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.Equal(JsonValueKind.Object, first.ValueKind);
         Assert.Equal((4, 1, 3, 3), (first.GetProperty("totalCount").GetInt32(), first.GetProperty("page").GetInt32(), first.GetProperty("pageSize").GetInt32(), first.GetProperty("items").GetArrayLength()));
         Assert.Equal((4, 2, 3, 1), (second.GetProperty("totalCount").GetInt32(), second.GetProperty("page").GetInt32(), second.GetProperty("pageSize").GetInt32(), second.GetProperty("items").GetArrayLength()));
-        // The two pages are the array, in its order, cut in two.
         Assert.Equal(
             array.EnumerateArray().Select(p => p.GetProperty("id").GetGuid()),
             first.GetProperty("items").EnumerateArray().Concat(second.GetProperty("items").EnumerateArray()).Select(p => p.GetProperty("id").GetGuid()));
-        // A size past the limit is brought to it; a page with no size takes the default.
         Assert.Equal(100, bySize.GetProperty("pageSize").GetInt32());
         Assert.Equal(20, byPage.GetProperty("pageSize").GetInt32());
         Assert.Equal(4, bySize.GetProperty("items").GetArrayLength());
-        // The row of a page is the row of the array.
         Assert.Equal("EUR", first.GetProperty("items")[0].GetProperty("currency").GetString());
     }
 
@@ -1115,7 +1033,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         using var owner = Owner(world);
         using var collaborator = Collaborator(world);
 
-        // payment.read is not a collaborator's permission, a page or not.
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync("/api/payments?page=1&pageSize=3")).StatusCode);
         var ofProperty = await JsonAsync(await owner.GetAsync($"/api/payments?propertyId={world.GrantedId}&page=1&pageSize=1"));
         Assert.Equal(2, ofProperty.GetProperty("totalCount").GetInt32());
@@ -1124,8 +1041,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         await AssertProblemAsync(
             await owner.GetAsync("/api/payments?from=2026-11-01&to=2026-10-01&page=1"), HttpStatusCode.BadRequest, "payment_list_invalid_range");
     }
-
-    // --- The seed data the in-memory fallback lacks ----------------------------------------------------
 
     /// <summary>
     /// On PostgreSQL the migrations seed the contexts, roles and permissions. The in-memory fallback of the host has none (and
@@ -1151,8 +1066,6 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
                 foreach (var row in entityType.GetSeedData())
                 {
                     var entity = Activator.CreateInstance(entityType.ClrType)!;
-                    // Only the columns: a seed row also carries the navigation lists of the model (shared objects), and adding
-                    // them would attach and change the seed of the model itself, which every other host of the process reads.
                     foreach (var (name, value) in row.Where(column => entityType.FindProperty(column.Key) is not null))
                         entityType.ClrType.GetProperty(name)!.SetValue(entity, value);
                     db.Add(entity);

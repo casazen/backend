@@ -22,10 +22,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Reviews;
 
-/// <summary>
-/// A guest's review sends the assistant to work in a job of its own (E05/F06/US01/T03, NF-69, AI-06): only behind the flag and the switch of the organization, for the review of a channel and for the
-/// one of the booking site, once; the job runs only behind the flag, under the org of the event, and <b>only writes the draft</b>: nothing of the path that drafts holds a way to send a reply.
-/// </summary>
 public sealed class ReviewReplyHandlerAndJobTests
 {
     private readonly Mock<IBackgroundJobClient> _jobs = new();
@@ -84,7 +80,6 @@ public sealed class ReviewReplyHandlerAndJobTests
         var review = await h.SyncAsync(h.Granted);
         var foreign = await PublishOtherOrgAsync(h);
 
-        // The organization never switched its assistant on: its reviews are not looked at.
         await HandleAsync(h, Received(h.Granted.OrgId, review.Id));
 
         await SwitchOnAsync(h, h.Granted.OrgId);
@@ -92,7 +87,6 @@ public sealed class ReviewReplyHandlerAndJobTests
         await HandleAsync(h, Received(h.Granted.OrgId, review.Id));
         _flags.Set(FeatureFlags.MessageAssistant, true);
 
-        // Another event, no id, an id that is no review, and the review of another org named by the event of this one.
         await HandleAsync(h, Received(h.Granted.OrgId, review.Id, DomainEventType.BookingConfirmed));
         await HandleAsync(h, Received(h.Granted.OrgId, Guid.Empty));
         await HandleAsync(h, Received(h.Granted.OrgId, Guid.NewGuid()));
@@ -136,7 +130,6 @@ public sealed class ReviewReplyHandlerAndJobTests
         await job.RunAsync(orgId, key.ToString(), CancellationToken.None);
         _flags.Set(FeatureFlags.MessageAssistant, true);
 
-        // The key of a conversation is not the one of a review, and a key that is not one is nothing.
         await job.RunAsync(orgId, MessageThreadKey.ForOta(Guid.NewGuid()).ToString(), CancellationToken.None);
         await job.RunAsync(orgId, "not a key", CancellationToken.None);
 
@@ -148,12 +141,6 @@ public sealed class ReviewReplyHandlerAndJobTests
         Assert.Equal(ReviewReplyDraftJob.Attempts, run.GetCustomAttribute<AutomaticRetryAttribute>()!.Attempts);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (AC-NF69-4). The path that drafts — the handler, the job and the drafter — has no way to send a reply, by structure: none of them names a client of the channel manager,
-    /// the service of the replies of a channel (<see cref="IOtaReviewService"/>, which sends), the service of the replies of the booking site or a call that sends; no parameter of their
-    /// constructors is, or implements, one of them; the drafter reads a review through <see cref="IOtaReviewReader"/>, which has no member that writes. So a reply can only leave through the
-    /// approve action of the queue, after a person approved it.
-    /// </summary>
     [Fact]
     public void TheDraftingPath_HoldsNoWayToSendAReply_OnlyTheApproveActionDoes()
     {
@@ -177,11 +164,9 @@ public sealed class ReviewReplyHandlerAndJobTests
                 Assert.False(code.Contains(forbidden, StringComparison.Ordinal), $"{path} must not hold a way to send a reply: it mentions {forbidden}.");
         }
 
-        // The approve action is the one that does.
         var action = File.ReadAllText(Path.Combine(SolutionRoot(), "Casazen.Infrastructure/Services/ApprovalActions/ReviewReplyApprovalAction.cs"));
         Assert.Contains(".ReplyAsync(", action, StringComparison.Ordinal);
 
-        // The constructors say the same, by type: none takes a client, the service of the replies of a channel or the one of the booking site, nor anything that implements them.
         Type[] senders = [typeof(IOctorateApiClient), typeof(IOtaReviewService), typeof(IHostReviewService)];
         foreach (var type in new[] { typeof(ReviewReplyDraftJob), typeof(ReviewReceivedHandler), typeof(ReviewReplyDrafter) })
         {
@@ -189,7 +174,6 @@ public sealed class ReviewReplyHandlerAndJobTests
             Assert.DoesNotContain(parameters, parameter => senders.Any(sender => sender.IsAssignableFrom(parameter)));
         }
 
-        // The drafter reads a review through the interface that only reads, and that interface can never gain a member that writes.
         var drafterParameters = typeof(ReviewReplyDrafter).GetConstructors().Single().GetParameters().Select(p => p.ParameterType).ToList();
         Assert.Contains(typeof(IOtaReviewReader), drafterParameters);
         Assert.Equal([nameof(IOtaReviewReader.GetAsync)], typeof(IOtaReviewReader).GetMethods().Select(m => m.Name));
@@ -214,7 +198,6 @@ public sealed class ReviewReplyHandlerAndJobTests
             Assert.Single(services, d => d.ServiceType == typeof(IEventHandler<DomainEvent>) && d.ImplementationType == typeof(ReviewReceivedHandler)).Lifetime);
         Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == typeof(ReviewReplyDraftJob)).Lifetime);
 
-        // Of the types of the application, and nothing else: a registration added to the feature is added to this list.
         Assert.Equal(
             [
                 nameof(IApprovalOriginAction),

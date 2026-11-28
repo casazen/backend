@@ -6,7 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.LeaseContracts;
 
-/// <summary>LT-03 (A7-03): a template missing a required section or datum is incomplete and cannot be approved.</summary>
 public sealed class LeaseContractTemplateCatalogTests : IDisposable
 {
     private readonly LeaseTemplateTestFiles _files = new();

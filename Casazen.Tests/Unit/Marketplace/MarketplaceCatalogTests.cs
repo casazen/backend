@@ -29,7 +29,7 @@ public class MarketplaceCatalogTests
     {
         await using var db = NewDb();
         var starterInItaly = await AddOrgAsync(db, PlanTier.Starter, "IT");
-        var proInSwitzerland = await AddOrgAsync(db, PlanTier.Pro, "ch"); // the country is compared without regard to case
+        var proInSwitzerland = await AddOrgAsync(db, PlanTier.Pro, "ch");
         var proWithoutCountry = await AddOrgAsync(db, PlanTier.Pro, null);
 
         var partners = new[]
@@ -43,7 +43,6 @@ public class MarketplaceCatalogTests
         await db.SaveChangesAsync();
         var service = NewService(db);
 
-        // Every org gets the five groups in the order of the page, and the Partners group holds only the partners its plan and country allow.
         Assert.Equal(new[] { "italy-only", "open" }, await PartnerCodesAsync(service, starterInItaly));
         Assert.Equal(new[] { "open", "pro-in-switzerland", "pro-only" }, await PartnerCodesAsync(service, proInSwitzerland));
 
@@ -53,7 +52,6 @@ public class MarketplaceCatalogTests
         var catalog = await service.GetCatalogAsync(starterInItaly, new HostScope(starterInItaly), null, "it");
         Assert.Equal(MarketplaceGroupIds.InOrder, catalog.Groups.Select(group => group.Id).ToList());
 
-        // The pure rule says the same, and a hidden partner is hidden for everybody.
         var proOnly = partners.Single(p => p.Code == "pro-only");
         Assert.False(MarketplaceVisibility.IsVisible(proOnly, PlanTier.Starter, "IT"));
         Assert.True(MarketplaceVisibility.IsVisible(proOnly, PlanTier.Pro, null));
@@ -78,14 +76,12 @@ public class MarketplaceCatalogTests
         AddPortal(db, "portal-one");
         AddPartner(db, "partner-one");
 
-        // Org B activated a channel for its property, a partner it declared, and a function of the license. Org A activated nothing.
         AddActivation(db, orgB, propertyB, MarketplaceActivationKind.Channel, "portal-one", MarketplaceActivationStatus.Active);
         AddActivation(db, orgB, null, MarketplaceActivationKind.Partner, "partner-one", MarketplaceActivationStatus.Active, declared: true);
         AddActivation(db, orgB, null, MarketplaceActivationKind.LicensedFunction, "chat", MarketplaceActivationStatus.Active);
         await db.SaveChangesAsync();
         var service = NewService(db);
 
-        // Org A sees every card as Not active, counts none, and its Active tab holds no integration.
         var asA = await service.GetCatalogAsync(orgA, new HostScope(orgA), null, "it");
         var cardsOfA = asA.Groups.SelectMany(group => group.Entries).ToList();
         Assert.Contains(cardsOfA, card => card.Code == "portal-one");
@@ -98,7 +94,6 @@ public class MarketplaceCatalogTests
         });
         Assert.Empty((await service.GetActiveAsync(orgA, new HostScope(orgA), null)).Integrations);
 
-        // The control: org B reads its own rows, so the check above is not an empty test.
         var asB = await service.GetCatalogAsync(orgB, new HostScope(orgB), null, "it");
         var cardsOfB = asB.Groups.SelectMany(group => group.Entries).ToList();
         var channelOfB = Assert.Single(cardsOfB, card => card.Code == "portal-one");
@@ -110,7 +105,6 @@ public class MarketplaceCatalogTests
         Assert.Equal(3, integrationsOfB.Count);
         Assert.True(Assert.Single(integrationsOfB, integration => integration.Kind == MarketplaceActivationKind.Partner).IsDeclared);
 
-        // Org A cannot reach org B's property by naming it, and a scope of another org is refused before anything is read.
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetCatalogAsync(orgA, new HostScope(orgA), propertyB, "it"));
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetActiveAsync(orgA, new HostScope(orgA), propertyB));
         await Assert.ThrowsAsync<ArgumentException>(() => service.GetCatalogAsync(orgA, new HostScope(orgB), null, "it"));
@@ -137,7 +131,6 @@ public class MarketplaceCatalogTests
             new[] { ("142", true), ("235", false), ("274", false), ("900", false), ("901", false) },
             entries.Select(entry => (entry.Code, entry.ConnectByPropertyId)).OrderBy(pair => pair.Code, StringComparer.Ordinal).ToArray());
 
-        // The API names it connectByPropertyId.
         var json = JsonSerializer.Serialize(
             MarketplaceCatalogEntryDto.From(entries.Single(entry => entry.Code == "142")),
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -162,7 +155,6 @@ public class MarketplaceCatalogTests
         var host = new Mock<IHostEnvironment>();
         host.SetupGet(h => h.EnvironmentName).Returns("Staging");
 
-        // The Octorate connector is off, so the portals and the license functions answer and say they cannot be activated yet.
         return new MarketplaceCatalogService(
             db, suppliers.Object, Mock.Of<IFeatureFlags>(), Mock.Of<IFileStorage>(), new ResxMarketplaceTexts(), host.Object);
     }

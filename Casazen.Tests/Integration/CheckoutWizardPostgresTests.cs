@@ -26,7 +26,6 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
 {
     private const string HostRole = "PropertyOwner";
 
-    /// <summary>12:00 in Rome on 24/09/2026.</summary>
     private static readonly DateTimeOffset Now = new(2026, 9, 24, 10, 0, 0, TimeSpan.Zero);
 
     private static readonly DateTime Today = new(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
@@ -81,7 +80,6 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        // The request of step 3, tied to the stay (SU-07) and sent to the chosen supplier.
         var request = await db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.BookingId == bookingId);
         Assert.Equal(supplierOrgId, request.SupplierOrgId);
         Assert.Equal(property.Id, request.PropertyId);
@@ -133,7 +131,6 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
         Assert.Equal(JsonValueKind.Null, body.GetProperty("serviceRequestId").ValueKind);
         Assert.Equal("Skip", body.GetProperty("wizard").GetProperty("cleaning").GetProperty("choice").GetString());
 
-        // "Check-out completato ma property non pronta": a turnover of the cockpit, with the action to close it.
         var turnover = Assert.Single(
             turnoverBefore.GetProperty("turnoversPending").GetProperty("items").EnumerateArray(),
             i => i.GetProperty("id").GetGuid() == bookingId);
@@ -289,7 +286,6 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
     private static IEnumerable<Guid> ItemIds(JsonElement summary, string section) =>
         summary.GetProperty(section).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
 
-    /// <summary>A host with its org and an active property in Rome.</summary>
     private async Task<(string HostId, Property Property)> SeedHostPropertyAsync()
     {
         var hostId = $"auth0|co17-{Guid.NewGuid():N}";
@@ -297,7 +293,6 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
         return (hostId, property);
     }
 
-    /// <summary>A checked-in stay of <paramref name="property"/> departing today, entered by the host.</summary>
     private async Task<Guid> SeedStayAsync(Property property, decimal touristTax = 0m)
     {
         using var scope = _factory.Services.CreateScope();
@@ -332,7 +327,6 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
         return booking.Id;
     }
 
-    /// <summary>An active cleaning supplier working in <paramref name="comune"/>.</summary>
     private async Task<Guid> SeedSupplierAsync(string comune)
     {
         using var scope = _factory.Services.CreateScope();
@@ -367,7 +361,6 @@ public class CheckoutWizardPostgresTests : IClassFixture<CheckoutWizardPostgresT
         return await db.Bookings.IgnoreQueryFilters().AsNoTracking().SingleAsync(b => b.Id == bookingId);
     }
 
-    /// <summary>The app with its clock fixed at <see cref="Now"/> (FD-06): "today" never depends on when the tests run.</summary>
     public sealed class Factory : CasazenWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)

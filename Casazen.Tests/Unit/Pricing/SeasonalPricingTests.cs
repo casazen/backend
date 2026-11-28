@@ -3,7 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Pricing;
 
-/// <summary>PC-15 (D4, A2-14, A2-34): official Italian holidays, seasonal rules on the real price, date-based schedule.</summary>
 public class ItalianPublicHolidaysTests
 {
     [Theory]
@@ -11,8 +10,8 @@ public class ItalianPublicHolidaysTests
     [InlineData(2025, 4, 20)]
     [InlineData(2026, 4, 5)]
     [InlineData(2027, 3, 28)]
-    [InlineData(2038, 4, 25)] // latest possible date
-    [InlineData(2285, 3, 22)] // earliest possible date
+    [InlineData(2038, 4, 25)]
+    [InlineData(2285, 3, 22)]
     public void EasterSunday_Year_IsTheGregorianEaster(int year, int month, int day)
     {
         Assert.Equal(new DateOnly(year, month, day), ItalianPublicHolidays.EasterSunday(year));
@@ -56,14 +55,13 @@ public class ItalianPublicHolidaysTests
     [Fact]
     public void On_FourthOctoberBefore2026_IsNotAHoliday()
     {
-        // Legge 151/2025: national holiday from 2026 only.
         Assert.Null(ItalianPublicHolidays.On(new DateOnly(2025, 10, 4)));
         Assert.Equal(12, ItalianPublicHolidays.ForYear(2025).Count);
     }
 
     [Theory]
-    [InlineData(2026, 3, 19)] // San Giuseppe: not a national holiday
-    [InlineData(2026, 6, 29)] // Santi Pietro e Paolo: patron of Rome only
+    [InlineData(2026, 3, 19)]
+    [InlineData(2026, 6, 29)]
     [InlineData(2026, 12, 24)]
     [InlineData(2026, 7, 15)]
     public void On_OrdinaryOrLocalDay_IsNull(int year, int month, int day)
@@ -94,7 +92,7 @@ public class SeasonalPriceCalculatorTests
     {
         var day = SeasonalPriceCalculator.Suggest(new DateOnly(2026, 8, 15), 180m, Example);
 
-        Assert.Equal(270m, day.SuggestedPrice); // 180 x 1.50, not 180 x 1.50 x 1.30
+        Assert.Equal(270m, day.SuggestedPrice);
         Assert.Equal(SeasonalPriceRule.Holiday, day.Rule);
         Assert.Equal(ItalianHoliday.Assumption, day.Holiday);
     }
@@ -151,7 +149,7 @@ public class SeasonalPriceCalculatorTests
     {
         var day = SeasonalPriceCalculator.Suggest(new DateOnly(2026, 7, 14), 99.99m, Example);
 
-        Assert.Equal(129.99m, day.SuggestedPrice); // 129.987 -> 129.99
+        Assert.Equal(129.99m, day.SuggestedPrice);
     }
 
     [Fact]
@@ -180,7 +178,6 @@ public class SeasonalSuggestionScheduleTests
     [Fact]
     public void IsDue_DailyRunEarlierInTheDayThanYesterday_IsDue()
     {
-        // Yesterday's run at 02:00:05Z, today's job fires at 01:59:58Z: by instants less than a day, by dates due.
         var last = new DateTime(2026, 9, 23, 2, 0, 5, DateTimeKind.Utc);
 
         Assert.True(SeasonalSuggestionSchedule.IsDue("daily", last, Today));
@@ -210,7 +207,6 @@ public class SeasonalSuggestionScheduleTests
     [Fact]
     public void NextRunOn_LateEveningUtc_UsesTheRomeDate()
     {
-        // 23:30Z on the 23rd is already the 24th in Rome (CEST).
         var last = new DateTime(2026, 9, 23, 23, 30, 0, DateTimeKind.Utc);
 
         Assert.Equal(new DateOnly(2026, 9, 25), SeasonalSuggestionSchedule.NextRunOn("daily", last));

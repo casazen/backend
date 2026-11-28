@@ -14,11 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// <c>GET api/compliance/summary</c> with the traffic light (E03/F02/US01/T03, NF-52): the light, the reason, the period, the evidence and the
-/// handoff topic reach the client, the new sections are named, and everything an older client reads is still there under the same names
-/// (the contract is add-only).
-/// </summary>
 public class ComplianceSummaryMappingTests
 {
     private static readonly Guid OrgId = Guid.Parse("6d5c4b3a-2918-4f7e-8d6c-5b4a39281702");
@@ -97,7 +92,6 @@ public class ComplianceSummaryMappingTests
         var ok = Assert.IsType<OkObjectResult>((await controller.GetSummary(CancellationToken.None)).Result);
         var dto = Assert.IsType<ComplianceSummaryDto>(ok.Value);
 
-        // The fields of the item that an older client reads are the same, under the same names.
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(dto, Json));
         var root = document.RootElement;
         string[] older = ["propertiesPending", "guestCheckInsIncomplete", "checkoutsDue", "alloggiatiFailures", "alloggiatiManualRequired", "turnoversPending"];
@@ -113,7 +107,6 @@ public class ComplianceSummaryMappingTests
         Assert.Equal(dueAt, first.GetProperty("dueAt").GetDateTime());
         Assert.True(first.TryGetProperty("propertyId", out _) && first.TryGetProperty("missing", out _));
 
-        // The new members: the light and the reason on an item of the older sections too.
         Assert.Equal(("Red", ComplianceReasonCodes.DeadlineOverdue, "Missing"),
             (first.GetProperty("light").GetString(), first.GetProperty("reason").GetString(), first.GetProperty("evidenceClass").GetString()));
         Assert.Equal(JsonValueKind.Null, first.GetProperty("period").ValueKind);
@@ -133,7 +126,6 @@ public class ComplianceSummaryMappingTests
         Assert.Equal(verifiedAt, tax.GetProperty("lastVerifiedAt").GetDateTime());
         Assert.Equal(0, root.GetProperty("periodItems").GetProperty("count").GetInt32());
 
-        // E31/F02/US01/T01: the arrival days of the other cantons to notify to the cantonal authority, a section of their own: the property is the target, the day is the period, the deadline of the regime is dueAt.
         Assert.Equal(1, root.GetProperty("swissNotifications").GetProperty("count").GetInt32());
         var notification = root.GetProperty("swissNotifications").GetProperty("items")[0];
         Assert.Equal(("NotifyGuestsAuthority", "Casa Rosa", "2026-11-19"), (notification.GetProperty("action").GetString(), notification.GetProperty("label").GetString(), notification.GetProperty("period").GetString()));

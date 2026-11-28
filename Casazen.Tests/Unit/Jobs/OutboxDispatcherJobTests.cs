@@ -111,10 +111,6 @@ public class OutboxDispatcherJobTests
         Assert.All(await RowsAsync(), r => Assert.NotNull(r.DispatchedAt));
     }
 
-    /// <summary>
-    /// The dispatcher reads every org as a system job, and the in-process bus gives each handler the org of its event, in the event
-    /// and in the tenant of its own scope (ADR-022-R6).
-    /// </summary>
     [Fact]
     public async Task ExecuteAsync_WithTheInProcessBus_EachHandlerRunsUnderTheOrgOfItsEvent()
     {

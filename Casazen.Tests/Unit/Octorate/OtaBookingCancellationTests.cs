@@ -16,10 +16,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
-/// <summary>
-/// The cancellation of a booking that came from a channel (E08/F02/US02/T02, D8, NF-76): Octorate first, CasaZen after. The booking is cancelled
-/// only when Octorate confirmed the cancellation of its reservation; whatever stops the request before that leaves it exactly as it was.
-/// </summary>
 public class OtaBookingCancellationTests
 {
     private static readonly Guid OrgA = OctorateSyncHarness.OrgA;
@@ -49,13 +45,11 @@ public class OtaBookingCancellationTests
                 It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
-                // Octorate is asked while the booking is still as it was in the database.
                 seenDuringTheCall.Add((await h.ReadBookingAsync(bookingId)).Status);
                 if (answers.Dequeue() is { } error)
                     throw error;
             });
 
-        // Octorate refuses: 422, and the booking is untouched.
         await using (var db = h.NewDb(tenant))
         {
             var refused = await Assert.ThrowsAsync<DomainRuleException>(
@@ -67,7 +61,6 @@ public class OtaBookingCancellationTests
 
         await AssertUntouchedAsync(h, bookingId, before);
 
-        // Octorate does not answer: 503, and the booking is untouched.
         await using (var db = h.NewDb(tenant))
         {
             var unreachable = await Assert.ThrowsAsync<OtaCancellationUnavailableException>(
@@ -78,7 +71,6 @@ public class OtaBookingCancellationTests
 
         await AssertUntouchedAsync(h, bookingId, before);
 
-        // Octorate confirms: the booking is cancelled, with the reason of the host as its note.
         await using (var db = h.NewDb(tenant))
         {
             var cancelled = await Service(h, db, tenant, Open(BookingSource.Airbnb)).CancelAsync(bookingId, "  Ospite non arrivato  ", CancellationToken.None);
@@ -92,10 +84,8 @@ public class OtaBookingCancellationTests
         Assert.Null(stored.CancellationReason);
         Assert.Equal("7001", stored.OctorateReservationId);
 
-        // Asked first, every time: the booking was confirmed in the database while Octorate was being asked.
         Assert.Equal([BookingStatus.Confirmed, BookingStatus.Confirmed, BookingStatus.Confirmed], seenDuringTheCall);
 
-        // One event, a change that came from the channel manager: nothing is pushed back to it.
         var events = await EventsAsync(h, bookingId);
         var recorded = Assert.Single(events);
         Assert.Equal(DomainEventType.BookingCancelled, recorded.EventType);
@@ -115,7 +105,6 @@ public class OtaBookingCancellationTests
 
         await using (var db = h.NewDb(tenant))
         {
-            // The configuration opens Expedia only: an Airbnb booking is closed, and so is the default of no entry at all.
             foreach (var policy in new[] { OtaChannelActionPolicy.Closed, Open(BookingSource.Expedia) })
             {
                 var refused = await Assert.ThrowsAsync<DomainRuleException>(
@@ -137,7 +126,6 @@ public class OtaBookingCancellationTests
         var mirrored = await SeedChannelBookingAsync(h);
         var tenant = new RequestTenant(OrgA);
 
-        // A property of the org that has no confirmed mapping: nothing is ever written to Octorate for it.
         Guid unmappedProperty;
         await using (var seed = h.NewDb())
         {
@@ -215,7 +203,6 @@ public class OtaBookingCancellationTests
         var bookingId = await SeedChannelBookingAsync(h);
         var manual = await h.SeedBookingAsync(bookingCode: "N7Q2M9X4TB");
 
-        // Another org does not see the booking: 404, and Octorate is not asked.
         var tenantB = new RequestTenant(OrgB);
         await using (var other = h.NewDb(tenantB))
         {
@@ -226,7 +213,6 @@ public class OtaBookingCancellationTests
         var tenant = new RequestTenant(OrgA);
         await using (var db = h.NewDb(tenant))
         {
-            // A booking CasaZen holds is cancelled the other way round: this service is not for it.
             await Assert.ThrowsAsync<InvalidOperationException>(
                 () => Service(h, db, tenant, Open(BookingSource.Airbnb)).CancelAsync(manual, null, CancellationToken.None));
         }
@@ -274,7 +260,6 @@ public class OtaBookingCancellationTests
         return flags.Object;
     }
 
-    /// <summary>The configuration opens the cancellation of one channel.</summary>
     private static OtaChannelActionPolicy Open(BookingSource source)
     {
         var entry = new OctorateChannelActionOptions { CanCancel = true };
@@ -294,7 +279,6 @@ public class OtaBookingCancellationTests
         return new OtaChannelActionPolicy(options);
     }
 
-    /// <summary>A confirmed Airbnb booking of the org that has its reservation on Octorate.</summary>
     private static async Task<Guid> SeedChannelBookingAsync(
         OctorateSyncHarness h,
         Guid? propertyId = null,

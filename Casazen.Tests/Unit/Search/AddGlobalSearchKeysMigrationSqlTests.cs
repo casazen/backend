@@ -71,7 +71,6 @@ public class AddGlobalSearchKeysMigrationSqlTests
         foreach (var (entityType, _, keySql, _) in SearchKeyModel.Keys)
         {
             var entity = model.FindEntityType(entityType)!;
-            // Only the part before the translate lists names columns: the folded expression of the SQL has no other quoted identifier.
             var named = columns.Matches(keySql).Select(match => match.Groups[1].Value).Distinct().ToList();
 
             Assert.NotEmpty(named);
@@ -79,9 +78,6 @@ public class AddGlobalSearchKeysMigrationSqlTests
         }
     }
 
-    // ─── The query repeats the expression of the index ──────────────────────────────────────────────────
-
-    /// <summary>The full-text expression of a statement, without the alias of the table and with the case of the keywords flattened.</summary>
     private static string Expression(string sql) =>
         Regex.Replace(sql, @"\b[a-z][a-z0-9]*\.""SearchKey""", "\"SearchKey\"", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
             .ToLowerInvariant();
@@ -103,7 +99,6 @@ public class AddGlobalSearchKeysMigrationSqlTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(
             () => new GlobalSearchService(db, NullLogger<GlobalSearchService>.Instance).SearchAsync(request));
 
-        // properties, bookings by guest, guests, leases (tenants), host requests, suppliers, the inbox of the supplier
         var withText = statements.Where(statement => statement.Contains("to_tsvector", StringComparison.OrdinalIgnoreCase)).ToList();
         Assert.True(withText.Count >= 7, $"{withText.Count} statements with a full-text predicate");
         foreach (var statement in withText)
@@ -127,7 +122,6 @@ public class AddGlobalSearchKeysMigrationSqlTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(
             () => new GlobalSearchService(db, NullLogger<GlobalSearchService>.Instance).SearchAsync(request));
 
-        // A LIKE on the stored column, with the pattern as a parameter: an index range for the planner (varchar_pattern_ops).
         Assert.Contains(statements, statement => statement.Contains("b.\"BookingCode\" LIKE @pattern", StringComparison.Ordinal));
     }
 }

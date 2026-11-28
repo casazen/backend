@@ -28,10 +28,7 @@ public class HostBookingEditSettlementTests
     private const string Account = "acct_host";
     private static readonly Guid OrgId = Guid.Parse("7c1f0a52-3b7e-4c11-9d2a-5e8b7c6d4a21");
 
-    /// <summary>2026-11-06 09:00 in Rome: the stays below are in December.</summary>
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero));
-
-    // --- The rules, pure -------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void Plan_SameTotalAsPaid_MovesNothing()
@@ -50,7 +47,6 @@ public class HostBookingEditSettlementTests
         var newest = Guid.NewGuid();
         var oldest = Guid.NewGuid();
 
-        // Paid 500 in two payments (the newest 120, of which 100 can still go back; the oldest 380). The new price is 300: 200 are due back.
         var plan = BookingEditSettlementRules.Plan(
             300m,
             500m,
@@ -63,7 +59,6 @@ public class HostBookingEditSettlementTests
         Assert.Equal(0m, plan.OfflineRefundDue);
         Assert.Equal([new BookingRefundPart(newest, 100m), new BookingRefundPart(oldest, 100m)], plan.Refunds);
 
-        // What the Stripe payments can no longer return is for the host to give back: 200 due, only 150 refundable online.
         var partly = BookingEditSettlementRules.Plan(300m, 500m, [new BookingRefundableShare(oldest, 150m)], collectsOnline: true, hasSavedCard: false);
         Assert.Equal(BookingSettlementAction.Refund, partly.Action);
         Assert.Equal(150m, partly.Amount);
@@ -97,7 +92,6 @@ public class HostBookingEditSettlementTests
     [Fact]
     public void Plan_AmountsAreToTheCent()
     {
-        // Half away from zero, as every amount of CasaZen: 100.005 is 100.01, and 100.004 is 100.00.
         Assert.Equal(100.01m, BookingEditSettlementRules.Plan(100.005m, 0m, [], collectsOnline: true, hasSavedCard: false).Amount);
         Assert.Equal(100m, BookingEditSettlementRules.Plan(100.004m, 0m, [], collectsOnline: true, hasSavedCard: false).Amount);
     }
@@ -115,8 +109,6 @@ public class HostBookingEditSettlementTests
         Assert.NotEqual(BookingEditSettlementRules.RefundKey(booking, at, payment), BookingEditSettlementRules.RefundKey(booking, at.AddSeconds(1), payment));
         Assert.NotEqual(BookingEditSettlementRules.ChargeKey(booking, at, 80m), BookingEditSettlementRules.ChargeKey(booking, at, 81m));
     }
-
-    // --- The proofs ------------------------------------------------------------------------------------------------------------
 
     /// <summary>
     /// PROOF TEST: money rule (NF-75, AC-NF75-3). A confirmed booking of the booking site paid 400 on Stripe is edited to a price of 300: exactly the
@@ -144,7 +136,6 @@ public class HostBookingEditSettlementTests
             Assert.Equal(300m, result.Booking.TotalPrice);
         }
 
-        // Exactly the difference, once, on the payment that was paid, with the key of this edit.
         var refund = Assert.Single(requests);
         Assert.Equal(10_000, refund.AmountCents);
         Assert.Equal("pi_1", refund.PaymentIntentId);
@@ -162,14 +153,12 @@ public class HostBookingEditSettlementTests
         Assert.Equal(100m, payment.RefundedAmount);
         Assert.Equal(PaymentStatus.PartiallyRefunded, payment.Status);
 
-        // The same request again: the price is paid, nothing moves.
         await using (var db = h.NewDb())
         {
             var again = await h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None);
             Assert.Equal(BookingSettlementAction.None, again.Settlement.Action);
         }
 
-        // The refund of the same key asked once more (a request retried after an answer was lost): the refund that exists, not a second one.
         await using (var db = h.NewDb())
         {
             var refunds = new PaymentRefundService(db, h.Stripe.Object, Mock.Of<IPaymentRefundRetryScheduler>(), h.Emails.Object, NullLogger<PaymentRefundService>.Instance, Clock);
@@ -215,8 +204,6 @@ public class HostBookingEditSettlementTests
         Assert.Equal(PaymentStatus.Completed, payment.Status);
         Assert.DoesNotContain(await h.ReadRefundsAsync(), r => r.Status is PaymentRefundStatus.Succeeded or PaymentRefundStatus.Pending);
     }
-
-    // --- The other ways the money follows the price ----------------------------------------------------------------------------
 
     [Fact]
     public async Task HostBookingEdit_PriceIncrease_ChargesTheSavedCardForTheDifference_AndRecordsThePayment()
@@ -280,7 +267,6 @@ public class HostBookingEditSettlementTests
             Assert.Equal(80m, result.Settlement.Amount);
         }
 
-        // The link is for the balance of the booking as the edit left it, never of the old one.
         Assert.Equal(386m, totalWhenTheLinkWasMade);
         h.Stripe.VerifyNoOtherCalls();
     }
@@ -308,7 +294,6 @@ public class HostBookingEditSettlementTests
         {
             var result = await h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 3), CancellationToken.None);
 
-            // The deadline charge takes the new total: nothing is charged now, and the card is not touched.
             Assert.Equal(BookingSettlementAction.None, result.Settlement.Action);
             Assert.Equal(380m, result.Booking.TotalPrice);
         }
@@ -409,7 +394,6 @@ public class HostBookingEditSettlementTests
         Assert.Equal((400m, 300m, 400m, -100m), (quote.PreviousTotal, quote.NewTotal, quote.PaidSoFar, quote.Difference));
         Assert.Equal((BookingSettlementAction.Refund, 100m, 0m, "EUR"), (quote.Action, quote.Amount, quote.OfflineRefundDue, quote.Currency));
 
-        // Nothing was refunded, saved or sent.
         h.Stripe.VerifyNoOtherCalls();
         var stored = await h.ReadBookingAsync(bookingId);
         Assert.Equal((before.TotalPrice, before.NumberOfGuests, before.UpdatedAt), (stored.TotalPrice, stored.NumberOfGuests, stored.UpdatedAt));
@@ -487,8 +471,6 @@ public class HostBookingEditSettlementTests
         Assert.Single(refunds);
     }
 
-    // --- The fixes after the review --------------------------------------------------------------------------------------------
-
     /// <summary>
     /// PROOF TEST: permission rule (E08/F02/US01/T01). An edit whose plan moves money (here a refund) is refused 403 for a caller who may not handle the
     /// money of the booking (<c>payment.write</c>): before any call to Stripe and any write, the booking is exactly as it was. An edit that moves none (the
@@ -516,7 +498,6 @@ public class HostBookingEditSettlementTests
         Assert.Empty(await h.ReadRefundsAsync());
         Assert.Equal(0m, (await h.ReadPaymentAsync(paymentId)).RefundedAmount);
 
-        // The notes move no money: the same caller changes them.
         await using var notesDb = h.NewDb();
         var notes = await h.Service(notesDb).UpdateAsync(
             h.GuestsEdit(bookingId, guests: 2, notes: "Arrivo alle 22", canMoveMoney: false), CancellationToken.None);
@@ -573,7 +554,6 @@ public class HostBookingEditSettlementTests
         Assert.Equal(PaymentStatus.Failed, (await h.ReadPaymentAsync(paymentId)).Status);
         h.Stripe.VerifyNoOtherCalls();
 
-        // The price does not change (the notes): nothing waits for the payment.
         await using var notesDb = h.NewDb();
         var notes = await h.Service(notesDb).UpdateAsync(h.GuestsEdit(bookingId, guests: 2, notes: "Arrivo alle 22"), CancellationToken.None);
         Assert.Equal("Arrivo alle 22", notes.Booking.SpecialRequests);
@@ -619,7 +599,6 @@ public class HostBookingEditSettlementTests
         Assert.Empty(await h.ReadRefundsAsync());
         Assert.Equal(0m, (await h.ReadPaymentAsync(paymentId)).RefundedAmount);
 
-        // The tax is worked out (here to nothing: every guest exempt): the price drops by it and exactly that is refunded.
         var requests = h.AllowRefunds();
         h.PriceOf(400m);
         await using var okDb = h.NewDb();
@@ -653,7 +632,6 @@ public class HostBookingEditSettlementTests
 
         h.Stripe.VerifyNoOtherCalls();
 
-        // CasaZen made it and pushed it: it has its row, and the edit goes on (the money follows the price).
         var booking = await h.ReadBookingAsync(bookingId);
         await using (var db = h.NewDb())
         {
@@ -676,10 +654,6 @@ public class HostBookingEditSettlementTests
         Assert.Equal(BookingSettlementAction.Refund, result.Settlement.Action);
     }
 
-    /// <summary>
-    /// The guest is told once: the email of the edit after the commit. The refund Stripe confirmed at once sends no "refund confirmed" of its own (its
-    /// notification is claimed, so no other path sends it later either).
-    /// </summary>
     [Fact]
     public async Task HostBookingEdit_Refund_TellsTheGuestOnce_WithNoRefundConfirmedOfItsOwn()
     {
@@ -701,8 +675,6 @@ public class HostBookingEditSettlementTests
         Assert.Equal(PaymentRefundStatus.Succeeded, refund.Status);
         Assert.NotNull(refund.GuestNotifiedAt);
     }
-
-    // --- The words -------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void GuestBookingModified_SaysTheNewStayAndTheMoney_AndNeverTheNotesOfTheHost()
@@ -736,9 +708,6 @@ public class HostBookingEditSettlementTests
         Assert.Contains("payment link", english.HtmlBody, StringComparison.Ordinal);
     }
 
-    // --- The harness -----------------------------------------------------------------------------------------------------------
-
-    /// <summary>The tenant of an authenticated request of an org that is not the booking's.</summary>
     private sealed class OtherOrgTenant : Core.Multitenancy.ITenantContext
     {
         public Guid? OrgId { get; } = Guid.Parse("11111111-2222-4333-8444-555555555555");
@@ -785,7 +754,6 @@ public class HostBookingEditSettlementTests
                 notifier: notifier);
         }
 
-        /// <summary>The refunds the test lets Stripe make: each succeeds at once and is recorded.</summary>
         public List<StripeRefundCreateRequest> AllowRefunds()
         {
             var requests = new List<StripeRefundCreateRequest>();
@@ -799,7 +767,6 @@ public class HostBookingEditSettlementTests
             return requests;
         }
 
-        /// <summary>The price the edit comes to, whatever the stay: <paramref name="total"/> without tourist tax (or the tax <paramref name="taxStatus"/> says it cannot be worked out).</summary>
         public void PriceOf(decimal total, TouristTaxQuoteStatus taxStatus = TouristTaxQuoteStatus.Calculated) =>
             Pricing
                 .Setup(p => p.PriceHostStayAsync(
@@ -852,7 +819,6 @@ public class HostBookingEditSettlementTests
             UpdatedAt = Clock.GetUtcNow().UtcDateTime.AddDays(-3),
         };
 
-        /// <summary>A confirmed booking of the booking site, 10 to 13 December 2026, 2 guests, 400 in all (no tourist tax).</summary>
         public async Task<(Guid BookingId, Guid PaymentId)> SeedAsync(Payment[]? payments = null, Action<Booking>? configure = null)
         {
             await using var db = NewDb();

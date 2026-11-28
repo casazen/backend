@@ -21,8 +21,6 @@ public class ShowcaseBookingManagerCancelTests
 {
     private const string SupplierEmail = "supplier@test.com";
 
-    // ─── Cancel ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Cancel_ANewRequest_IsCancelledByTheCustomer_FreesTheSlot_AndTellsBothParties()
     {
@@ -48,10 +46,8 @@ public class ShowcaseBookingManagerCancelTests
         Assert.Equal("Cambio programma", saved.CancellationReason);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, saved.CancelledAt);
         Assert.Null(saved.ResponseDueAt);
-        // The time it took is free again, for anybody.
         Assert.Contains(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync());
 
-        // The supplier is told: e-mail and push, in Italian, with the comune and "Nome C." only.
         var toSupplier = Assert.Single(s.Emails.Snapshot(), e => e.To == SupplierEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingCancelledByCustomer, toSupplier.Template);
         Assert.Equal("Richiesta annullata dal cliente — Monza", toSupplier.Content.Subject);
@@ -62,7 +58,6 @@ public class ShowcaseBookingManagerCancelTests
         var everything = toSupplier.Content.Subject + toSupplier.Content.HtmlBody;
         foreach (var secret in new[] { "Rossi", ShowcaseScenario.CustomerEmail, "3331234567", ShowcaseScenario.Address, ShowcaseScenario.Floor })
             Assert.DoesNotContain(secret, everything);
-        // Nothing was agreed: a new request cancelled is not "short notice".
         Assert.DoesNotContain("preavviso", toSupplier.Content.HtmlBody);
 
         var push = Assert.Single(s.Pushes);
@@ -73,7 +68,6 @@ public class ShowcaseBookingManagerCancelTests
         Assert.Equal(request.Id, push.Payload.ServiceRequestId);
         Assert.Equal(PushDeliveryKeys.ServiceRequestStatus(request.Id, ServiceRequestStatus.Annullato), push.DeliveryKey);
 
-        // The customer gets the receipt.
         var receipt = Assert.Single(s.Emails.Snapshot(), e => e.To == ShowcaseScenario.CustomerEmail);
         Assert.Equal(EmailTemplates.Names.SupplierBookingCancellationReceipt, receipt.Template);
         Assert.Equal("Hai annullato la richiesta a Supplier Srl", receipt.Content.Subject);
@@ -109,7 +103,6 @@ public class ShowcaseBookingManagerCancelTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        // Friday 10:00 is 22 hours away: less than the 24 of the free cancellation.
         var (request, credentials) = await s.BookedForManagementAsync(ServiceRequestScenario.FridayAt10);
         await s.TakeAsSupplierAsync(request.Id);
         s.ForgetNotifications();
@@ -129,7 +122,6 @@ public class ShowcaseBookingManagerCancelTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        // Saturday 09:00 is 45 hours away.
         var (request, credentials) = await s.BookedForManagementAsync(ServiceRequestScenario.SaturdayAt09);
         await s.TakeAsSupplierAsync(request.Id);
         s.ForgetNotifications();
@@ -205,7 +197,6 @@ public class ShowcaseBookingManagerCancelTests
 
         var second = await s.Kit.Manager.CancelAsync(credentials, "Un altro motivo");
 
-        // The same booking (the views hold lists, so they are compared as they are written).
         Assert.Equal(System.Text.Json.JsonSerializer.Serialize(first), System.Text.Json.JsonSerializer.Serialize(second));
         var again = await s.ReadAsync(request.Id);
         Assert.Equal("Cambio programma", again.CancellationReason);
@@ -285,7 +276,6 @@ public class ShowcaseBookingManagerCancelTests
 
         Assert.Empty(s.Emails.Snapshot());
         Assert.Empty(s.Pushes);
-        // The supplier's own cancellation is still the supplier's.
         Assert.Equal(ServiceRequestActorParty.Supplier, (await s.ReadAsync(byTheSupplier.Id)).CancelledBy);
     }
 
@@ -335,7 +325,6 @@ public class ShowcaseBookingManagerCancelTests
 
         Assert.Equal(ServiceRequestStatus.Annullato, view.Status);
         Assert.Equal(ServiceRequestActorParty.Customer, (await s.ReadAsync(request.Id)).CancelledBy);
-        // The supplier is told whatever its status: a suspended supplier is still owed the news.
         Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingCancelledByCustomer);
     }
 
@@ -354,12 +343,9 @@ public class ShowcaseBookingManagerCancelTests
         Assert.Equal(ServiceRequestActorParty.Customer, detail.Cancellation!.By);
         Assert.Equal("Cambio programma", detail.Cancellation.Reason);
         Assert.Equal(ServiceRequestActorParty.Customer, detail.History![^1].Actor);
-        // Cancelled, so the supplier reads the short name only (decision D9).
         Assert.Equal("Mario R.", detail.Client.Name);
         Assert.Null(detail.Location.Address);
     }
-
-    // ─── Reschedule ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Reschedule_ANewRequest_MovesToTheNewSlot_FreesTheOldOne_AndGivesTheSupplierItsWholeTimeAgain()
@@ -375,7 +361,6 @@ public class ShowcaseBookingManagerCancelTests
         Assert.Equal(ServiceRequestStatus.Richiesto, view.Status);
         Assert.Equal(ServiceRequestScenario.SaturdayAt09, view.StartUtc);
         Assert.Equal(ServiceRequestScenario.SaturdayAt09.AddMinutes(ServiceRequestScenario.ServiceMinutes), view.EndUtc);
-        // 180 minutes from now (the minute of the move), not from the first booking: the supplier has the whole time again.
         var answerBy = s.Clock.GetUtcNow().UtcDateTime.AddMinutes(180);
         Assert.Equal(answerBy, view.RespondBy);
 
@@ -385,7 +370,6 @@ public class ShowcaseBookingManagerCancelTests
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, saved.UpdatedAt);
         Assert.Contains(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync());
 
-        // The supplier is told, with both times and its new deadline; nobody else is.
         var toSupplier = Assert.Single(s.Emails.Snapshot());
         Assert.Equal(SupplierEmail, toSupplier.To);
         Assert.Equal(EmailTemplates.Names.SupplierBookingRescheduledByCustomer, toSupplier.Template);
@@ -424,7 +408,6 @@ public class ShowcaseBookingManagerCancelTests
         await s.EnableBookingAsync();
         var (_, credentials) = await s.BookedForManagementAsync();
 
-        // 11:00-13:00 overlaps 10:00-12:00: free, once the request itself is out of the way.
         var view = await s.Kit.Manager.RescheduleAsync(credentials, ServiceRequestScenario.FridayAt10.AddHours(1));
 
         Assert.Equal(ServiceRequestScenario.FridayAt10.AddHours(1), view.StartUtc);
@@ -462,10 +445,10 @@ public class ShowcaseBookingManagerCancelTests
 
         foreach (var start in new[]
                  {
-                     ServiceRequestScenario.SundayAt10, // the supplier does not work on Sundays
-                     ServiceRequestScenario.FridayAt10.AddMinutes(60 * 24 * -3), // the past
-                     ServiceRequestScenario.FridayAt10.AddHours(14), // after the hours of the day
-                     ServiceRequestScenario.FridayAt10.AddDays(60), // beyond the horizon of 35 days
+                     ServiceRequestScenario.SundayAt10,
+                     ServiceRequestScenario.FridayAt10.AddMinutes(60 * 24 * -3),
+                     ServiceRequestScenario.FridayAt10.AddHours(14),
+                     ServiceRequestScenario.FridayAt10.AddDays(60),
                      new DateTime(1, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                      new DateTime(2099, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                      new DateTime(9999, 12, 31, 22, 30, 0, DateTimeKind.Utc),
@@ -576,7 +559,6 @@ public class ShowcaseBookingManagerCancelTests
         Assert.Null(view.Proposal);
         Assert.Null(saved.ProposedStartUtc);
         Assert.Null(saved.ProposalMessage);
-        // The deadline is the supplier's again (180 minutes), not the customer's day.
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime.AddMinutes(180), saved.ResponseDueAt);
         Assert.Equal(saved.ResponseDueAt, view.RespondBy);
         var toSupplier = Assert.Single(s.Emails.Snapshot());
@@ -613,7 +595,6 @@ public class ShowcaseBookingManagerCancelTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
         var withNotice = await s.AddListingAsync("Con preavviso", minNoticeHours: 48);
-        // Monday 12 October 10:00 in Rome is four days away: fine. Friday 9 October 10:00 is 22 hours away: too soon for 48.
         var input = await s.InputAsync(ServiceRequestScenario.FridayAt10.AddDays(3), service: await s.ListingSlugAsync(withNotice));
         var (_, confirmation) = await s.BookedAsync(input, supplier);
         var credentials = ShowcaseManageScenario.CredentialsOf(confirmation.PublicCode);
@@ -631,7 +612,6 @@ public class ShowcaseBookingManagerCancelTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var supplier = await s.EnableBookingAsync();
-        // Friday 23 October 10:00 (+02:00) to Monday 26 October 09:00 (+01:00): the clocks went back on Sunday 25 October.
         var friday = RomeCalendar.ToUtc(new DateOnly(2026, 10, 23), new TimeOnly(10, 0));
         var monday = RomeCalendar.ToUtc(new DateOnly(2026, 10, 26), new TimeOnly(9, 0));
         var (_, confirmation) = await s.BookedAsync(await s.InputAsync(friday), supplier);
@@ -643,7 +623,6 @@ public class ShowcaseBookingManagerCancelTests
         Assert.Equal(TimeSpan.FromMinutes(ServiceRequestScenario.ServiceMinutes), view.EndUtc - view.StartUtc);
         Assert.Equal(TimeSpan.FromHours(1), RomeCalendar.ToRome(view.StartUtc).Offset);
         Assert.Equal(TimeSpan.FromHours(2), RomeCalendar.ToRome(friday).Offset);
-        // 24 hours before the new time is Sunday 25 October 08:00 UTC: 09:00 on the clock of that day (+01:00).
         Assert.Equal(new DateTime(2026, 10, 25, 8, 0, 0, DateTimeKind.Utc), view.CancellationTerms.FreeUntilUtc);
     }
 

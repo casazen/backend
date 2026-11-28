@@ -16,25 +16,13 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// Admin ConcordatoFacile gift management controller: verifies AdminOnly authorization and the 409 conflict
-/// when an org already has a gift (ADR-006-R9). The controller's only business logic is the existence check;
-/// the gift creation and activity log recording are straightforward database operations.
-/// </summary>
 public class AdminConcordatoFacileControllerTests
 {
     private const string AdminUserId = "auth0|admin";
 
-    /// <summary>
-    /// Proves the permission rule (ADR-006-R9): the grant-gift endpoint requires AdminOnly policy,
-    /// ensuring non-admin users receive 403 Forbidden from the authorization middleware.
-    /// </summary>
     [Fact]
     public void GrantGift_NonAdminUser_Returns403()
     {
-        // The [Authorize(Policy = CasazenPolicies.AdminOnly)] attribute on the controller ensures
-        // that non-admin users are blocked by the authorization middleware with 403 before reaching
-        // the controller action.
         var controllerType = typeof(AdminConcordatoFacileController);
         var authorizeAttributes = controllerType
             .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), false)
@@ -88,13 +76,11 @@ public class AdminConcordatoFacileControllerTests
         var created = Assert.IsType<CreatedResult>(result);
         Assert.Equal(StatusCodes.Status201Created, created.StatusCode);
 
-        // Verify gift was created
         var gift = await db.ConcordatoFacileGifts.FirstOrDefaultAsync(g => g.OrgId == orgId);
         Assert.NotNull(gift);
         Assert.Equal(request.SubscriptionId, gift.GrantedBySubscriptionId);
         Assert.Equal(ConcordatoFacileGiftStatus.Available, gift.Status);
 
-        // Verify activity log entry was created
         var activityEntry = await db.OrgActivityEntries
             .FirstOrDefaultAsync(e => e.OrgId == orgId && e.Type == OrgActivityType.AdminGrantedConcordatoFacileGift);
         Assert.NotNull(activityEntry);
@@ -128,13 +114,11 @@ public class AdminConcordatoFacileControllerTests
 
         var db = new AppDbContext(options, null);
 
-        // Seed org if provided
         if (orgId.HasValue)
         {
             db.Orgs.Add(new Core.Entities.Org { Id = orgId.Value, Name = "Test Org", Slug = "test-org" });
         }
 
-        // Seed existing gift if provided
         if (existingGift != null)
         {
             db.ConcordatoFacileGifts.Add(existingGift);
@@ -146,7 +130,6 @@ public class AdminConcordatoFacileControllerTests
         activityLog.Setup(a => a.Record(It.IsAny<OrgActivity>()))
             .Callback<OrgActivity>(activity =>
             {
-                // Simulate what the real ActivityLog does: add to DbContext
                 db.OrgActivityEntries.Add(new OrgActivityEntry
                 {
                     OrgId = activity.OrgId,
@@ -159,7 +142,6 @@ public class AdminConcordatoFacileControllerTests
                 });
             });
 
-        // Create the real service that will be used by the controller
         var serviceLogger = new Mock<ILogger<Casazen.Infrastructure.Services.ConcordatoFacileAdminService>>();
         var concordatoFacileService = new Casazen.Infrastructure.Services.ConcordatoFacileAdminService(
             db, activityLog.Object, serviceLogger.Object);

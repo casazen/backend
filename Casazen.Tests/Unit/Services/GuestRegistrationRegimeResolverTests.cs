@@ -13,18 +13,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E29/F02/US01/T01 (NF-125, decision D3): the one resolver of the regime of a property, on the official directory of the build. A Lugano property is under
-/// the Ticino regime, one whose municipality is not known (or is left open) under the unknown Swiss place, an Italian one under Italy; the duty in effect
-/// is the host's setting or the default of the regime, and the default is <c>Ask</c> for every canton not verified as covering private rentals; the host's
-/// setting is not read while the flag is off; another organization's property is not found.
-/// </summary>
 public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolverTests.SeededPlaces places) : IClassFixture<GuestRegistrationRegimeResolverTests.SeededPlaces>
 {
     private static readonly Guid OrgA = Guid.Parse("a1111111-0000-0000-0000-00000000000a");
     private static readonly Guid OrgB = Guid.Parse("b2222222-0000-0000-0000-00000000000b");
 
-    /// <summary>One in-memory database with the seed of the build, loaded once for the class; each test adds its own properties.</summary>
     public sealed class SeededPlaces : IAsyncLifetime
     {
         public string DatabaseName { get; } = "guest-registration-resolver-" + Guid.NewGuid().ToString("N");
@@ -48,7 +41,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         public bool FilterEnabled => true;
     }
 
-    /// <summary>A Lugano property (6900) is in Ticino and under its regime (acceptance criterion 2), with a structure number nothing is missing.</summary>
     [Fact]
     public async Task Resolve_ALuganoProperty_IsTheTicinoRegime()
     {
@@ -75,10 +67,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         Assert.Equal("ticino_structure_id_missing", GuestRegistrationReadiness.TicinoStructureIdMissing);
     }
 
-    /// <summary>
-    /// A Swiss property whose municipality is not known (none, or a postal code the directory does not have) is the unknown Swiss place (acceptance
-    /// criterion 2): no canton, nothing raised, and the municipality is what is missing.
-    /// </summary>
     [Theory]
     [InlineData("", "")]
     [InlineData("0000", "Nowhere")]
@@ -95,7 +83,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         Assert.Equal(["swiss_municipality_missing"], resolution.IdentifierMissing);
     }
 
-    /// <summary>A postal code shared by several municipalities, with a city that names none, is ambiguous: the resolver never picks a canton.</summary>
     [Theory]
     [InlineData("6900", "Ticino")]
     [InlineData("6600", "Lago Maggiore")]
@@ -130,7 +117,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         Assert.Empty(resolution.IdentifierMissing);
     }
 
-    /// <summary>An Italian property (any case, or an old row with no country) is under Italy: no place, no setting of the host, nothing missing here.</summary>
     [Theory]
     [InlineData("IT")]
     [InlineData(" it ")]
@@ -166,10 +152,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         Assert.Empty(resolution.IdentifierMissing);
     }
 
-    /// <summary>
-    /// Acceptance criterion 3, the effective-duty table: the setting of the host wins; without it Ticino and a verified obligation to report that covers
-    /// private rentals (Zug, Schaffhausen) are required; every other canton, and the place nobody knows, is left to the host.
-    /// </summary>
     [Theory]
     [InlineData("6900", "Lugano", null, GuestRegistrationEffectiveDuty.Required)]
     [InlineData("6900", "Lugano", GuestNotificationOverride.NotRequired, GuestRegistrationEffectiveDuty.NotRequired)]
@@ -196,11 +178,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         Assert.Equal(hostChoice, resolution.Override);
     }
 
-    /// <summary>
-    /// Proof (data): no false legal alarm. The duty is raised by default only for Ticino and for a regime that is verified as an obligation to report that
-    /// covers private rentals; a regime that is partial, not verified, a register or a faculty, or that does not say it covers private rentals, is
-    /// <c>Ask</c>: the host decides, nothing is raised in red. Downgrading one of the three raised ones takes its duty away by itself.
-    /// </summary>
     [Fact]
     public void EffectiveDuty_UncertainCanton_IsAskNeverRequired_Test()
     {
@@ -233,7 +210,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         Assert.Equal(GuestRegistrationEffectiveDuty.Ask, GuestRegistrationDutyRules.DefaultDuty(zurich with { PrivateRentals = GuestRegistrationPrivateRentals.Yes }));
     }
 
-    /// <summary>The flag is off: nothing reads the setting of the host, so the duty is the regime's own and Ticino behaves as before.</summary>
     [Fact]
     public async Task Resolve_WithTheFlagOff_NeverReadsTheSettingOfTheHost_Test()
     {
@@ -256,7 +232,6 @@ public class GuestRegistrationRegimeResolverTests(GuestRegistrationRegimeResolve
         Assert.Equal(((GuestNotificationOverride?)GuestNotificationOverride.NotRequired, GuestRegistrationEffectiveDuty.NotRequired), (luganoOn.Override, luganoOn.EffectiveDuty));
     }
 
-    /// <summary>Proof (permission): another organization's property is not found by id, whatever it holds; the own one is.</summary>
     [Fact]
     public async Task Resolve_APropertyOfAnotherOrganization_IsNotFound_Test()
     {

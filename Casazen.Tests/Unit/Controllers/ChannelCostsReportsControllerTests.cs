@@ -19,11 +19,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// NF-98: the endpoint of the channel costs report. Money, so <c>payment.read</c> on the class and nothing anonymous; the scope is the caller's own; the words of the
-/// request are checked, with the codes of the other reports, before anything is read; a property outside the scope is the service's 404; the answer is JSON (a cost
-/// nobody reported is null) or a CSV file named with its base and its days.
-/// </summary>
 public class ChannelCostsReportsControllerTests
 {
     private static readonly Guid OrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");
@@ -109,7 +104,6 @@ public class ChannelCostsReportsControllerTests
         Assert.Equal("ChannelCommission", airbnb.Kind);
         Assert.Equal("Unknown", airbnb.CommissionMode);
         Assert.True(airbnb.MostExpensive);
-        // A cost nobody reported is null in every form, never zero.
         var expedia = dto.Rows.Single(r => r.Source == "Expedia");
         Assert.Equal(300m, expedia.Gross);
         Assert.Null(expedia.Commission);

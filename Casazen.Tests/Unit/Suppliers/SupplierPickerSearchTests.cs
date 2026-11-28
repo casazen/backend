@@ -54,7 +54,6 @@ public class SupplierPickerSearchTests
         var ordered = SupplierPickerSearch.Apply(Suppliers(), q: null, SupplierPickerSort.Recommended, services: null, scores);
 
         Assert.Equal(["Beta Srl", "Gamma Srl", "Alfa Srl"], Names(ordered));
-        // Beta and Gamma tie at the top: nobody is "the" recommended one.
         Assert.DoesNotContain(ordered, s => s.Recommended);
     }
 

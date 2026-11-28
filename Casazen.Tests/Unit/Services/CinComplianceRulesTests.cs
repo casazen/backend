@@ -12,8 +12,8 @@ public class CinComplianceRulesTests
     [InlineData("IT058091C27G5FFZDZ", "valid")]
     [InlineData("IT-058091-C2-7G5FFZDZ", "valid")]
     [InlineData("it 015146 a1 2holv2mz", "valid")]
-    [InlineData("IT-12345-0123456789", "invalid")] // old invented format, never a real CIN
-    [InlineData("015146-CNI-01894", "invalid")] // Lombardy CIR, not a CIN
+    [InlineData("IT-12345-0123456789", "invalid")]
+    [InlineData("015146-CNI-01894", "invalid")]
     [InlineData("BAD", "invalid")]
     public void ResolveStatus_OfficialFormat_ReturnsExpected(string? cinCode, string expected)
     {

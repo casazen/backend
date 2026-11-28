@@ -17,10 +17,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The tourist tax of a stay guest by guest (E03/F01/US07/T02, NF-46, ADR-037): the proofs of its money, permission and privacy rules, on the
-/// real services and the in-memory database (the seeded exemption reasons, the official rate of Como).
-/// </summary>
 public class StayTouristTaxServiceTests
 {
     private static readonly FixedTimeProvider Clock = new(DateTimeOffset.Parse("2026-11-06T09:00:00Z", CultureInfo.InvariantCulture));
@@ -29,7 +25,6 @@ public class StayTouristTaxServiceTests
     private const string ComoIstat = "013075";
     private const string SevesoIstat = "108040";
 
-    // One provider for the whole class: EF keeps one model per provider.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     [Fact]
@@ -50,7 +45,6 @@ public class StayTouristTaxServiceTests
 
         var view = await service.GetAsync(booking.Id);
 
-        // The channel collects and pays the comune: the host must collect nothing, the amounts per guest are kept (3 nights x 3,00 each).
         Assert.Equal(TouristTaxCollector.Channel, view.Collector);
         Assert.Equal(TouristTaxCollectorSource.ChannelRule, view.CollectorSource);
         Assert.Equal(0m, view.AmountDue);
@@ -60,7 +54,6 @@ public class StayTouristTaxServiceTests
         var first = await service.ConfirmAsync(booking.Id, "auth0|host");
         var second = await service.ConfirmAsync(booking.Id, "auth0|host");
 
-        // A second confirmation of the same calculation adds no second line and no second record: one line per guest of the booking.
         var record = await db.StayTouristTaxes.Include(t => t.Guests).SingleAsync(t => t.BookingId == booking.Id);
         Assert.Equal(2, record.Guests.Count);
         Assert.Equal(new[] { 0, 1 }, record.Guests.Select(g => g.Position).Order());
@@ -82,7 +75,6 @@ public class StayTouristTaxServiceTests
 
         var view = await service.GetAsync(booking.Id);
 
-        // No official rate and no rate of the org: the tax is unknown, never 0.
         Assert.True(view.MissingRate);
         Assert.Equal(TouristTaxRateSource.None, view.RateSource);
         Assert.Equal(TouristTaxQuoteStatus.RateUnavailable, view.Status);
@@ -111,7 +103,6 @@ public class StayTouristTaxServiceTests
             new MunicipalityRateInput(2.00m, MaxNights: null, MinimumAge: 14, null, null, null, "Delibera di test del comune"),
             "auth0|host-a");
 
-        // Org A calculates with its own rate; org B, same comune, neither sees it nor is taxed with it.
         var forA = await service.GetAsync(bookingA.Id);
         Assert.Equal(TouristTaxRateSource.HostDeclared, forA.RateSource);
         Assert.Equal(6.00m, forA.Total);
@@ -120,7 +111,6 @@ public class StayTouristTaxServiceTests
         Assert.True(forB.MissingRate);
         Assert.Null(forB.Total);
 
-        // Seen by org B (the tenant filter of its requests), org A's booking and property do not exist: 404.
         await using var asOrgB = new AppDbContext(Options(databaseName), new FixedTenant(orgB));
         var serviceOfB = Service(asOrgB);
         await Assert.ThrowsAsync<NotFoundException>(() => serviceOfB.GetAsync(bookingA.Id));
@@ -142,7 +132,6 @@ public class StayTouristTaxServiceTests
         await eraser.AnonymizeStayGuestsOfBookingsAsync([booking.Id], Clock.GetUtcNow().UtcDateTime, CancellationToken.None);
         await db.SaveChangesAsync();
 
-        // The reason (it can reveal a health condition) goes with the guest; the kind and the amounts stay for the fiscal retention.
         var lines = (await db.StayTouristTaxes.Include(t => t.Guests).SingleAsync(t => t.BookingId == booking.Id))
             .Guests.OrderBy(g => g.Position).ToList();
         Assert.All(lines, line => Assert.Null(line.ExemptionCode));
@@ -152,7 +141,6 @@ public class StayTouristTaxServiceTests
         Assert.Equal(0m, lines[1].Amount);
         Assert.All(await db.StayGuests.Where(s => s.BookingId == booking.Id).ToListAsync(), g => Assert.Null(g.TaxExemptionCode));
 
-        // The hash goes with the reason: the record keeps nothing that could be tried against the list of reasons, and reads as stale.
         var record = await db.StayTouristTaxes.AsNoTracking().SingleAsync(t => t.BookingId == booking.Id);
         Assert.Equal(StayTouristTax.ErasedCalculationHash, record.CalculationHash);
     }
@@ -162,7 +150,6 @@ public class StayTouristTaxServiceTests
     {
         await using var db = await CreateContextAsync(Guid.NewGuid().ToString());
         db.TouristTaxRates.Add(TouristTaxRateSeed.BuildRates().Single(r => r.City == "Como"));
-        // Two stays that differ only in the reason of the exemption and in the age of the guests: both guests are exempt, the amounts are equal.
         var (_, withResident) = await SeedStayAsync(
             db, Guid.NewGuid(), "Como", ComoIstat, BookingSource.Direct, (40, null), (45, TouristTaxExemptionReason.ResidentCode));
         var (_, withHealthCare) = await SeedStayAsync(
@@ -171,7 +158,6 @@ public class StayTouristTaxServiceTests
         await service.ConfirmAsync(withResident.Id, "auth0|host");
         await service.ConfirmAsync(withHealthCare.Id, "auth0|host");
 
-        // Nothing of the reason or of the age is in the hash: the same one for both, so a copy of the table cannot be tried against the reasons.
         var hashes = await db.StayTouristTaxes.AsNoTracking().Select(t => t.CalculationHash).ToListAsync();
         Assert.Equal(2, hashes.Count);
         Assert.Equal(hashes[0], hashes[1]);
@@ -208,7 +194,6 @@ public class StayTouristTaxServiceTests
 
         var stored = (string)converter.ConvertToProvider(TouristTaxExemptionReason.HealthCareCode)!;
 
-        // What the column holds is a payload with nothing of the reason in it, read back only through the converter.
         Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
         Assert.DoesNotContain(TouristTaxExemptionReason.HealthCareCode, stored, StringComparison.Ordinal);
         Assert.Equal(TouristTaxExemptionReason.HealthCareCode, converter.ConvertFromProvider(stored));
@@ -228,14 +213,10 @@ public class StayTouristTaxServiceTests
     private static async Task<AppDbContext> CreateContextAsync(string databaseName)
     {
         var db = new AppDbContext(Options(databaseName));
-        await db.Database.EnsureCreatedAsync(); // the seeded exemption reasons
+        await db.Database.EnsureCreatedAsync();
         return db;
     }
 
-    /// <summary>
-    /// A confirmed stay of three nights from <see cref="CheckIn"/> in the comune, with its registered guests (age at check-in and the host's
-    /// exemption), the first one the head of the family.
-    /// </summary>
     private static async Task<(Property Property, Booking Booking)> SeedStayAsync(
         AppDbContext db,
         Guid orgId,

@@ -86,7 +86,6 @@ public class InvoiceDataFormatsTests
         Assert.Equal("20121", italian.PostalCode);
         Assert.Null(italian.City);
 
-        // A number without letters takes the prefix of the country of the recipient (EL for Greece); a postal code abroad keeps its space.
         Assert.Equal("DE123456789", InvoiceDataFormats.Normalize(new SaveInvoiceDataCommand { VatNumber = "123456789" }, "DE").VatNumber);
         Assert.Equal("EL123456789", InvoiceDataFormats.Normalize(new SaveInvoiceDataCommand { VatNumber = "123456789" }, "GR").VatNumber);
         Assert.Equal("SW1A 1AA", InvoiceDataFormats.Normalize(new SaveInvoiceDataCommand { PostalCode = "sw1a  1aa" }, "GB").PostalCode);

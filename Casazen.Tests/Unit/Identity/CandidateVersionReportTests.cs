@@ -33,7 +33,6 @@ public sealed class CandidateVersionReportTests : IDisposable
 
     private static QualificationWilsonRate Wilson(long count, long total) => QualificationWilsonRate.Of(count, total, Confidence);
 
-    /// <summary>The metrics of a qualification that meets every target of the proposals of the specification.</summary>
     private static QualificationMetricsBlock Passing()
     {
         return new QualificationMetricsBlock(
@@ -70,7 +69,6 @@ public sealed class CandidateVersionReportTests : IDisposable
             []);
     }
 
-    /// <summary>The cases of each kind of critical case the policy took a decision on, in a qualification that measures every kind.</summary>
     private static Dictionary<string, int> Decided(int attack = 320, int impostorPair = 40, int altered = 12, int foreign = 6)
     {
         return new Dictionary<string, int> { ["altered"] = altered, ["attack"] = attack, ["foreign"] = foreign, ["impostor_pair"] = impostorPair };
@@ -110,7 +108,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         foreach (var heading in new[] { "## Candidate version", "## Dataset", "## Metrics (95% confidence)", "## Targets" })
             Assert.Contains(heading, text, StringComparison.Ordinal);
 
-        // The weights of every model with its licence and provenance, the policy with its version and canonical hash, the combined hash of the weights.
         foreach (var model in QualificationTestData.Models())
         {
             Assert.Contains(model.WeightSha256!, text, StringComparison.Ordinal);
@@ -126,13 +123,11 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Contains("accept 0.85, review floor 0.7, least similarity of each frame 0.7, least liveness 0.7", text, StringComparison.Ordinal);
         Assert.Contains("similarity of the chosen frames by `median` over 3 frames; liveness by `all` over 5 frames", text, StringComparison.Ordinal);
 
-        // The dataset by split, class, format and channel; the sample of the impostor trials.
         Assert.Contains("development: persons=120 captures=2400", text, StringComparison.Ordinal);
         Assert.Contains("- by document format: it-cie-3.0=2400", text, StringComparison.Ordinal);
         Assert.Contains("- by channel: web:desktop-chromium=2400", text, StringComparison.Ordinal);
         Assert.Contains("40000 run of 40000 possible pairs (sample: no, limit 50000)", text, StringComparison.Ordinal);
 
-        // The metrics with their intervals.
         Assert.Contains("- False match rate (FMR) at the policy: 0/400000 = 0, upper bound 0.000007", text, StringComparison.Ordinal);
         Assert.Contains("(the verdict; a couple is a false match when any comparison of it is): 0/40000 = 0, upper bound 0.000075", text, StringComparison.Ordinal);
         Assert.Contains("- False non-match rate (FNMR) at the policy: 30/1000 = 0.03, upper bound ", text, StringComparison.Ordinal);
@@ -142,7 +137,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Contains("- Shadow automation (check-ins the policy would close): 450/500 = 0.9, Wilson interval ", text, StringComparison.Ordinal);
         Assert.Contains("  - presence_match: 4000 runs, 120.0, 310.0, 900.0.", text, StringComparison.Ordinal);
 
-        // A verdict for every target of the file, and for every class and field they are measured on.
         Assert.Equal(
             ["fmr", "apcer.photo_print", "apcer.screen_replay", "apcer.video_replay", "apcer.synthetic", "automation", "ocr.surname", "ocr.surname.mrz", "ocr.givenNames", "ocr.birthDate", "ocr.documentNumber", "critical_false_approvals"],
             report.Verdicts.Select(verdict => verdict.Target));
@@ -157,7 +151,6 @@ public sealed class CandidateVersionReportTests : IDisposable
     {
         var metrics = Passing() with
         {
-            // Too few couples of persons to show a limit of 1 in 10,000 even with no false match; an attack of a class accepted; too few of another; none of a third.
             FmrCouples = Bounded(0, 20_000),
             Apcer =
             [
@@ -187,7 +180,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.True(verdicts["ocr.surname"].Pass);
         Assert.True(verdicts["ocr.birthDate"].Pass);
 
-        // A field that was never read is not measured, and a target that is not measured fails.
         Assert.False(verdicts["ocr.documentNumber"].Pass);
         Assert.Equal("not measured", verdicts["ocr.documentNumber"].Measured);
         Assert.False(verdicts["critical_false_approvals"].Pass);
@@ -204,7 +196,6 @@ public sealed class CandidateVersionReportTests : IDisposable
 
         var report = CandidateVersionReport.Build(Results(runAt99), Frozen(), targets);
 
-        // At 99% the upper bound of 0 in 40,000 is above 1 in 10,000; the report judges at the 95% of the targets.
         Assert.True(IdentityStatistics.ClopperPearsonUpper(0, 40_000, 0.99) > 0.0001);
         Assert.True(report.Verdicts.Single(verdict => verdict.Target == "fmr").Pass);
         Assert.Contains("upper bound 0.000075", report.Markdown, StringComparison.Ordinal);
@@ -217,7 +208,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         var again = Report(Passing());
         var other = Report(Passing() with { Bpcer = Bounded(11, 1_000) });
 
-        // The last line is the hash of every line above it, as UTF-8 with \n line endings: what a platform administrator gives to the qualification of the segments.
         var lines = report.Markdown.TrimEnd('\n').Split('\n');
         var body = string.Join('\n', lines[..^1]) + "\n";
         Assert.Equal(CandidateVersionReport.HashLinePrefix + report.Sha256, lines[^1]);
@@ -230,7 +220,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Equal(report.ToJson(), again.ToJson());
         Assert.NotEqual(report.Sha256, other.Sha256);
 
-        // The data form carries the same hash; and the hash is checked against the text, so a changed report is told.
         Assert.Contains($"\"reportSha256\": \"{report.Sha256}\"", report.ToJson(), StringComparison.Ordinal);
         Assert.Equal(report.Sha256, CandidateVersionReport.ReadHash(report.Markdown));
         Assert.True(CandidateVersionReport.VerifyHash(report.Markdown));
@@ -239,7 +228,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Null(CandidateVersionReport.ReadHash(string.Empty));
     }
 
-    /// <summary>Proof (privacy, ADR-013-R2): the report is an aggregate; no capture, no person and no path of the run is in it.</summary>
     [Fact]
     public void Report_HoldsNoCaseOfTheRun_OnlyAggregates()
     {
@@ -265,7 +253,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Contains("THE RUN DOES NOT USE THE CONFIGURATION OF THE LOCK, it differs in: weightsHash.", report.Markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("Frozen configuration: the run used exactly", report.Markdown, StringComparison.Ordinal);
 
-        // Only the names of the members are said, and the data form says the same.
         Assert.Equal(["weightsHash"], JsonDocument.Parse(report.ToJson()).RootElement.GetProperty("runDiffersFromLock").EnumerateArray().Select(member => member.GetString()));
     }
 
@@ -290,10 +277,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.DoesNotContain("## Candidate models", Report(Passing()).Markdown, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// Proof (a target that cannot be measured fails): the criterion on critical false approvals is measured on the cases the policy took a decision on, of each kind. A kind nobody decided on makes
-    /// it «not measured» and it FAILS, however few approvals there are; the report prints the denominators.
-    /// </summary>
     [Fact]
     public void Report_ACriticalKindNobodyDecidedOn_IsNotMeasured_AndFails_WhateverTheApprovals()
     {
@@ -312,15 +295,12 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.Contains("| critical_false_approvals |", unmeasured.Markdown, StringComparison.Ordinal);
         Assert.Contains("FAIL (not measured: no case was decided for altered, foreign)", unmeasured.Markdown, StringComparison.Ordinal);
 
-        // Nothing decided at all is not a pass either: every kind is named.
         Assert.Equal("not measured: no case was decided for attack, impostor_pair, altered, foreign", nothing.Verdicts.Single(entry => entry.Target == "critical_false_approvals").Note);
 
-        // The denominators are in the report: out of how many cases the approvals were counted.
         Assert.Contains("- Critical false approvals: 0 (altered=0, attack=0, foreign=0, impostor_pair=0), out of the cases decided (altered=12, attack=320, foreign=6, impostor_pair=40).", measured.Markdown, StringComparison.Ordinal);
         Assert.Contains("0 approvals; attack 0/320, impostor_pair 0/40, altered 0/12, foreign 0/6", measured.Markdown, StringComparison.Ordinal);
     }
 
-    /// <summary>Proof (a target that cannot be measured fails): an attack that could not be judged is no rejection; the class that has one is not measured, its verdict FAILS, and the report says how many.</summary>
     [Fact]
     public void Report_AnAttackThatCouldNotBeJudged_FailsItsClass_AndIsShownApart()
     {
@@ -345,17 +325,14 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.False(report.AllTargetsPassed);
         Assert.Contains("not counted as rejected above): photo_print 3 of 403.", report.Markdown, StringComparison.Ordinal);
 
-        // With none, the report says so, and the classes pass as they did.
         var clean = Report(Passing());
         Assert.Contains("not counted as rejected above): none.", clean.Markdown, StringComparison.Ordinal);
         Assert.True(clean.Verdicts.Single(verdict => verdict.Target == "apcer.photo_print").Pass);
     }
 
-    /// <summary>Proof (independence): the verdict of the false match rate is over the distinct couples of persons, not over the comparisons, which a few persons repeated across captures make as many as they like.</summary>
     [Fact]
     public void Report_TheFalseMatchVerdict_IsOverTheDistinctCouplesOfPersons_NotTheComparisons()
     {
-        // A million comparisons with no false match, made of only a thousand couples of persons: the comparisons would show the limit, the couples cannot.
         var report = Report(Passing() with { Fmr = Bounded(0, 1_000_000), FmrCouples = Bounded(0, 1_000) });
 
         var verdict = report.Verdicts.Single(entry => entry.Target == "fmr");
@@ -379,7 +356,6 @@ public sealed class CandidateVersionReportTests : IDisposable
         Assert.True(CandidateVersionReport.ExistsIn(_folder));
         Assert.True(CandidateVersionReport.VerifyHash(File.ReadAllText(Path.Combine(_folder, CandidateVersionReport.MarkdownFileName))));
 
-        // The report of a final test is written once.
         var again = Assert.Throws<QualificationRunException>(() => Report(Passing() with { Bpcer = Bounded(11, 1_000) }).Write(_folder));
         Assert.Equal(QualificationRunCodes.FinalAlreadyRun, again.Code);
         Assert.Equal(report.Markdown, File.ReadAllText(Path.Combine(_folder, CandidateVersionReport.MarkdownFileName)));

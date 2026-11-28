@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E08/F05/US01/T03 (NF-36): the one pure check of a stay against the rules of its nights, the one the quote, the checkout and the search of the
-/// booking site share. The order of the rules, the minimum of the property as the fallback, the advance read on the calendar of the property.
-/// </summary>
 public class DayRuleStayChecksTests
 {
     private static readonly DateOnly Today = new(2026, 10, 9);
@@ -36,7 +32,6 @@ public class DayRuleStayChecksTests
 
         Assert.Equal(new DayRuleViolation(DayRuleViolationKind.ArrivalClosed, Arrival), Check(2, null, closedArrival));
         Assert.Equal(new DayRuleViolation(DayRuleViolationKind.DepartureClosed, Arrival.AddDays(2)), Check(2, null, closedDeparture));
-        // A night closed to arrival is not closed to departure, and the other way round; a stay that passes through them is fine.
         Assert.Null(Check(2, null, Rules((Arrival.AddDays(2), new DayRuleValues(ClosedToArrival: true)))));
         Assert.Null(Check(2, null, Rules((Arrival, new DayRuleValues(ClosedToDeparture: true)))));
         Assert.Null(Check(3, null, Rules((Arrival.AddDays(1), new DayRuleValues(ClosedToArrival: true, ClosedToDeparture: true)))));
@@ -48,11 +43,9 @@ public class DayRuleStayChecksTests
         var shorter = Rules((Arrival, new DayRuleValues(MinNights: 1)));
         var longer = Rules((Arrival, new DayRuleValues(MinNights: 5)));
 
-        // The night says one: the minimum of 3 of the property no longer holds. The night says five: it wins over the property's 2.
         Assert.Null(Check(1, 3, shorter));
         Assert.Equal(new DayRuleViolation(DayRuleViolationKind.MinNights, Arrival, 5), Check(4, 2, longer));
         Assert.Null(Check(5, 2, longer));
-        // The rule of another night does not count.
         Assert.Equal(
             new DayRuleViolation(DayRuleViolationKind.MinNights, Arrival, 3),
             Check(2, 3, Rules((Arrival.AddDays(1), new DayRuleValues(MinNights: 1)))));
@@ -73,11 +66,9 @@ public class DayRuleStayChecksTests
         var days = Arrival.DayNumber - Today.DayNumber;
         var rules = Rules((Arrival, new DayRuleValues(MinAdvanceDays: days, MaxAdvanceDays: days)));
 
-        // Exactly at both limits is allowed; one day sooner is too short, one day later is too long (today is the property's, not the server's).
         Assert.Null(Check(1, null, rules));
         Assert.Equal(new DayRuleViolation(DayRuleViolationKind.AdvanceTooShort, Arrival, days), Check(1, null, rules, Today.AddDays(1)));
         Assert.Equal(new DayRuleViolation(DayRuleViolationKind.AdvanceTooLong, Arrival, days), Check(1, null, rules, Today.AddDays(-1)));
-        // An arrival today has an advance of 0.
         Assert.Equal(
             new DayRuleViolation(DayRuleViolationKind.AdvanceTooShort, Arrival, 1),
             DayRuleStayChecks.FirstViolation(Arrival, Arrival.AddDays(1), Arrival, null, Rules((Arrival, new DayRuleValues(MinAdvanceDays: 1)))));
@@ -87,7 +78,6 @@ public class DayRuleStayChecksTests
     [Fact]
     public void TheFirstViolationWins_InTheOrderOfTheBrief()
     {
-        // Everything is broken at once: a closed arrival, a closed departure, too short, too long and an advance out of range.
         var everything = Rules(
             (Arrival, new DayRuleValues(ClosedToArrival: true, MinNights: 5, MaxNights: 2, MinAdvanceDays: 500, MaxAdvanceDays: 0)),
             (Arrival.AddDays(3), new DayRuleValues(ClosedToDeparture: true)));
@@ -119,7 +109,6 @@ public class DayRuleStayChecksTests
 
         Assert.Equal((code, key), (exception.Code, exception.MessageKey));
         Assert.Equal(limit is null ? Array.Empty<object>() : [limit.Value], exception.MessageArgs);
-        // The date is written the way the API writes every date, whatever the culture of the server.
         Assert.Equal("2026-03-29", exception.Extensions["date"]);
         Assert.Equal(limit is { } number ? (object?)number : null, exception.Extensions.GetValueOrDefault("limit"));
         foreach (var file in new[] { "SharedResources.resx", "SharedResources.en.resx" })

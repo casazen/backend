@@ -16,8 +16,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class ServiceRequestProposalTests
 {
-    // ─── Propose ───
-
     [Fact]
     public async Task ProposeTimeAsync_NewRequest_StoresTheProposalAndTellsTheHostWithoutChangingTheRequest()
     {
@@ -40,7 +38,6 @@ public class ServiceRequestProposalTests
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, saved.ProposedAt);
         Assert.Equal(ServiceRequestScenario.SupplierUserId, saved.ProposedByUserId);
         Assert.Equal("Posso solo nel pomeriggio", saved.ProposalMessage);
-        // The request itself is untouched: host time kept, no taker, the same deadline.
         Assert.Equal(ServiceRequestScenario.FridayAt10, saved.ScheduledStartUtc);
         Assert.Null(saved.TakenAt);
         Assert.Equal(deadline, saved.ResponseDueAt);
@@ -103,9 +100,8 @@ public class ServiceRequestProposalTests
     public async Task ProposeTimeAsync_RequestThatHasATime_MayProposeAnotherAndItsOwnSlotIsNotInTheWay()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var request = await s.RequestAsync(ServiceRequestScenario.FridayAt10); // 10:00-12:00
+        var request = await s.RequestAsync(ServiceRequestScenario.FridayAt10);
 
-        // 11:00-13:00 overlaps the request's own slot: only the request itself is there, so it is free.
         await s.Service.ProposeTimeAsync(
             request.Id,
             s.SupplierOrgId,
@@ -241,8 +237,6 @@ public class ServiceRequestProposalTests
         Assert.Null(saved.ResponseDueAt);
     }
 
-    // ─── Accept the proposal ───
-
     [Fact]
     public async Task AcceptProposalAsync_Proposal_TakesTheRequestOnTheSuppliersBehalfAtTheProposedTime()
     {
@@ -270,7 +264,6 @@ public class ServiceRequestProposalTests
         Assert.Null(saved.ProposedByUserId);
         Assert.Null(saved.ProposalMessage);
 
-        // Only the supplier is told: the host is the one who accepted.
         var email = Assert.Single(s.Emails.Snapshot());
         Assert.Equal("supplier@test.com", email.To);
         Assert.Equal(EmailTemplates.Names.ServiceRequestProposalAnswered, email.Template);
@@ -325,7 +318,7 @@ public class ServiceRequestProposalTests
         var request = await s.RequestAsync();
         await s.Service.ProposeTimeAsync(
             request.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new ProposeServiceRequestTimeCommand(ServiceRequestScenario.FridayAt14));
-        await s.RequestAsync(ServiceRequestScenario.FridayAt14); // another request gets the slot first
+        await s.RequestAsync(ServiceRequestScenario.FridayAt14);
         s.ForgetNotifications();
 
         var ex = await Assert.ThrowsAsync<DomainConflictException>(() => s.Service.AcceptProposalAsync(request.Id, s.HostOrgId));
@@ -366,8 +359,6 @@ public class ServiceRequestProposalTests
         Assert.Equal(ServiceRequestErrorCodes.NotFound, ex.Code);
         Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(request.Id)).Status);
     }
-
-    // ─── Turn the proposal down ───
 
     [Fact]
     public async Task RejectProposalAsync_Proposal_DropsItKeepsTheRequestNewAndTellsTheSupplier()
@@ -447,8 +438,6 @@ public class ServiceRequestProposalTests
         await Assert.ThrowsAsync<NotFoundException>(() => s.Service.RejectProposalAsync(request.Id, Guid.NewGuid()));
     }
 
-    // ─── Accept many ───
-
     [Fact]
     public async Task AcceptManyAsync_NewRequests_TakesThemAllAndAnswersEachRowInOrder()
     {
@@ -475,7 +464,6 @@ public class ServiceRequestProposalTests
         foreach (var request in requests)
             Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(request.Id)).Status);
 
-        // Each taken request tells the host as a single take does.
         Assert.Equal(3, s.Emails.Snapshot().Count(email => email.To == "host@test.com"));
         Assert.Equal(3, s.Pushes.Count(push => push.Payload.Type == PushTypes.ServiceRequestTaken));
     }
@@ -502,7 +490,6 @@ public class ServiceRequestProposalTests
         Assert.False(results[1].Accepted);
         Assert.Equal(ServiceRequestErrorCodes.InvalidTransition, results[1].Code);
         Assert.Equal(ServiceRequestErrorCodes.CannotTakeMessageKey, results[1].MessageKey);
-        // A request of another supplier answers like a missing one: the batch never tells that it exists.
         Assert.Equal(ServiceRequestErrorCodes.NotFound, results[2].Code);
         Assert.Equal(ServiceRequestErrorCodes.NotFoundMessageKey, results[2].MessageKey);
         Assert.Equal(ServiceRequestErrorCodes.NotFound, results[3].Code);
@@ -552,7 +539,6 @@ public class ServiceRequestProposalTests
         var firstHour = new DateTime(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
         for (var i = 0; i < ServiceRequestLimits.MaxBatchAccept; i++)
         {
-            // Each job has its own hour, so accepting the batch is not twenty jobs on the same untimed day.
             var created = await s.Service.CreateAsync(new CreateServiceRequestCommand(
                 s.HostOrgId,
                 ServiceRequestScenario.HostUserId,

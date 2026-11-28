@@ -41,7 +41,6 @@ public class IntegrationHostIsolationTests(CasazenWebApplicationFactory factory)
             Assert.All(comuniOfEachHost, codes => Assert.Equal(codes.Distinct().Count(), codes.Length));
             Assert.All(comuniOfEachHost, codes => Assert.Equal(comuniOfEachHost[0], codes));
 
-            // What one host writes the others do not see.
             const string slug = "test-org-isolation-check";
             using (var scope = hosts[0].Services.CreateScope())
             {
@@ -77,7 +76,6 @@ public class IntegrationHostIsolationTests(CasazenWebApplicationFactory factory)
         var seededPermissions = model.FindEntityType(typeof(RolePermission))!.GetSeedData()
             .Select(row => (RoleId: (int)row["RoleId"]!, PermissionKey: (string)row["PermissionKey"]!)).ToList();
 
-        // The seed is not empty (a model without HasData would make this pass for nothing).
         Assert.Contains("short-rent", seededContexts);
         Assert.NotEmpty(seededRoles);
         Assert.NotEmpty(seededPermissions);

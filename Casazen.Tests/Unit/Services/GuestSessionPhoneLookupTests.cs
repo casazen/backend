@@ -25,7 +25,6 @@ public class GuestSessionPhoneLookupTests
 {
     private const string Code = "7K2XM-9QD4T";
 
-    /// <summary>AC1: the right digits open the session of the e-mail proof: the same body, the same guest of the same site, the same booking.</summary>
     [Fact]
     public async Task RightDigits_OpenTheSameSessionAsTheEmail()
     {
@@ -67,8 +66,6 @@ public class GuestSessionPhoneLookupTests
         var withoutPhone = await world.AddBookingAsync(org, house, "bruno@example.com", phone: string.Empty);
         var otherSite = await world.AddBookingAsync(otherOrg, otherHouse, "carla@example.com", GuestSessionPhoneWorld.Phone);
 
-        // The e-mail proof reaches the direct bookings of an active org only, and so does the phone: the right digits of a guest's phone open nothing
-        // else, whatever the source of the booking and whatever the org of the site.
         var (closedOrg, closedHouse) = await world.AddSiteAsync(isActive: false);
         var ofClosedSite = await world.AddBookingAsync(closedOrg, closedHouse, "dario@example.com", GuestSessionPhoneWorld.Phone);
         var notDirect = new List<string>();
@@ -93,7 +90,6 @@ public class GuestSessionPhoneLookupTests
         Assert.Single(refusals.Select(refusal => refusal.Fingerprint).Distinct(StringComparer.Ordinal));
         Assert.Equal(GuestBookingLookupErrorCodes.NotFound, JsonDocument.Parse(refusals[0].Body).RootElement.GetProperty("code").GetString());
 
-        // The same booking does open with its right digits, and the booking without a phone with its e-mail (AC-NF143-4).
         Assert.Equal(
             StatusCodes.Status200OK,
             (await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(org, booking.BookingCode, GuestSessionPhoneWorld.RightDigits))).Status);
@@ -101,7 +97,6 @@ public class GuestSessionPhoneLookupTests
             StatusCodes.Status200OK,
             (await world.OpenAsync(GuestSessionPhoneWorld.EmailBody(org, withoutPhone.BookingCode, "bruno@example.com"))).Status);
 
-        // The booking of the site whose org is not active opens as soon as the org is: the org was the only reason of its refusal.
         closedOrg.IsActive = true;
         await world.Db.SaveChangesAsync();
         Assert.Equal(
@@ -109,10 +104,6 @@ public class GuestSessionPhoneLookupTests
             (await world.OpenAsync(GuestSessionPhoneWorld.PhoneBody(closedOrg, ofClosedSite.BookingCode, GuestSessionPhoneWorld.RightDigits))).Status);
     }
 
-    /// <summary>
-    /// Privacy rule (AC7): the phone never leaves the server. Through five wrong attempts (404) and the lock that follows (429), neither the digits the
-    /// guest typed, nor the digits of the booking, nor the code, nor the client IP appear in any log line or in any answer (headers and bodies).
-    /// </summary>
     [Fact]
     public async Task PhoneDigits_NeverInLogsOrBodies()
     {
@@ -127,7 +118,6 @@ public class GuestSessionPhoneLookupTests
 
         Assert.Equal(new[] { 404, 404, 404, 404, 404, 429 }, answers.Select(answer => answer.Status));
 
-        // Every refusal is in the log (the 404s by the error middleware, the lock by its filter), and none of them carries what the guest typed.
         Assert.Equal(5, world.ErrorLogs.Entries.Count);
         Assert.Contains(GuestPhoneLookupLockout.PolicyName, world.FilterLogs.AllOutput, StringComparison.Ordinal);
         var everything = world.AllLogs + string.Concat(answers.Select(answer => answer.Fingerprint));
@@ -167,10 +157,6 @@ public class GuestSessionPhoneLookupTests
         Assert.Empty(off.Errors(Body(email: "anna@example.com", digits: "not digits")));
     }
 
-    /// <summary>
-    /// With <c>WhiteLabelHost</c> off nothing changes for anybody: a body that carries digits next to the e-mail is the e-mail proof of always (the
-    /// right digits do not help a wrong address, wrong digits do not stop the right one) and the lock of the codes counts nothing.
-    /// </summary>
     [Fact]
     public async Task FlagOff_TheDigitsAreNeverRead_TheEmailDecides_AndNothingIsCounted()
     {
@@ -192,7 +178,6 @@ public class GuestSessionPhoneLookupTests
         Assert.Empty(world.FilterLogs.Entries);
     }
 
-    /// <summary>The body of the session as the binder leaves it: the e-mail empty when it is left out, the digits null.</summary>
     private static GuestSessionRequest Body(string? email = null, string? digits = null)
     {
         var body = new GuestSessionRequest { OrgSlug = "villa", BookingCode = Code, PhoneLast4 = digits };
@@ -203,7 +188,6 @@ public class GuestSessionPhoneLookupTests
 
     private static Dictionary<string, string[]> Only(string field, LocalizedString message) => new() { [field] = [message.Value] };
 
-    /// <summary>The model validation of MVC with the data annotations localized from <c>SharedResources</c>, as <c>Program.cs</c> sets it up.</summary>
     private sealed class MvcValidation : IDisposable
     {
         private readonly ServiceProvider _provider;
@@ -222,7 +206,6 @@ public class GuestSessionPhoneLookupTests
 
         public IStringLocalizer Texts => _provider.GetRequiredService<IStringLocalizer<SharedResources>>();
 
-        /// <summary>The errors of <paramref name="body"/> by field, each with its messages in order.</summary>
         public Dictionary<string, string[]> Errors(object body)
         {
             var context = new ActionContext(new DefaultHttpContext { RequestServices = _provider }, new RouteData(), new ActionDescriptor());

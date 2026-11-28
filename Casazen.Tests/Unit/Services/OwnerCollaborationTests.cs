@@ -22,26 +22,14 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E07/F07/US01/T02 (NF-111): the documents, the delegated contacts and the inbox of the owner portal. The three proof tests of the brief are the permission
-/// rule of the contacts (AC-NF111-4), the data rule of the documents between owners and agencies (ADR-011-R2, AC-NF111-3) and the privacy rule of the
-/// notifications of the inbox (AC-NF111-5). EF InMemory, the storage in memory, the real scan of the files, the e-mails captured.
-/// </summary>
 public partial class OwnerCollaborationTests
 {
-    // 9 October 2026, 10:00 UTC: the 9th in Rome.
     private static readonly DateTimeOffset Now = new(2026, 10, 9, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateOnly Today = new(2026, 10, 9);
     private const string Agent = "auth0|agenzia";
 
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
-    /// <summary>
-    /// PROOF TEST: permission rule (AC-NF111-4). A contact holds exactly the permissions the owner gave, each on its own: with <c>calendar.read</c> only it
-    /// reads the calendar and nothing else (no stay request, no document, no inbox, no contact management); given <c>documents.read</c> it reads the
-    /// documents from its next request, and nothing more; withdrawn, it reaches nothing from its next request on, and every change is in the activity log.
-    /// </summary>
     [Fact]
     public async Task OwnerContact_EachPermissionIsIndependentAndRevocationImmediate_Test()
     {
@@ -59,17 +47,14 @@ public partial class OwnerCollaborationTests
         Assert.Equal(OwnerPortalErrors.PermissionMissing, (await Assert.ThrowsAsync<DomainForbiddenException>(() => service.ListConversationsForOwnerAsync(onlyCalendar))).Code);
         Assert.Equal(OwnerCollaborationErrors.ContactOwnerOnly, (await Assert.ThrowsAsync<DomainForbiddenException>(() => service.ListContactsForOwnerAsync(onlyCalendar))).Code);
 
-        // The owner adds documents.read: the documents, from the next request; the inbox and the stays still not.
         var updated = await service.SetContactPermissionsAsync(owner, contactId, [OwnerPortalPermissions.CalendarRead, OwnerPortalPermissions.DocumentsRead]);
         Assert.Equal([OwnerPortalPermissions.CalendarRead, OwnerPortalPermissions.DocumentsRead], updated.Permissions);
         var withDocuments = await w.AccessAsync(w.UserC);
         Assert.Empty((await service.ListDocumentsForOwnerAsync(withDocuments)).Documents);
         await Assert.ThrowsAsync<DomainForbiddenException>(() => service.ListConversationsForOwnerAsync(withDocuments));
 
-        // An empty list of permissions is never «all».
         Assert.Equal(OwnerPortalErrors.PermissionsEmpty, (await Assert.ThrowsAsync<DomainRuleException>(() => service.SetContactPermissionsAsync(owner, contactId, []))).Code);
 
-        // Withdrawn: nothing from the next request on, and the row stays.
         await service.RevokeContactByOwnerAsync(owner, contactId);
         var revoked = await w.AccessAsync(w.UserC);
         Assert.Empty(revoked.Grants);
@@ -81,10 +66,6 @@ public partial class OwnerCollaborationTests
         Assert.Contains(lines, line => line.Contains("\"status\":\"revoked\"", StringComparison.Ordinal));
     }
 
-    /// <summary>
-    /// The invitation of a contact is accepted only by an account whose e-mail is verified and is the invited one; the account becomes an identity of its own
-    /// (never the owner's), a repeat answers the same, and another account cannot use the link.
-    /// </summary>
     [Fact]
     public async Task OwnerContact_TheInvitationIsAcceptedOnlyByTheVerifiedInvitedAddress_WithItsOwnAccount()
     {
@@ -106,16 +87,10 @@ public partial class OwnerCollaborationTests
         Assert.True((await service.AcceptContactAsync(As("auth0|carla", "carla@example.com", true))).AlreadyAccepted);
         Assert.Equal(OwnerCollaborationErrors.InvitationUsed, (await Assert.ThrowsAsync<DomainGoneException>(() => service.AcceptContactAsync(As("auth0|altro", "carla@example.com", true)))).Code);
 
-        // Accounting only: the statements, not the calendar.
         var access = await w.AccessAsync(accepted.OwnerUserId);
         Assert.All(access.Grants, g => Assert.Equal(OwnerPortalPermission.AccountingRead, g.Permissions));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (ADR-011-R2, AC-NF111-3). A document of another owner, or of another agency, does not exist for the caller: not in its list,
-    /// and 404 when asked; another agency neither lists, downloads nor withdraws it. A download is written before the file is handed out; a withdrawal hides
-    /// the document at the next request; a new file is a new version and the first stays as it was.
-    /// </summary>
     [Fact]
     public async Task OwnerDocument_OtherAgencyOrOwnerReturnsNotFound_Test()
     {
@@ -135,14 +110,12 @@ public partial class OwnerCollaborationTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.ShareDocumentAsync(
             w.OtherOrgId, new ShareOwnerDocument(w.OwnerA, null, OwnerDocumentType.Other, "Altro", null, null), Pdf("X"), "auth0|altra-agenzia"));
 
-        // The download is written before the file is handed out, with who.
         var file = await service.OpenDocumentForOwnerAsync(ownerA, ofA.Document.Id, null);
         await using (file.Content)
             Assert.Equal(("application/pdf", "polizza.pdf"), (file.ContentType, file.FileName));
         var downloads = await service.ListDocumentDownloadsAsync(w.OrgId, ofA.Document.Id);
         Assert.Equal(("Anna Alfa", false), (downloads.Single().By, downloads.Single().ByAgency));
 
-        // A new file is a new version, the first one is kept; a withdrawal hides the document at the next request.
         var versioned = await service.AddDocumentVersionAsync(w.OrgId, ofA.Document.Id, new OwnerDocumentVersionInput(null, Today.AddDays(400)), Pdf("A2"), Agent);
         Assert.Equal([2, 1], versioned.Document.Versions.Select(v => v.VersionNumber));
         Assert.Equal(ofA.Document.Versions[0].Sha256, versioned.Document.Versions[1].Sha256);
@@ -151,11 +124,6 @@ public partial class OwnerCollaborationTests
         await Assert.ThrowsAsync<NotFoundException>(async () => await service.OpenDocumentForOwnerAsync(await w.AccessAsync(w.UserA), ofA.Document.Id, null));
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (AC-NF111-5). The e-mail that tells the owner (or the agency) about a new message names the agency and links to CasaZen, and
-    /// carries nothing of the message: no amount, no name, address or phone of a guest. Another owner cannot read the conversation, and an owner who opted
-    /// out gets no e-mail.
-    /// </summary>
     [Fact]
     public async Task OwnerInbox_NotificationContainsNoFinancialOrGuestData_Test()
     {
@@ -171,7 +139,6 @@ public partial class OwnerCollaborationTests
         Assert.Contains("Agenzia Mare", toOwner.Content.Subject, StringComparison.Ordinal);
         AssertCarriesNothingOf(Words, toOwner.Content);
 
-        // The owner answers: the agency is told the same way, at its contact address.
         w.Emails.Clear();
         await service.PostMessageByOwnerAsync(await w.AccessAsync(w.UserA), conversation.Id, Words, null);
         var toAgency = Assert.Single(w.Emails);
@@ -179,7 +146,6 @@ public partial class OwnerCollaborationTests
         Assert.Contains($"/app/owners/messages/{conversation.Id:D}", toAgency.Content.HtmlBody, StringComparison.Ordinal);
         AssertCarriesNothingOf(Words, toAgency.Content);
 
-        // Another owner does not reach it; an owner who opted out is not written to.
         await Assert.ThrowsAsync<NotFoundException>(async () => await service.ListMessagesForOwnerAsync(await w.AccessAsync(w.UserB), conversation.Id));
         await service.SetInboxPreferencesAsync(w.UserA, emailNotifications: false);
         w.Emails.Clear();
@@ -255,7 +221,6 @@ public partial class OwnerCollaborationTests
         Assert.Equal("Casazen.OwnerPortal.Contact", EncryptedColumns.OwnerPortalContactPurpose);
         Assert.True(EncryptedColumns.IsConfigured(w.Db));
 
-        // The contact table holds the keyed hash of the address, and it is the one the index makes.
         await using (var raw = w.RawDb())
         {
             var hash = (await raw.OwnerPortalContacts.AsNoTracking().SingleAsync()).EmailHash;
@@ -263,23 +228,17 @@ public partial class OwnerCollaborationTests
             Assert.Equal(World.ContactIndex.HashEmail("carla@example.com"), hash);
         }
 
-        // What the service reads: the words, in clear.
         Assert.Equal("carla@example.com", (await service.ListContactsForOwnerAsync(owner)).Single().Email);
         var read = await service.ListMessagesForOwnerAsync(owner, conversation.Id);
         Assert.Contains(read, m => m.Body == Words);
         Assert.Contains(read, m => m.Attachment is { } file && file.FileName.StartsWith("Visura Verdi Maria", StringComparison.Ordinal));
         Assert.Equal(Subject, (await service.ListConversationsForOwnerAsync(owner)).Single().Subject);
 
-        // The address is found by its keyed hash: another spelling of it is the same contact, an invitation already in force.
         var again = await Assert.ThrowsAsync<DomainConflictException>(
             () => service.InviteContactAsync(owner, new InviteOwnerContact(null, "  CARLA@example.com ", "Carla", "Altra", [OwnerPortalPermissions.InboxUse])));
         Assert.Equal(OwnerCollaborationErrors.ContactExists, again.Code);
     }
 
-    /// <summary>
-    /// A document of a property that was deleted has no property to raise the item on: it is skipped (and its open item closed) and never stops the run, the
-    /// other documents get their alerts, and the run ends without an error.
-    /// </summary>
     [Fact]
     public async Task OwnerDocument_ExpiryAlert_ADocumentOfADeletedProperty_DoesNotStopTheRun()
     {
@@ -291,12 +250,10 @@ public partial class OwnerCollaborationTests
             w.OrgId, new ShareOwnerDocument(w.OwnerB, w.PropertyB, OwnerDocumentType.Insurance, "Polizza casa Beta", null, Today.AddDays(10)), Pdf("B"), Agent);
         Assert.Equal(new OwnerDocumentAlertResult(2, 0), await service.RaiseExpiryAlertsAsync());
 
-        // The property of the second is deleted: its open item is closed, the run does not fail.
         await w.DeletePropertyAsync(w.PropertyB);
         Assert.Equal(new OwnerDocumentAlertResult(0, 1), await service.RaiseExpiryAlertsAsync());
         Assert.Equal(1, await w.Db.InternalActivities.CountAsync(a => a.CompletedAt == null && a.EntityId != null));
 
-        // A document shared for the deleted property afterwards never gets an item (the creation would fail: no such property); the live one still does.
         var ofGoneToo = await service.ShareDocumentAsync(
             w.OrgId, new ShareOwnerDocument(w.OwnerB, w.PropertyB, OwnerDocumentType.Mandate, "Mandato", null, Today.AddDays(3)), Pdf("C"), Agent);
         var another = await service.ShareDocumentAsync(
@@ -308,10 +265,6 @@ public partial class OwnerCollaborationTests
         Assert.NotEqual(ofLive.Document.Id, ofGone.Document.Id);
     }
 
-    /// <summary>
-    /// The expiry alerts read every document that lapses, not the first 500 of a list without an order: more than 500 documents lapse, behind the history of
-    /// documents that were renewed (their old versions lapsed long ago and are not the version in force), and every one gets its item once.
-    /// </summary>
     [Fact]
     public async Task OwnerDocument_ExpiryAlerts_ReadEveryDocument_NotOnlyTheFirstFiveHundred()
     {
@@ -353,7 +306,6 @@ public partial class OwnerCollaborationTests
             }
         }
 
-        // 300 documents renewed long ago (an old version that lapsed two years ago, the version in force beyond the window) and 520 that lapse in the next weeks.
         for (var i = 0; i < 300; i++)
             Add($"Rinnovata {i}", [-700, 200]);
         for (var i = 0; i < 520; i++)
@@ -362,16 +314,10 @@ public partial class OwnerCollaborationTests
 
         Assert.Equal(new OwnerDocumentAlertResult(520, 0), await service.RaiseExpiryAlertsAsync());
 
-        // Once per version: the next run finds them all raised.
         Assert.Equal(new OwnerDocumentAlertResult(0, 0), await service.RaiseExpiryAlertsAsync());
         Assert.Equal(520, await w.Db.InternalActivities.CountAsync(a => a.CompletedAt == null && a.EntityId != null));
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (AC-NF111-5). A conversation an owner opens can reference only what that owner holds: the property, the stay, the document or the
-    /// published statement of ANOTHER owner (or one that does not exist) is the same 404, nothing is stored, and the agency cannot tie a conversation of an owner
-    /// to the document of another owner either. What the owner holds opens.
-    /// </summary>
     [Fact]
     public async Task OwnerInbox_AConversationCannotReferenceWhatAnotherOwnerHolds_Test()
     {
@@ -389,7 +335,6 @@ public partial class OwnerCollaborationTests
         static StartOwnerConversation About(OwnerConversationTopic topic, Guid? property = null, Guid? stay = null, Guid? document = null, Guid? statement = null) =>
             new(null, null, topic, property, stay, document, statement, "Una domanda", "Il testo della domanda");
 
-        // What another owner holds, or nothing: the same 404, nothing stored.
         foreach (var command in new[]
                  {
                      About(OwnerConversationTopic.Property, property: w.PropertyB),
@@ -406,7 +351,6 @@ public partial class OwnerCollaborationTests
 
         Assert.Empty(await w.Db.OwnerConversations.ToListAsync());
 
-        // What the owner holds: opened, on its own owner profile.
         foreach (var command in new[]
                  {
                      About(OwnerConversationTopic.General),
@@ -419,7 +363,6 @@ public partial class OwnerCollaborationTests
             Assert.Equal(w.OwnerA, (await service.StartConversationByOwnerAsync(ownerA, command)).PropertyOwnerId);
         }
 
-        // The agency ties a conversation of an owner to what that owner holds, in its own org: not to the document of another owner.
         var crossed = await Assert.ThrowsAsync<NotFoundException>(() => service.StartConversationByAgencyAsync(
             w.OrgId, new StartOwnerConversation(w.OwnerA, null, OwnerConversationTopic.Document, null, null, documentB.Document.Id, null, "Domanda", "Testo"), Agent));
         Assert.Equal(OwnerCollaborationErrors.ConversationReferenceNotFound, crossed.Code);
@@ -427,10 +370,6 @@ public partial class OwnerCollaborationTests
             w.OtherOrgId, new StartOwnerConversation(w.OwnerA, null, OwnerConversationTopic.General, null, null, null, null, "Domanda", "Testo"), "auth0|altra-agenzia"));
     }
 
-    /// <summary>
-    /// PROOF TEST: the file of a message is handed out only to who reads its conversation: the owner and the agency of that conversation do, another owner, another
-    /// agency and a contact without <c>inbox.use</c> do not, and a message asked through another conversation is not found.
-    /// </summary>
     [Fact]
     public async Task OwnerInbox_AnAttachmentIsDownloadedOnlyByWhoReadsItsConversation_Test()
     {
@@ -455,7 +394,6 @@ public partial class OwnerCollaborationTests
             OwnerCollaborationErrors.AttachmentNotFound,
             (await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentForOwnerAsync(ownerA, elsewhere.Id, message.Id))).Code);
 
-        // A contact with the calendar only has no inbox: nothing, and the message the owner wrote is not in its reach.
         await w.SeedActiveContactAsync(w.OwnerA, w.UserC, OwnerPortalPermission.CalendarRead);
         var contact = await w.AccessAsync(w.UserC);
         Assert.Equal(
@@ -463,11 +401,6 @@ public partial class OwnerCollaborationTests
             (await Assert.ThrowsAsync<DomainForbiddenException>(() => service.OpenAttachmentForOwnerAsync(contact, conversation.Id, message.Id))).Code);
     }
 
-    /// <summary>
-    /// PROOF TEST: <c>accounting.read</c> is a permission of its own (AC-NF111-4). Without it a contact does not read the published statements of the owner
-    /// accounting and does not open a document of type statement or invoice, nor a conversation about a statement; with it, and <c>documents.read</c>, it does; on
-    /// its own it reads the statements and none of the documents.
-    /// </summary>
     [Fact]
     public async Task OwnerContact_AccountingRead_GatesTheStatementsAndTheStatementAndInvoiceDocuments_Test()
     {
@@ -488,7 +421,6 @@ public partial class OwnerCollaborationTests
             Assert.Equal(statements, read.Statements.Count);
         }
 
-        // documents.read only: the mandate, not the statement and the invoice, no statements.
         await ExpectAsync(["Mandato"], 0);
         var contact = await w.AccessAsync(w.UserC);
         await Assert.ThrowsAsync<NotFoundException>(() => service.OpenDocumentForOwnerAsync(contact, statement.Document.Id, null));
@@ -498,7 +430,6 @@ public partial class OwnerCollaborationTests
         var about = new StartOwnerConversation(null, null, OwnerConversationTopic.StatementVersion, null, null, null, published, "Estratto", "Una domanda");
         Assert.Equal(OwnerCollaborationErrors.ConversationReferenceNotFound, (await Assert.ThrowsAsync<NotFoundException>(() => service.StartConversationByOwnerAsync(contact, about))).Code);
 
-        // With accounting.read too: all three documents, the statement, and a conversation about it.
         await service.SetContactPermissionsAsync(owner, contactId, [OwnerPortalPermissions.DocumentsRead, OwnerPortalPermissions.InboxUse, OwnerPortalPermissions.AccountingRead]);
         await ExpectAsync(["Estratto di settembre", "Fattura 12/2026", "Mandato"], 1);
         var withAccounting = await w.AccessAsync(w.UserC);
@@ -506,15 +437,10 @@ public partial class OwnerCollaborationTests
         await opened.Content.DisposeAsync();
         Assert.Equal(w.OwnerA, (await service.StartConversationByOwnerAsync(withAccounting, about)).PropertyOwnerId);
 
-        // accounting.read on its own: the statements of the accounting, none of the documents.
         await service.SetContactPermissionsAsync(owner, contactId, [OwnerPortalPermissions.AccountingRead]);
         await ExpectAsync([], 1);
     }
 
-    /// <summary>
-    /// Every invitation sends an e-mail to an address the owner chose: the ones of a day are capped, the withdrawn ones counted too (inviting, withdrawing and
-    /// inviting again never reaches the limit of the contacts in force), and nothing is sent once the cap is reached.
-    /// </summary>
     [Fact]
     public async Task OwnerContact_TheInvitationsOfADayAreCapped_TheWithdrawnOnesCounted()
     {
@@ -579,7 +505,6 @@ public partial class OwnerCollaborationTests
     {
         var scanner = new OwnerFileContentScanner();
 
-        // A script hidden in a compressed object stream is found.
         var hidden = Encoding.Latin1.GetBytes("%PDF-1.5\n1 0 obj << /Type /ObjStm /Filter /FlateDecode >>\nstream\n")
             .Concat(Deflate("2 0 obj << /S /JavaScript /JS (x) >> endobj"))
             .Concat(Encoding.Latin1.GetBytes("\nendstream\nendobj\n%%EOF"))
@@ -618,10 +543,6 @@ public partial class OwnerCollaborationTests
     [GeneratedRegex(@"token=([A-Za-z0-9_\-]+)")]
     private static partial Regex TokenInLink();
 
-    /// <summary>
-    /// One agency with two owners (each with a property and a portal account), a person a contact can be, and another agency. The storage is a dictionary,
-    /// the e-mails are captured.
-    /// </summary>
     private sealed class World
     {
         private readonly string _name = $"owner-collaboration-{Guid.NewGuid():N}";
@@ -650,7 +571,6 @@ public partial class OwnerCollaborationTests
 
         public Guid PropertyB { get; private set; }
 
-        /// <summary>The property is deleted (soft delete: the row stays, the global filter hides it).</summary>
         public async Task DeletePropertyAsync(Guid propertyId)
         {
             await using var db = NewDb();
@@ -671,7 +591,6 @@ public partial class OwnerCollaborationTests
 
         public Guid UserC { get; private set; }
 
-        /// <param name="encrypted">The model encrypts the columns of <c>EncryptedColumns</c> (Data Protection), as in production; the default stores them as written.</param>
         public static async Task<World> CreateAsync(bool encrypted = false)
         {
             var w = new World(encrypted);
@@ -679,7 +598,6 @@ public partial class OwnerCollaborationTests
             return w;
         }
 
-        /// <summary>A published statement version of the owner accounting (E06) of the owner profile, in the database of the world.</summary>
         public async Task<Guid> SeedStatementAsync(Guid propertyOwnerId)
         {
             await using var db = NewDb();
@@ -703,7 +621,6 @@ public partial class OwnerCollaborationTests
             return statement.Id;
         }
 
-        /// <summary>A context of the same database with no Data Protection: it reads the columns as the table holds them.</summary>
         public AppDbContext RawDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_name).Options);
 
         public async Task<OwnerPortalAccess> AccessAsync(Guid ownerUserId) => await new OwnerPortalAccessResolver(NewDb(), _clock).ResolveAsync(ownerUserId);
@@ -750,7 +667,6 @@ public partial class OwnerCollaborationTests
                 NullLogger<OwnerCollaborationService>.Instance);
         }
 
-        /// <summary>The keyed index of the contacts, with the fixed key of Development (what the tests run with).</summary>
         public static OwnerContactIndex ContactIndex { get; } = new(
             Options.Create(new OwnerPortalOptions()),
             Mock.Of<IHostEnvironment>(environment => environment.EnvironmentName == "Development"),

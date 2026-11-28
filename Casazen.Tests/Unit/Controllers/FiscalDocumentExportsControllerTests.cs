@@ -75,7 +75,6 @@ public class FiscalDocumentExportsControllerTests
         documents.VerifyNoOtherCalls();
     }
 
-    /// <summary>Permission rule: a booking or a property the caller may not read the payments of (or that is not there) is a 404, and no document is read.</summary>
     [Fact]
     public async Task Export_ABookingOrAPropertyTheCallerMayNotRead_IsNotFound_AndNothingIsRead()
     {
@@ -94,7 +93,6 @@ public class FiscalDocumentExportsControllerTests
         documents.VerifyNoOtherCalls();
     }
 
-    /// <summary>Permission rule: the documents are read in the scope of the caller (never a wider one), with the filters of the request, and served as the file asked for.</summary>
     [Fact]
     public async Task Export_ServesTheFileOfTheScopeOfTheCaller_AsCsvAndAsExcel_NeverCached()
     {
@@ -130,7 +128,6 @@ public class FiscalDocumentExportsControllerTests
         documents.VerifyNoOtherCalls();
     }
 
-    /// <summary>The file is named after the month of <c>from</c>, else of <c>to</c>, else of today in Rome (a Rome calendar month, not a UTC one).</summary>
     [Fact]
     public async Task Export_IsNamedAfterTheMonth_OfFrom_ElseOfTo_ElseOfTodayInRome()
     {
@@ -168,7 +165,6 @@ public class FiscalDocumentExportsControllerTests
         }
     }
 
-    /// <summary>A list longer than a file holds is a 422 (the writers refuse it) and no file is served.</summary>
     [Theory]
     [InlineData("csv", "csv_too_many_rows")]
     [InlineData("xlsx", "xlsx_too_many_rows")]
@@ -243,7 +239,6 @@ public class FiscalDocumentExportsControllerTests
         return service.Object;
     }
 
-    /// <summary>A signed-in caller, and the services the problem answer of a refusal needs.</summary>
     private static ControllerContext Context()
     {
         var localizer = new Mock<IStringLocalizer<SharedResources>>();

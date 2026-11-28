@@ -6,15 +6,14 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>LR-01, B2: the last day of notice, the limits of the agenda, and the frequency limit of the reminders.</summary>
 public class LongRentDeadlineRulesTests
 {
     private static DateTime Utc(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
 
     [Theory]
-    [InlineData(LeaseContractType.Libero, 2028, 8, 31, 2028, 2, 29)] // six months before 31 August 2028, a leap year: 29 February
+    [InlineData(LeaseContractType.Libero, 2028, 8, 31, 2028, 2, 29)]
     [InlineData(LeaseContractType.Libero, 2027, 5, 31, 2026, 11, 30)]
-    [InlineData(LeaseContractType.Libero, 2027, 3, 31, 2026, 9, 30)] // 31 March: September has 30 days
+    [InlineData(LeaseContractType.Libero, 2027, 3, 31, 2026, 9, 30)]
     [InlineData(LeaseContractType.Libero, 2026, 8, 31, 2026, 2, 28)]
     [InlineData(LeaseContractType.Concordato, 2029, 11, 30, 2029, 5, 30)]
     [InlineData(LeaseContractType.Concordato, 2026, 12, 31, 2026, 6, 30)]
@@ -33,7 +32,6 @@ public class LongRentDeadlineRulesTests
     [Fact]
     public void NoticeDate_TakesTheRomeDayOfAnInstant()
     {
-        // 31 May 2027, 22:30 UTC is already 1 June in Rome (summer time): six months before is 1 December.
         var instant = new DateTime(2027, 5, 31, 22, 30, 0, DateTimeKind.Utc);
 
         Assert.Equal(new DateOnly(2026, 12, 1), LongRentDeadlineRules.NoticeDate(LeaseContractType.Libero, instant));
@@ -51,8 +49,6 @@ public class LongRentDeadlineRulesTests
         Assert.Equal(50, RentCharges.MaxBulkReminders);
     }
 
-    // --- The frequency limit ----------------------------------------------------------------------------
-
     private static IConfiguration Config(string? hours)
     {
         var values = new Dictionary<string, string?>();
@@ -62,16 +58,16 @@ public class LongRentDeadlineRulesTests
     }
 
     [Theory]
-    [InlineData(null, 24)] // not configured: the default of the task
+    [InlineData(null, 24)]
     [InlineData("24", 24)]
     [InlineData("1", 1)]
     [InlineData("72", 72)]
     [InlineData("720", 720)]
-    [InlineData("0", 1)] // out of range: kept inside, never "no limit"
+    [InlineData("0", 1)]
     [InlineData("-5", 1)]
     [InlineData("100000", 720)]
     [InlineData("", 24)]
-    [InlineData("a day", 24)] // a typo in the environment is the default, not an error on every rent page
+    [InlineData("a day", 24)]
     [InlineData("2.5", 24)]
     public void ReminderIntervalHours_IsConfigurable_BetweenOneAndSevenHundredTwenty_DefaultTwentyFour(string? configured, int expected)
     {

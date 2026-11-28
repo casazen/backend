@@ -55,13 +55,11 @@ public class FieldEncryptionPostgresTests
         foreach (var clear in new[] { DocumentNumber, IssuePlace, StayDocumentNumber, StayIssuePlace, Username, Password, WsKey })
             Assert.All(rows, row => Assert.DoesNotContain(clear, row));
 
-        // Every encrypted column holds a Data Protection payload.
         var guest = await stored.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
         var credentials = await stored.PropertyQuesturaCredentials.AsNoTracking().SingleAsync(c => c.PropertyId == seed.PropertyId);
         Assert.All(
             new[] { guest.DocumentNumber, guest.DocumentIssuingCountry, credentials.Username, credentials.Password, credentials.WsKey },
             value => Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, value));
-        // Not encrypted: name and e-mail stay searchable (TN-1 lookup).
         Assert.Equal("Giulia", guest.FirstName);
     }
 
@@ -73,7 +71,6 @@ public class FieldEncryptionPostgresTests
         await using (var firstRun = BuildDataProtection(database))
             seed = await SeedAsync(database, Provider(firstRun));
 
-        // A new process: new provider, same key ring (DataProtectionKeys table).
         await using var afterRestart = BuildDataProtection(database);
         await using var db = NewContext(database, Provider(afterRestart));
         var guest = await db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
@@ -83,7 +80,6 @@ public class FieldEncryptionPostgresTests
         Assert.Equal((DocumentNumber, IssuePlace), (guest.DocumentNumber, guest.DocumentIssuingCountry));
         Assert.Equal((StayDocumentNumber, StayIssuePlace), (stay.DocumentNumber, stay.DocumentIssuePlaceName));
         Assert.Equal((Username, Password, WsKey), (credentials.Username, credentials.Password, credentials.WsKey));
-        // Empty values stay empty (no payload for "nothing").
         Assert.Equal(string.Empty, (await db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.EmptyGuestId)).DocumentNumber);
     }
 
@@ -108,7 +104,6 @@ public class FieldEncryptionPostgresTests
         var legacyCredentials = await stored.PropertyQuesturaCredentials.AsNoTracking().SingleAsync(c => c.PropertyId == seed.PropertyId);
         Assert.Equal((seed.OrgId, Password), (legacyCredentials.OrgId, legacyCredentials.Password));
 
-        // Before the step the clear values are readable as they are.
         await using (var reader = NewContext(database, Provider(dataProtection)))
         {
             var legacy = await reader.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
@@ -165,7 +160,6 @@ public class FieldEncryptionPostgresTests
         await using var stored = database.CreateContext();
         var oldKey = KeyIdOf((await stored.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId)).DocumentNumber);
 
-        // Rotation (automatic every 90 days, or forced from the runbook): a new key becomes the default one.
         var keyManager = dataProtection.GetRequiredService<IKeyManager>();
         var newKey = keyManager.CreateNewKey(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddDays(90)).KeyId;
         Assert.NotEqual(oldKey, newKey);
@@ -175,11 +169,9 @@ public class FieldEncryptionPostgresTests
         Guid newGuestId;
         await using (var db = NewContext(database, provider))
         {
-            // The old value is read with the key id it carries.
             var old = await db.Guests.SingleAsync(g => g.Id == seed.GuestId);
             Assert.Equal(DocumentNumber, old.DocumentNumber);
 
-            // New writes use the new key; re-saving a value moves it to the new key.
             var added = NewGuest(seed.OrgId, "ZZ0000001");
             db.Guests.Add(added);
             db.Entry(old).Property(g => g.DocumentNumber).IsModified = true;
@@ -190,15 +182,12 @@ public class FieldEncryptionPostgresTests
         stored.ChangeTracker.Clear();
         Assert.Equal(newKey, KeyIdOf((await stored.Guests.AsNoTracking().SingleAsync(g => g.Id == newGuestId)).DocumentNumber));
         Assert.Equal(newKey, KeyIdOf((await stored.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId)).DocumentNumber));
-        // Values not rewritten keep the old key and stay readable.
         var stayPayload = (await stored.StayGuests.AsNoTracking().SingleAsync(s => s.Id == seed.StayGuestId)).DocumentNumber;
         Assert.Equal(oldKey, KeyIdOf(stayPayload));
         await using var reader = NewContext(database, provider);
         Assert.Equal(StayDocumentNumber, (await reader.StayGuests.AsNoTracking().SingleAsync(s => s.Id == seed.StayGuestId)).DocumentNumber);
     }
 
-    // The limit noted by FD-20: EF cached one model per context type, so every context of the process encrypted with
-    // the provider of the first one. Two providers in the same process now each encrypt with their own.
     [PostgresFact]
     public async Task TwoContexts_DifferentProvidersInTheSameProcess_EachEncryptsWithItsOwnProvider()
     {
@@ -207,7 +196,6 @@ public class FieldEncryptionPostgresTests
         var first = Provider(dataProtection);
         var second = new EphemeralDataProtectionProvider();
 
-        // A context without provider first (design time, tests): it must not fix the model of the others.
         await using (var plain = database.CreateContext())
             Assert.Null(DocumentNumberConverter(plain));
 
@@ -233,9 +221,6 @@ public class FieldEncryptionPostgresTests
         Assert.ThrowsAny<CryptographicException>(() => firstProtector.Unprotect(secondPayload));
         Assert.ThrowsAny<CryptographicException>(() => secondProtector.Unprotect(firstPayload));
 
-        // QA-INFRA-01: EF's model cache is process-wide and holds about forty models (one per provider). Once it is
-        // full a new model is not cached, so "same provider shares one model" depended on how many providers earlier
-        // tests had created. These three contexts use a MemoryCache of their own, like ICalFeedUrlProtectionTests.
         using var modelCache = new MemoryCache(new MemoryCacheOptions());
         await using var firstContext = NewContext(database, first, modelCache);
         await using var sameProvider = NewContext(database, first, modelCache);
@@ -353,11 +338,6 @@ public class FieldEncryptionPostgresTests
         return new Seed(org.Id, property.Id, guest.Id, empty.Id, stay.Id);
     }
 
-    /// <summary>
-    /// A guest row as the table accepted it before CO-15 (no "AlloggiatiDataErasedAt" column yet, "DataRetentionUntil"
-    /// still required, matching the entity's own former default of created-at + 7 years): used only for the "before"
-    /// seed above, so the entity's other columns keep going through the model.
-    /// </summary>
     private static Task InsertGuestBeforeCo15Async(AppDbContext db, Guest guest) =>
         db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "Guests" (
@@ -379,7 +359,6 @@ public class FieldEncryptionPostgresTests
                 {guest.DeletedAt}, {guest.DeletionReason}, {guest.CreatedAt}, {guest.UpdatedAt})
             """);
 
-    /// <summary>A stay guest row as the table accepted it before CO-15 (no "AnonymizedAt" column yet).</summary>
     private static Task InsertStayGuestBeforeCo15Async(AppDbContext db, StayGuest stay) =>
         db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "StayGuests" (
@@ -415,7 +394,6 @@ public class FieldEncryptionPostgresTests
         return all[index - 1];
     }
 
-    // Whole rows as the database stores them (context without converters).
     private static Task<string> RawGuestAsync(AppDbContext stored, Guid id) =>
         stored.Database.SqlQuery<string>($"""SELECT row_to_json(t)::text AS "Value" FROM "Guests" AS t WHERE t."Id" = {id}""").SingleAsync();
 
@@ -426,10 +404,6 @@ public class FieldEncryptionPostgresTests
         stored.Database.SqlQuery<string>(
             $"""SELECT row_to_json(t)::text AS "Value" FROM "PropertyQuesturaCredentials" AS t WHERE t."PropertyId" = {propertyId}""").SingleAsync();
 
-    /// <summary>
-    /// The provider reloads its key ring in the background once a key is created: wait until it protects with the new
-    /// key (it does not become the default one synchronously).
-    /// </summary>
     private static async Task WaitUntilDefaultKeyAsync(IDataProtectionProvider provider, Guid keyId)
     {
         var probe = provider.CreateProtector("Casazen.Tests.KeyRotationProbe");
@@ -441,7 +415,6 @@ public class FieldEncryptionPostgresTests
         }
     }
 
-    /// <summary>Id of the key that produced a Data Protection payload (bytes 4-19, after the magic header).</summary>
     private static Guid KeyIdOf(string payload)
     {
         var base64 = payload.Replace('-', '+').Replace('_', '/');
@@ -468,7 +441,6 @@ public class FieldEncryptionPostgresTests
     private static IDataProtectionProvider Provider(IServiceProvider services) =>
         services.GetRequiredService<IDataProtectionProvider>();
 
-    /// <summary>Data Protection as the application configures it: key ring in the database's DataProtectionKeys table.</summary>
     private static ServiceProvider BuildDataProtection(PostgresTestDatabase database)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();

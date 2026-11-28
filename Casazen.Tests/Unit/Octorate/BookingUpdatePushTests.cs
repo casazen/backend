@@ -29,8 +29,6 @@ public class BookingUpdatePushTests
 
     private static readonly DateTime T1 = new(2026, 11, 6, 8, 0, 5, DateTimeKind.Utc);
 
-    // --- The proof -------------------------------------------------------------------------------------------------------------
-
     /// <summary>
     /// PROOF TEST: data rule (NF-75, AC-NF75-2). Octorate holds a newer version of the reservation than the one CasaZen knew (the dates and the guests
     /// were changed in the channel manager). The host's edit is refused as a conflict: both versions are kept (the one of Octorate on the row, the host's
@@ -47,7 +45,6 @@ public class BookingUpdatePushTests
         octorate.ChangedOutside(new DateOnly(2026, 12, 11), new DateOnly(2026, 12, 14), 3, T1.AddHours(1));
         var theirs = octorate.AsReservation();
 
-        // The host's edit reaches the push: Octorate holds another version.
         Assert.Equal(OctorateSyncState.Conflict, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
 
         var conflict = await h.ReadSyncAsync(bookingId);
@@ -66,7 +63,6 @@ public class BookingUpdatePushTests
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
-        // Neither version is lost: Octorate keeps its own, CasaZen its own.
         Assert.Equal(new DateOnly(2026, 12, 11), octorate.CheckIn);
         Assert.Equal(3, octorate.Guests);
         var booking = await h.ReadBookingAsync(bookingId);
@@ -80,7 +76,6 @@ public class BookingUpdatePushTests
         Assert.Equal(new DateOnly(2026, 12, 11), octorate.CheckIn);
         Assert.Equal(3, octorate.Guests);
 
-        // «Keep mine»: based on the version the host was shown, so it writes CasaZen's version over exactly that one.
         Assert.Equal(OctorateSyncState.Synced, await PushAsync(h, bookingId, askedAgain: true, overwrite: true));
         Assert.Equal(theirs.UpdatedAt, octorate.Updates.Last().BasedOnUpdateTime);
         Assert.Equal(new DateOnly(2026, 12, 10), octorate.CheckIn);
@@ -111,7 +106,6 @@ public class BookingUpdatePushTests
         Assert.Equal(OctorateSyncState.Conflict, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
         var todoId = await SeedOpenConflictTodoAsync(h, bookingId);
 
-        // Later, the host changes only the notes: the booking was edited after the conflict was recorded.
         await using (var db = h.NewDb())
         {
             var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId);
@@ -122,7 +116,6 @@ public class BookingUpdatePushTests
 
         Assert.Equal(OctorateSyncState.Conflict, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
 
-        // Based on the version CasaZen last saw (T1): refused as a conflict, nothing of Octorate changed.
         Assert.Equal(T1, octorate.Updates.Last().BasedOnUpdateTime);
         Assert.Equal(new DateOnly(2026, 12, 11), octorate.CheckIn);
         Assert.Equal(new DateOnly(2026, 12, 14), octorate.CheckOut);
@@ -136,10 +129,6 @@ public class BookingUpdatePushTests
         h.Activities.Verify(a => a.CloseAsync(todoId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>
-    /// «Take theirs»: the host changes the booking to the stay and the guests Octorate holds. There is nothing to write: the version is adopted (its time is
-    /// the one of the booking now), nothing is sent, the row is <c>Synced</c> and the «To do» of the conflict closed.
-    /// </summary>
     [Fact]
     public async Task PushUpdate_TheBookingAlignedToOctoratesVersion_IsAdopted_NothingIsWritten_AndTheTodoIsClosed()
     {
@@ -211,7 +200,6 @@ public class BookingUpdatePushTests
                 return Task.FromResult(new OctoratePaymentResult("21575084"));
             });
 
-        // The change is written, the payment still cannot be recorded: the row says so again.
         Assert.Equal(OctorateSyncState.Failed, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
         Assert.Single(octorate.Updates);
         var stillFailed = await h.ReadSyncAsync(bookingId);
@@ -220,7 +208,6 @@ public class BookingUpdatePushTests
             (OctorateSyncState.Failed, OctorateSyncOperation.Payment, OctorateSyncErrorCodes.PaymentsNotRecorded),
             (stillFailed.State, stillFailed.LastOperation, stillFailed.ErrorCode));
 
-        // Octorate takes it: the row is Synced and the payment is recorded.
         accepts = true;
         Assert.Equal(OctorateSyncState.Synced, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
         var synced = await h.ReadSyncAsync(bookingId);
@@ -230,8 +217,6 @@ public class BookingUpdatePushTests
         await using var read = h.NewDb();
         Assert.Equal($"casazen-{paymentId}", (await read.Payments.AsNoTracking().SingleAsync(p => p.Id == paymentId)).OctorateTransactionId);
     }
-
-    // --- The push ----------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task PushUpdate_AnEditOfAMirroredBooking_ReachesOctorate_AndTheRowIsSyncedWithTheNewUpdateTime()
@@ -289,15 +274,12 @@ public class BookingUpdatePushTests
     {
         var h = new OctorateSyncHarness();
 
-        // A reservation that came from Octorate has no row of ours.
         var fromOctorate = await SeedMirroredAsync(h, withRow: false, reservationId: "1001");
         Assert.Null(await PushAsync(h, fromOctorate, askedAgain: false, overwrite: false));
 
-        // A booking of a channel is the channel's.
         var channel = await SeedMirroredAsync(h, source: BookingSource.Airbnb, bookingCode: "C0000CHAN1", reservationId: "1002");
         Assert.Null(await PushAsync(h, channel, askedAgain: false, overwrite: false));
 
-        // A booking that is not confirmed is not one CasaZen mirrors.
         var pending = await SeedMirroredAsync(h, bookingCode: "P0000PEND1", mutate: b => b.Status = BookingStatus.Pending, reservationId: "1003");
         Assert.Null(await PushAsync(h, pending, askedAgain: false, overwrite: false));
 
@@ -336,13 +318,11 @@ public class BookingUpdatePushTests
                 ? Task.FromException<OctorateReservation>(new OctorateServerException(503))
                 : Task.FromException<OctorateReservation>(new OctorateRequestRejectedException(400)));
 
-        // 5xx: the row says so and the exception goes up, so the dispatcher delivers the event again.
         await Assert.ThrowsAsync<OctorateServerException>(() => PushAsync(h, bookingId, askedAgain: false, overwrite: false));
         var unavailable = await h.ReadSyncAsync(bookingId);
         Assert.NotNull(unavailable);
         Assert.Equal((OctorateSyncState.Failed, OctorateSyncErrorCodes.Unavailable), (unavailable.State, unavailable.ErrorCode));
 
-        // Another refusal: Failed, not retried by itself, no exception.
         Assert.Equal(OctorateSyncState.Failed, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
         var rejected = await h.ReadSyncAsync(bookingId);
         Assert.NotNull(rejected);
@@ -376,12 +356,9 @@ public class BookingUpdatePushTests
         var keepMine = Assert.Single(events, e => JsonSerializer.Deserialize<BookingEventPayload>(e.PayloadJson, options)!.Overwrite);
         var plain = Assert.Single(events, e => !JsonSerializer.Deserialize<BookingEventPayload>(e.PayloadJson, options)!.Overwrite);
 
-        // The flag is in the event only when the host chose it: the other events keep their shape.
         Assert.Contains("\"Overwrite\":true", keepMine.PayloadJson, StringComparison.Ordinal);
         Assert.DoesNotContain("Overwrite", plain.PayloadJson, StringComparison.Ordinal);
     }
-
-    // --- The handler -----------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Handler_PushesTheEditsOfCasaZen_AndNeverAnEchoOrAChannel()
@@ -407,14 +384,11 @@ public class BookingUpdatePushTests
         await handler.HandleAsync(Event(DomainEventType.BookingCancelled, bookingId, BookingEventOrigin.Host), CancellationToken.None);
         await handler.HandleAsync(Event(DomainEventType.BookingModified, bookingId, BookingEventOrigin.Host) with { PayloadJson = "not json" }, CancellationToken.None);
 
-        // The connector off sends nothing.
         flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(false);
         await handler.HandleAsync(Event(DomainEventType.BookingModified, bookingId, BookingEventOrigin.Host), CancellationToken.None);
 
         push.VerifyNoOtherCalls();
     }
-
-    // --- The client ------------------------------------------------------------------------------------------------------------
 
     [Fact]
     public void UpdateBody_CarriesTheStayTheGuestsThePriceAndTheRoom_AndNothingElse()
@@ -434,7 +408,6 @@ public class BookingUpdatePushTests
         using var body = JsonDocument.Parse(OctorateReservationRequests.UpdateBody(target, update));
         var root = body.RootElement;
 
-        // The Rome days start at 23:00 UTC of the day before in winter; the room is the PMS room; the price is to the cent.
         Assert.Equal("2026-12-11T23:00:00+00:00[UTC]", root.GetProperty("checkin").GetString());
         Assert.Equal("2026-12-14T23:00:00+00:00[UTC]", root.GetProperty("checkout").GetString());
         Assert.Equal(3, root.GetProperty("totalGuest").GetInt32());
@@ -443,11 +416,9 @@ public class BookingUpdatePushTests
         Assert.Equal(956527, root.GetProperty("pmsProduct").GetInt64());
         Assert.Equal("Arrivo alle 22", root.GetProperty("privateNotes").GetString());
 
-        // Nothing of the status, the guests' data, the payments, the automatic charge, or the version (a PATCH is partial: Octorate stamps its own).
         var names = root.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToList();
         Assert.Equal(["checkin", "checkout", "pmsProduct", "privateNotes", "roomGross", "totalChildren", "totalGuest"], names);
 
-        // No notes: the member is left out, the notes of the reservation stay as they are; a stay with no night, or no guest, is not sent.
         using var noNotes = JsonDocument.Parse(OctorateReservationRequests.UpdateBody(target, update with { Notes = "  " }));
         Assert.False(noNotes.RootElement.TryGetProperty("privateNotes", out _));
         Assert.Throws<ArgumentException>(() => OctorateReservationRequests.UpdateBody(target, update with { CheckOut = update.CheckIn }));
@@ -466,7 +437,6 @@ public class BookingUpdatePushTests
                 () => h.Client.UpdateReservationAsync(Target(), ReservationId, Update(basedOn: T1), CancellationToken.None));
         }
 
-        // One read, no PATCH.
         var read = Assert.Single(h.Requests);
         Assert.Equal(HttpMethod.Get, read.Method);
     }
@@ -489,11 +459,6 @@ public class BookingUpdatePushTests
         Assert.Equal(new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Utc), after.UpdatedAt);
     }
 
-    /// <summary>
-    /// A change whose answer was lost (a timeout, a 5xx on the read that checks it) was made all the same and moved the <c>updateTime</c> itself: the
-    /// delivery that follows finds another version, but one that already holds the stay and the guests of the change. That is done, not a conflict: the
-    /// version is returned and nothing is written over it. The same version with another stay or other guests is still a conflict.
-    /// </summary>
     [Fact]
     public async Task UpdateReservationAsync_AVersionThatAlreadyHoldsTheChange_IsDone_NothingIsWritten()
     {
@@ -520,7 +485,6 @@ public class BookingUpdatePushTests
     [Fact]
     public async Task UpdateReservationAsync_A409OfOctorate_AndAnAcceptedPatchThatChangedNothing_AreNeverASuccess()
     {
-        // 409 of the PATCH itself: a conflict.
         var refused = new ClientHarness();
         refused.Answer(HttpStatusCode.Conflict, """{"type":"Conflict"}""");
         using (refused.Scope.Use(OctorateSyncHarness.OrgA))
@@ -529,7 +493,6 @@ public class BookingUpdatePushTests
                 () => refused.Client.UpdateReservationAsync(Target(), ReservationId, Update(basedOn: null), CancellationToken.None));
         }
 
-        // A 2xx and a reservation that does not hold the stay that was sent: refused, not a success.
         var ignored = new ClientHarness();
         ignored.Answer(HttpStatusCode.OK, "{}");
         ignored.Answer(HttpStatusCode.OK, Reservation(updateTime: "2026-11-06T08:00:05Z", checkIn: "2026-12-10", checkOut: "2026-12-13", guests: 2));
@@ -539,8 +502,6 @@ public class BookingUpdatePushTests
                 () => ignored.Client.UpdateReservationAsync(Target(), ReservationId, Update(basedOn: null), CancellationToken.None));
         }
     }
-
-    // --- Helpers ---------------------------------------------------------------------------------------------------------------
 
     private static OctorateBookingTarget Target() => new(OctorateSyncHarness.Accommodation, OctorateSyncHarness.Room, OctorateSyncHarness.PmsRoom);
 
@@ -586,7 +547,6 @@ public class BookingUpdatePushTests
         return await h.Service(db, tenant).PushUpdateAsync(bookingId, askedAgain, overwrite, CancellationToken.None);
     }
 
-    /// <summary>A confirmed booking of the host with its reservation on Octorate, last seen at <see cref="T1"/>, and the row of its create, synced.</summary>
     private static async Task<Guid> SeedMirroredAsync(
         OctorateSyncHarness h,
         bool withRow = true,
@@ -612,7 +572,6 @@ public class BookingUpdatePushTests
         return bookingId;
     }
 
-    /// <summary>The open «To do» of a conflict about the booking, as <c>IInternalActivityService</c> would have written it (the harness mocks the service).</summary>
     private static async Task<Guid> SeedOpenConflictTodoAsync(OctorateSyncHarness h, Guid bookingId)
     {
         await using var db = h.NewDb();
@@ -633,7 +592,6 @@ public class BookingUpdatePushTests
         return todo.Id;
     }
 
-    /// <summary>A payment the host recorded in cash, collected and not recorded on the reservation of Octorate.</summary>
     private static async Task<Guid> SeedUnrecordedPaymentAsync(OctorateSyncHarness h, Guid bookingId, decimal amount)
     {
         await using var db = h.NewDb();
@@ -671,10 +629,6 @@ public class BookingUpdatePushTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// Octorate as the tests need it: one reservation with a version (its <c>updateTime</c>), the dates and the guests it holds, and the rule that a change
-    /// based on another version than the one it holds is refused with a 409. Every change it receives is kept.
-    /// </summary>
     private sealed class FakeOctorate
     {
         public FakeOctorate(OctorateSyncHarness h, DateTime updatedAt)
@@ -709,7 +663,6 @@ public class BookingUpdatePushTests
 
         public int Guests { get; private set; } = 2;
 
-        /// <summary>Somebody changed the reservation in the channel manager.</summary>
         public void ChangedOutside(DateOnly checkIn, DateOnly checkOut, int guests, DateTime at)
         {
             CheckIn = checkIn;
@@ -728,7 +681,6 @@ public class BookingUpdatePushTests
         };
     }
 
-    /// <summary>The client over a handler that answers what the test queued and keeps every request with its body.</summary>
     private sealed class ClientHarness
     {
         public ClientHarness()

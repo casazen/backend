@@ -7,12 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// SP-15a: the emails of the payment of a service (<see cref="EmailTemplates.ServicePaymentRequest"/>, the reminder, the receipt to
-/// the supplier and the notice of an offline payment to the host), Italian and English, every dynamic value HTML-encoded.
-/// Decision D24: the texts are true, and promise nothing about when the supplier is paid; the split is "price gross, CasaZen
-/// commission, net".
-/// </summary>
 public class ServicePaymentEmailTemplatesTests
 {
     private const string Payload = "<a href=\"https://phish.example\">Paga qui</a>";
@@ -62,7 +56,6 @@ public class ServicePaymentEmailTemplatesTests
         foreach (var content in new[] { italian, english })
         {
             Assert.False(string.IsNullOrWhiteSpace(content.Subject));
-            // No placeholder is left unfilled and no resource key shows through.
             Assert.DoesNotMatch(@"\{\d+\}", content.HtmlBody);
             Assert.DoesNotMatch(@"\{\d+\}", content.Subject);
             Assert.DoesNotMatch(@"ServicePayment\w*_\w+", content.HtmlBody);
@@ -78,11 +71,9 @@ public class ServicePaymentEmailTemplatesTests
     {
         var content = Render(template, "it-IT");
 
-        // The personal link: the address of the button, then the address and the text of the fallback for clients that do not
-        // render buttons.
         Assert.Equal(3, Regex.Matches(content.HtmlBody, Regex.Escape(PayUrl)).Count);
         Assert.Contains("60,00 €", content.HtmlBody);
-        Assert.Contains("07/11/2026", content.HtmlBody); // 30 days after 8 October
+        Assert.Contains("07/11/2026", content.HtmlBody);
         Assert.Contains("non inoltrarlo", content.HtmlBody);
         Assert.Contains("direttamente sul conto Stripe del fornitore", content.HtmlBody);
     }
@@ -154,8 +145,6 @@ public class ServicePaymentEmailTemplatesTests
             EmailTemplates.ServicePaymentReminder(Culture("it-IT"), "a", "b", "c", 100, Instant, "/service/pay/1"));
     }
 
-    // ─── Decision D24: true texts ───
-
     [Theory]
     [MemberData(nameof(Cultures))]
     public void Texts_PromiseNothingAboutWhenTheSupplierIsPaidOrHowFast(string culture)
@@ -172,7 +161,6 @@ public class ServicePaymentEmailTemplatesTests
     [Fact]
     public void Texts_OnlyTheSupplierIsToldAboutTheCommission_NeverThePayer()
     {
-        // The payer pays the price shown; the commission is the supplier's. Only the receipt (to the supplier) names it.
         foreach (var culture in new[] { "it-IT", "en" })
         {
             foreach (var template in new[] { "request", "reminder" })

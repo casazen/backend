@@ -18,7 +18,6 @@ public class SearchFoldingTests
     [Fact]
     public void Table_TranslateFromAndTo_HaveTheSameLength_AndNoCharacterTwice()
     {
-        // translate() deletes the characters of the first list that have no partner in the second, and uses the first occurrence of a repeated one.
         Assert.Equal(SearchFolding.TranslateFrom.Length, SearchFolding.TranslateTo.Length);
         Assert.Equal(SearchFolding.TranslateFrom.Length, SearchFolding.TranslateFrom.Distinct().Count());
         Assert.All(SearchFolding.TranslateTo, letter => Assert.True(letter is >= 'a' and <= 'z'));
@@ -52,7 +51,6 @@ public class SearchFoldingTests
 
         static char Expected(char character, string decomposed)
         {
-            // Letters that Unicode does not decompose (stroke, eth, dotless i, signs...): the letter they are a variant of, by code point.
             return (int)character switch
             {
                 0x00D0 or 0x00F0 or 0x0110 or 0x0111 => 'd',
@@ -92,7 +90,6 @@ public class SearchFoldingTests
     [Fact]
     public void Table_TheSignsWhoseLowerCaseIsAsciiAreIn()
     {
-        // Kelvin sign, Angstrom sign, dotted capital I: PostgreSQL's lower() could turn them into an ASCII letter after translate().
         foreach (var code in new[] { 0x212A, 0x212B, 0x0130 })
             Assert.True(SearchFolding.TryFold((char)code, out _), $"U+{code:X4}");
     }
@@ -100,18 +97,10 @@ public class SearchFoldingTests
     [Fact]
     public void Table_WhatIsNotALetterOfTheTable_IsNotInIt()
     {
-        // ASCII; the multiplication and division signs (they sit among the Latin-1 letters); an en dash; the typographic
-        // apostrophe; a Cyrillic capital letter.
         foreach (var code in new[] { 'a', 'Z', '0', ' ', '-', 0x00D7, 0x00F7, 0x2013, 0x2019, 0x0419 })
             Assert.False(SearchFolding.TryFold((char)code, out _), $"U+{(int)code:X4}");
     }
 
-    // ─── The SQL expression, run in C# as PostgreSQL runs it ────────────────────────────────────────────
-
-    /// <summary>
-    /// The steps of <see cref="SearchKeyModel.FoldSql"/> as PostgreSQL executes them: translate (first occurrence wins, no
-    /// partner deletes), replace for the pairs, lower (a UTF-8 locale: every letter), the regular expression, btrim (spaces).
-    /// </summary>
     private static string RunTheSql(string input)
     {
         var from = SearchFolding.TranslateFrom;
@@ -170,7 +159,6 @@ public class SearchFoldingTests
     [Fact]
     public void Fold_TheSamplesOfTheDatabaseTests_GiveTheWordsWrittenByHand()
     {
-        // The same texts and words as GlobalSearchPostgresTests compares with the generated columns of a real database.
         foreach (var sample in SearchFoldingSamples.Guests)
         {
             Assert.Equal(sample.Key, SearchText.Fold(sample.Text));

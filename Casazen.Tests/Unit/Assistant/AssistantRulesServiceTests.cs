@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T02 (NF-66, AC-NF66-2, AC-NF67-1): the rules of an organization with the exceptions of a property, the inheritance between them, and the version of the
-/// instructions that grows with every change, in the unit of work of the change and only when something changed.
-/// </summary>
 public class AssistantRulesServiceTests
 {
     private const string User = "auth0|admin";
@@ -80,13 +76,10 @@ public class AssistantRulesServiceTests
         await using var db = AssistantTestKit.NewDb();
         var service = AssistantTestKit.Rules(db);
 
-        // The first change takes the defaults (version 1) to 2.
         Assert.Equal(2, (await service.SaveAsync(Org, AssistantTestKit.RulesInput(), User)).InstructionVersion);
 
-        // The same rules again: the version stays.
         Assert.Equal(2, (await service.SaveAsync(Org, AssistantTestKit.RulesInput(), User)).InstructionVersion);
 
-        // Each real change grows it by one.
         Assert.Equal(3, (await service.SaveAsync(Org, AssistantTestKit.RulesInput(tone: AssistantTone.Formal), User)).InstructionVersion);
         Assert.Equal(4, (await service.SaveAsync(Org, AssistantTestKit.RulesInput(tone: AssistantTone.Formal, threshold: 0.95m), User)).InstructionVersion);
         Assert.Equal(5, (await service.SaveAsync(Org, AssistantTestKit.RulesInput(tone: AssistantTone.Formal, threshold: 0.95m, enabled: false), User)).InstructionVersion);
@@ -108,7 +101,6 @@ public class AssistantRulesServiceTests
         Assert.Empty(saved.AllowedTopics);
         Assert.Empty(saved.ForbiddenTopics);
 
-        // The row exists (it says who saved), and nothing changed: the version is still the first.
         Assert.Equal(1, saved.InstructionVersion);
         Assert.Single(await db.OrgAssistantRules.AsNoTracking().ToListAsync());
     }
@@ -138,7 +130,6 @@ public class AssistantRulesServiceTests
         var service = AssistantTestKit.Rules(db);
         Assert.Empty((await service.GetAsync(Org)).AllowedTopics);
 
-        // Explicitly empty, and missing, over the defaults: accepted, stored as no restriction, and it is the default itself, so nothing changed and the version is still the first.
         var explicitlyEmpty = await service.SaveAsync(Org, new AssistantRulesInput(null, null, null, null, null, null, [], [], null), User);
         Assert.Empty(explicitlyEmpty.AllowedTopics);
         Assert.Equal(1, explicitlyEmpty.InstructionVersion);
@@ -146,13 +137,11 @@ public class AssistantRulesServiceTests
         Assert.Empty(missing.AllowedTopics);
         Assert.Equal(1, missing.InstructionVersion);
 
-        // A list restricts, for the organization and, inherited, for its properties.
         var restricted = await service.SaveAsync(Org, new AssistantRulesInput(null, null, null, null, null, null, ["Parking", "WiFi"], [], null), User);
         Assert.Equal(["Parking", "WiFi"], restricted.AllowedTopics);
         Assert.Equal(2, restricted.InstructionVersion);
         Assert.Equal(["Parking", "WiFi"], (await service.ResolveEffectiveAsync(Org, property.Id)).AllowedTopics);
 
-        // The empty list is what lifts it: no restriction again (a change, so the version grows), never nothing allowed, and the forbidden topics keep their own say.
         var lifted = await service.SaveAsync(Org, new AssistantRulesInput(null, null, null, null, null, null, [], ["Pets"], null), User);
         Assert.Empty(lifted.AllowedTopics);
         Assert.Equal(["Pets"], lifted.ForbiddenTopics);
@@ -188,8 +177,6 @@ public class AssistantRulesServiceTests
         Assert.Empty(await db.OrgAssistantRules.AsNoTracking().ToListAsync());
     }
 
-    // ─── the version of the instructions, in the unit of work of the caller ───
-
     [Fact]
     public async Task BumpVersionAsync_TracksTheNewVersion_ItIsTheCallersSaveThatWritesIt()
     {
@@ -198,7 +185,6 @@ public class AssistantRulesServiceTests
 
         await AssistantTestKit.Rules(db).BumpVersionAsync(Org);
 
-        // Not saved by itself: another request sees nothing yet.
         await using (var other = AssistantTestKit.NewDb(store))
             Assert.Empty(await other.OrgAssistantRules.AsNoTracking().ToListAsync());
 
@@ -251,8 +237,6 @@ public class AssistantRulesServiceTests
         await using var first = AssistantTestKit.NewDb(store);
         await using var second = AssistantTestKit.NewDb(store);
 
-        // The second request read the rules at version 2 (its growth of the version is tracked, not saved); the first one changes them, so they are at version 3; the second then
-        // tries to save its own change on top of version 2.
         await AssistantTestKit.Rules(second).BumpVersionAsync(Org);
         await AssistantTestKit.Rules(first).SaveAsync(Org, AssistantTestKit.RulesInput(tone: AssistantTone.Formal), User);
 
@@ -266,8 +250,6 @@ public class AssistantRulesServiceTests
         Assert.Equal(3, rules.InstructionVersion);
         Assert.Equal(AssistantTone.Formal, rules.Tone);
     }
-
-    // ─── the exceptions of a property and the inheritance ───
 
     [Fact]
     public async Task ResolveEffectiveAsync_AnOrganizationWithoutExceptions_IsTheOrganizationsRules()
@@ -303,10 +285,8 @@ public class AssistantRulesServiceTests
         Assert.Equal(new TimeOnly(6, 0), effective.HoursTo);
         Assert.Equal(0.97m, effective.ConfidenceThreshold);
 
-        // The property's list replaces the organization's: Pets and Parking are no longer forbidden here.
         Assert.Equal(["Noise"], effective.ForbiddenTopics);
 
-        // What the property did not give is the organization's.
         Assert.True(effective.Enabled);
         Assert.Equal(["it", "en", "de"], effective.Languages);
     }
@@ -318,12 +298,10 @@ public class AssistantRulesServiceTests
         var property = await AssistantTestKit.AddPropertyAsync(db, Org);
         var service = AssistantTestKit.Rules(db);
 
-        // The organization is off and the property says «on»: off.
         await service.SaveAsync(Org, AssistantTestKit.RulesInput(enabled: false), User);
         await service.SavePropertySettingsAsync(Org, property.Id, new PropertyAssistantSettingsInput(true, null, null, null, null, null, null), User);
         Assert.False((await service.ResolveEffectiveAsync(Org, property.Id)).Enabled);
 
-        // The organization is on and the property says nothing: on. The property says «off»: off.
         await service.SaveAsync(Org, AssistantTestKit.RulesInput(enabled: true), User);
         Assert.True((await service.ResolveEffectiveAsync(Org, property.Id)).Enabled);
         await service.SavePropertySettingsAsync(Org, property.Id, new PropertyAssistantSettingsInput(false, null, null, null, null, null, null), User);
@@ -361,7 +339,6 @@ public class AssistantRulesServiceTests
         Assert.Equal(before + 1, (await service.GetAsync(Org)).InstructionVersion);
         Assert.Empty(await db.PropertyAssistantSettings.AsNoTracking().ToListAsync());
 
-        // Nothing left to remove is not an error, and moves nothing.
         await service.DeletePropertySettingsAsync(Org, property.Id);
         Assert.Equal(before + 1, (await service.GetAsync(Org)).InstructionVersion);
     }
@@ -374,7 +351,6 @@ public class AssistantRulesServiceTests
         var service = AssistantTestKit.Rules(db);
         var none = new PropertyAssistantSettingsInput(null, null, null, null, null, null, null);
 
-        // Nothing to say and nothing stored: no row is made.
         Assert.Equal(new PropertyAssistantSettingsItem(property.Id, null, null, null, null, null, null, null, null), await service.SavePropertySettingsAsync(Org, property.Id, none, User));
         Assert.Empty(await db.PropertyAssistantSettings.AsNoTracking().ToListAsync());
 
@@ -450,7 +426,6 @@ public class AssistantRulesServiceTests
         Assert.Empty(await db.OrgAssistantRules.AsNoTracking().ToListAsync());
     }
 
-    // The lists of a record are compared by reference: the rules are compared member by member.
     private static void AssertSame(EffectiveAssistantRules expected, EffectiveAssistantRules actual)
     {
         Assert.Equal(expected.Enabled, actual.Enabled);

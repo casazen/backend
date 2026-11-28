@@ -53,7 +53,6 @@ public class BookingCalendarIntegrationTests : IClassFixture<CasazenWebApplicati
         var bookingIds = IdsOfType(items, "booking");
         var blockIds = IdsOfType(items, "ical-block");
 
-        // By arrival day: the departure on 01/09 first, the arrivals on the last day of the month last.
         Assert.Equal(
             [leavesOnFirstDay, labelledBlock, manualBlock, arrivesOnLastDay, airbnbBlock],
             items.Select(i => i.GetProperty("id").GetGuid()).ToList());
@@ -67,7 +66,6 @@ public class BookingCalendarIntegrationTests : IClassFixture<CasazenWebApplicati
             new HashSet<Guid> { arrivesOnLastDay, leavesOnFirstDay },
             body.GetProperty("bookings").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()).ToHashSet());
 
-        // Stay dates, the same day for every client: never shifted by the property time zone (Europe/Rome).
         var lastDayStay = Item(items, arrivesOnLastDay);
         Assert.Equal("2026-09-30T00:00:00", lastDayStay.GetProperty("startDate").GetString());
         Assert.Equal("2026-10-02T00:00:00", lastDayStay.GetProperty("endDate").GetString());
@@ -77,7 +75,6 @@ public class BookingCalendarIntegrationTests : IClassFixture<CasazenWebApplicati
             .Single(b => b.GetProperty("id").GetGuid() == arrivesOnLastDay);
         Assert.Equal("2026-09-30T00:00:00", lastDayBooking.GetProperty("checkInDate").GetString());
 
-        // Blocks carry the channel of their feed (and its label), never a guest.
         var airbnbItem = Item(items, airbnbBlock);
         Assert.Equal("Airbnb", airbnbItem.GetProperty("channel").GetString());
         Assert.Equal(JsonValueKind.Null, airbnbItem.GetProperty("feedLabel").ValueKind);

@@ -47,7 +47,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
                 """)
             .ToListAsync();
 
-        // table.column -> [data_type, is_nullable, precision, scale, length]
         var byName = rows
             .Select(r => r.Split('|'))
             .ToDictionary(p => $"{p[0]}.{p[1]}", p => p[2..]);
@@ -63,7 +62,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task Writer_ThatDoesNotKnowTheColumns_StillInsertsAfterTheMigration()
     {
-        // The old release keeps running during a deploy: its INSERTs name neither column, and the defaults satisfy the CHECKs.
         await using var db = _database!.CreateContext();
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
@@ -146,7 +144,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task Model_SavesTheStayRulesAndThePublicProfile_AndReadsThemBack()
     {
-        // The whole path through the model: the entities write the new columns, the CHECKs and the lengths hold.
         await using var db = _database!.CreateContext();
         var org = new OrgEntity
         {
@@ -189,8 +186,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
         Assert.Equal("+393331234567", storedOrg.PublicPhone);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
-
     private async Task<Guid> MigratedPropertyAsync()
     {
         var org = Guid.NewGuid();
@@ -213,7 +208,6 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
             IsActive = true,
         });
 
-    /// <summary>A property with the columns of the first <c>Properties</c> table only (<see cref="LegacyPropertyRows"/>).</summary>
     private static Task InsertPropertyAsync(AppDbContext db, Guid id, Guid orgId, string name, int maxGuests, decimal nightlyRate) =>
         LegacyPropertyRows.InsertAsync(db, new Property
         {

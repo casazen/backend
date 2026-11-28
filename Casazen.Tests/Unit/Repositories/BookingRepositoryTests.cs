@@ -50,7 +50,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_SameDayTurnover_ReturnsTrue()
     {
-        // Existing: Apr 01-05; new checkin Apr 05 = checkout date of existing
         await SeedBookingAsync(
             new DateTime(2026, 4, 1),
             new DateTime(2026, 4, 5));
@@ -66,7 +65,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_WithOneDayOverlap_ReturnsFalse()
     {
-        // Existing: Apr 01-05; new Apr 04-10 overlaps on Apr 04
         await SeedBookingAsync(
             new DateTime(2026, 4, 1),
             new DateTime(2026, 4, 5));
@@ -130,7 +128,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_WithFullOverlap_ReturnsFalse()
     {
-        // New booking is entirely inside existing booking
         await SeedBookingAsync(
             new DateTime(2026, 4, 1),
             new DateTime(2026, 4, 10));
@@ -146,7 +143,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_WithEnclosingOverlap_ReturnsFalse()
     {
-        // New booking encloses the existing booking
         await SeedBookingAsync(
             new DateTime(2026, 4, 3),
             new DateTime(2026, 4, 7));
@@ -162,7 +158,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_WithTimeComponents_SameDayTurnover_ReturnsTrue()
     {
-        // Existing checkout at 10:00, new checkin at 15:00 same day - valid turnover
         await SeedBookingAsync(
             new DateTime(2026, 4, 1, 14, 0, 0),
             new DateTime(2026, 4, 5, 10, 0, 0));
@@ -225,7 +220,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task GetByDateRangeAsync_WithTtl_LeavesOutOnlyExpiredCheckoutHolds()
     {
-        // BK-21: one predicate (CheckoutHolds) decides which Pending bookings no longer take their dates.
         var expiredSetupHold = await AddBookingAsync(new DateTime(2026, 4, 1), new DateTime(2026, 4, 3), minutesAgo: 20,
             b => b.StripeSetupIntentId = "seti_expired");
         var expiredPaymentHold = await AddBookingAsync(new DateTime(2026, 4, 3), new DateTime(2026, 4, 5), minutesAgo: 20);
@@ -268,8 +262,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_OnSiteRequest_BlocksUntilItsOwnDeadlineWhateverTheCheckoutTtl()
     {
-        // BK-06: a "pay at the property" request holds its dates until RequestExpiresAt (email confirmation, then the
-        // host's answer), not for the checkout TTL; past it the dates are free before the job cancels it.
         await AddBookingAsync(new DateTime(2026, 6, 1), new DateTime(2026, 6, 5), minutesAgo: 600, b =>
         {
             b.PaymentOption = PaymentOption.OnSite;
@@ -286,7 +278,6 @@ public class BookingRepositoryTests
             _propertyId, new DateTime(2026, 6, 2), new DateTime(2026, 6, 4), directPendingTtlMinutes: 15));
         Assert.True(await _repository.IsAvailableAsync(
             _propertyId, new DateTime(2026, 6, 10), new DateTime(2026, 6, 12), directPendingTtlMinutes: 15));
-        // The final check before an insert stays strict until the job has cancelled it.
         Assert.False(await _repository.IsAvailableAsync(
             _propertyId, new DateTime(2026, 6, 10), new DateTime(2026, 6, 12)));
     }
@@ -294,7 +285,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_ExpiredHoldWhosePaymentIsProcessing_BlocksWithTtl()
     {
-        // Stripe said the guest is paying (recorded by the expiry as Processing): the dates stay taken.
         var hold = await AddBookingAsync(new DateTime(2026, 5, 1), new DateTime(2026, 5, 5), minutesAgo: 30);
         AddPayment(hold, "pi_processing", PaymentStatus.Processing);
         await _context.SaveChangesAsync();
@@ -365,7 +355,6 @@ public class BookingRepositoryTests
     [Fact]
     public async Task IsAvailableAsync_DifferentProperty_ReturnsTrue()
     {
-        // Conflict exists for a different property - must not affect target property
         var otherPropertyId = Guid.NewGuid();
         await _repository.AddAsync(new Booking
         {

@@ -6,17 +6,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Biometrics;
 
-/// <summary>
-/// E22/F01/US01/T01: the delivery manifest of the identity verification models (<c>Casazen.Web/MlModels/models.manifest.json</c>) is well formed and
-/// agrees with the code: every model the application knows (<see cref="BiometricModelOptions"/> and the OCR-B file of <see cref="MrzOcrOptions"/>) has an
-/// entry with its source, its licence and the variables to pin, and every variable it names exists. The manifest is what
-/// <c>scripts/biometrics/fetch-models.mjs</c> reads, so a typo here would be found by an operator at the worst moment (the day the product owner says yes).
-/// </summary>
 public sealed class ModelManifestTests
 {
     private const long GitHubFileLimitBytes = 100_000_000;
 
-    // The two optional candidate roles (E72/F01/US02/T03) are allowed in an entry, once someone configures one; none exists while they are not configured.
     private static readonly string[] Roles =
         ["face_detector", "anti_spoofing", "face_recognition", "mrz_ocr", "anti_spoofing_candidate", "face_recognition_candidate"];
 
@@ -46,7 +39,6 @@ public sealed class ModelManifestTests
             Assert.Equal(spec.License, entry.GetProperty("license").GetProperty("id").GetString());
             Assert.Equal(System.IO.Path.GetFileName(spec.Path), Text(entry, "file"));
 
-            // The target path is the configured path under MlModels/: the file lands where the application looks for it.
             Assert.Equal(spec.Path, "MlModels/" + Text(entry, "targetPath"));
         }
     }
@@ -60,7 +52,6 @@ public sealed class ModelManifestTests
         Assert.Equal("face_recognition", Text(sface, "role"));
         Assert.Equal("Apache-2.0", sface.GetProperty("license").GetProperty("id").GetString());
 
-        // The README: Biometrics__FaceRecognition__Name/__Path/__Sha256, RecognitionMean 0 and RecognitionStd 1.
         var set = sface.GetProperty("config").GetProperty("set");
         Assert.Equal("SFace", set.GetProperty("Biometrics__FaceRecognition__Name").GetString());
         Assert.Equal("0", set.GetProperty("Biometrics__RecognitionMean").GetString());
@@ -84,14 +75,12 @@ public sealed class ModelManifestTests
             Assert.False(string.IsNullOrWhiteSpace(Text(entry, "name")), id);
             Assert.False(string.IsNullOrWhiteSpace(Text(entry, "version")), id);
 
-            // A path under MlModels/ that cannot leave it.
             var target = Text(entry, "targetPath");
             Assert.False(System.IO.Path.IsPathRooted(target), $"{id}: targetPath must be relative");
             Assert.DoesNotContain("..", target);
             Assert.DoesNotContain("\\", target);
             Assert.EndsWith(Text(entry, "file"), target, StringComparison.Ordinal);
 
-            // The source: a repository, and a template that is pinned by {revision} (null: no revision is named yet, the runbook says so).
             var source = entry.GetProperty("source");
             AssertHttps(source.GetProperty("repository").GetString(), $"{id}: source.repository");
             var template = source.GetProperty("urlTemplate");
@@ -105,14 +94,12 @@ public sealed class ModelManifestTests
             var revision = source.GetProperty("revision");
             Assert.True(revision.ValueKind is JsonValueKind.Null || !string.IsNullOrWhiteSpace(revision.GetString()), $"{id}: revision is null or a value");
 
-            // Licence id and url (ADR-013-R14).
             var license = entry.GetProperty("license");
             Assert.False(string.IsNullOrWhiteSpace(license.GetProperty("id").GetString()), id);
             AssertHttps(license.GetProperty("url").GetString(), $"{id}: license.url");
 
             Assert.True(entry.GetProperty("approxSizeBytes").GetInt64() > 0, id);
 
-            // No hash is pinned until the operator pins it from the file they verified (null, or 64 hexadecimal characters).
             var sha256 = entry.GetProperty("sha256");
             Assert.True(
                 sha256.ValueKind is JsonValueKind.Null || (sha256.GetString()!.Length == 64 && sha256.GetString()!.All(Uri.IsHexDigit)),
@@ -135,7 +122,6 @@ public sealed class ModelManifestTests
     [Fact]
     public void Manifest_TheCandidateRoles_HaveNoEntryWhileTheyAreNotConfigured_AndNothingCommittedConfiguresOne()
     {
-        // Not configured is the state of the committed application: the defaults of the options and the appsettings.json that ships.
         var defaults = new BiometricModelOptions();
         Assert.False(BiometricModelOptions.IsCandidateConfigured(defaults.AntiSpoofingCandidate));
         Assert.False(BiometricModelOptions.IsCandidateConfigured(defaults.FaceRecognitionCandidate));
@@ -151,7 +137,6 @@ public sealed class ModelManifestTests
         Assert.False(BiometricModelOptions.IsCandidateConfigured(published.FaceRecognitionCandidate));
         Assert.Empty(published.Validate());
 
-        // So no entry of the manifest is a candidate, and no weight file of a candidate is committed with the models.
         Assert.DoesNotContain(Entries(), entry => Text(entry, "role").EndsWith("_candidate", StringComparison.Ordinal) || Text(entry, "usedBy").Contains("Candidate", StringComparison.Ordinal));
         var models = System.IO.Path.Combine(SolutionRoot(), "Casazen.Web", "MlModels");
         Assert.DoesNotContain(
@@ -172,7 +157,6 @@ public sealed class ModelManifestTests
             var script = entry.GetProperty("export").GetProperty("script").GetString()!;
             Assert.True(File.Exists(System.IO.Path.Combine(root, script)), $"{Text(entry, "id")}: {script} does not exist");
 
-            // A model with no download address is the one produced by the recipe: it cannot be fetched.
             Assert.Equal(JsonValueKind.Null, entry.GetProperty("source").GetProperty("urlTemplate").ValueKind);
         }
     }
@@ -185,7 +169,6 @@ public sealed class ModelManifestTests
         Assert.Equal(typeof(ModelFileOptions), property.DeclaringType);
     }
 
-    /// <summary>The property a <c>Section__Property__Leaf</c> variable binds to, or null when no property is named so.</summary>
     private static PropertyInfo? ResolveOption(string variable)
     {
         var segments = variable.Split("__");

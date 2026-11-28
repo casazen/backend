@@ -7,18 +7,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E14/F01/US01/T02 (NF-113, NF-114): the Swiss QR-bill of an owner invoice. The payload follows the Swiss Implementation Guidelines (the order of the fields,
-/// structured addresses, the QR reference with its recursive modulo-10 check digit, the creditor reference of ISO 11649), and the PDF of an issued Swiss owner
-/// invoice ends with the payment part only when an amount is left for the owner to pay: offset in the statement, or without an account of the agency, it says so.
-/// </summary>
 public class SwissQrBillTests
 {
-    /// <summary>
-    /// PROOF TEST: money rule. The example of the guidelines (QR-IBAN CH44 3199 9123 0008 8901 2, QR reference 21 00000 00003 13947 14300 09017) gives the
-    /// payload of the guidelines field by field, and its check digit 7; the creditor reference RF18 5390 0754 7034 has its check digits 18. A QR-IBAN takes only a
-    /// QR reference, an IBAN only a creditor reference or none, CHF and EUR only, an account of CH or LI only: anything else is no QR-bill.
-    /// </summary>
     [Fact]
     public void SwissQrBill_PayloadOrderAndQrrCheckDigit_Test()
     {
@@ -124,10 +114,6 @@ public class SwissQrBillTests
         Assert.Equal(("Ricevuta", "Receipt"), (italian.Labels.Receipt, english.Labels.Receipt));
     }
 
-    /// <summary>
-    /// An invoice the statement offsets gets no QR-bill and «Compensata nel rendiconto del 10/2026»; an invoice left to pay by an agency without an IBAN or a
-    /// QR-IBAN gets no QR-bill either and «Pagamento su indicazione del gestore».
-    /// </summary>
     [Fact]
     public async Task SwissQrBill_OffsetInvoiceOrAgencyWithoutAccount_GetsTheNoteAndNoQrBill_Test()
     {
@@ -158,7 +144,6 @@ public class SwissQrBillTests
         Assert.Contains("Pagamento su indicazione del gestore", text, StringComparison.Ordinal);
     }
 
-    /// <summary>Every text of a PDF content: headings, paragraphs and the cells of the tables, one per line.</summary>
     private static string TextOf(PdfDocumentContent content) =>
         string.Join('\n', new[] { content.Title }.Concat(content.Blocks.SelectMany(TextsOf)));
 

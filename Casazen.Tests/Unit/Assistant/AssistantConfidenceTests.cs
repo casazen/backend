@@ -5,7 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>E05/F05/US02/T01 (NF-67): the confidence of a draft, <c>round(situationMatch × factCoverage × ruleCompliance, 3)</c>, and each rule that lowers it.</summary>
 public sealed class AssistantConfidenceTests
 {
     private static readonly EffectiveAssistantRules Rules =
@@ -18,7 +17,6 @@ public sealed class AssistantConfidenceTests
     {
         var score = AssistantConfidence.Compute(Input(AssistantSituation.EarlyArrivalOrLateCheckout, 0.876m, covered: [KnowledgeTopic.CheckIn]));
 
-        // Half of the two topics the situation requires has a fact; no rule broken.
         Assert.Equal((0.876m, 0.5m, 1m), (score.SituationMatch, score.FactCoverage, score.RuleCompliance));
         Assert.Equal(0.438m, score.Score);
         Assert.Empty(score.BrokenRules);
@@ -53,7 +51,6 @@ public sealed class AssistantConfidenceTests
             topics: ["DiscountRequest"],
             language: "de"));
 
-        // Too long, a forbidden topic, a contact detail that is not in the facts, a language not allowed, no signature, an AI disclosed: six rules, the compliance is 0.
         Assert.Equal(
             [
                 AssistantConfidence.TooLongRule, AssistantConfidence.ForbiddenTopicRule, AssistantConfidence.ContactDetailRule,

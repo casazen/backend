@@ -5,10 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-01: the one definition of "overdue", "open" and "pending" of a rent installment, used by the ledger of a lease, the rent register,
-/// the lease list and the overview. The method form and the SQL expression form must say the same for every status and every day.
-/// </summary>
 public class RentInstallmentRulesTests
 {
     private static readonly DateOnly Today = new(2026, 10, 9);
@@ -18,11 +14,11 @@ public class RentInstallmentRulesTests
 
     [Theory]
     [InlineData(RentLedgerStatus.Scheduled, -1, true)]
-    [InlineData(RentLedgerStatus.Scheduled, 0, false)] // due today is not overdue yet
+    [InlineData(RentLedgerStatus.Scheduled, 0, false)]
     [InlineData(RentLedgerStatus.Scheduled, 1, false)]
     [InlineData(RentLedgerStatus.Failed, -1, true)]
     [InlineData(RentLedgerStatus.Failed, 0, false)]
-    [InlineData(RentLedgerStatus.Processing, -30, false)] // a payment in flight is settled by Stripe, not late
+    [InlineData(RentLedgerStatus.Processing, -30, false)]
     [InlineData(RentLedgerStatus.Paid, -30, false)]
     [InlineData(RentLedgerStatus.Cancelled, -30, false)]
     public void IsOverdue_NotPaidAndPastItsDueDate_OnlyForScheduledAndFailed(RentLedgerStatus status, int daysFromToday, bool expected)
@@ -53,7 +49,6 @@ public class RentInstallmentRulesTests
                 var entry = Entry(status, due);
                 Assert.Equal(RentInstallmentRules.IsOverdue(status, due, Today), overdue(entry));
                 Assert.Equal(RentInstallmentRules.IsOpen(status), open(entry));
-                // Pending: expected, not paid, not overdue.
                 Assert.Equal(RentInstallmentRules.IsOpen(status) && !RentInstallmentRules.IsOverdue(status, due, Today), pending(entry));
             }
         }

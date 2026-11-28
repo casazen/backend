@@ -26,10 +26,6 @@ public class InProcessEventBusTests
     private readonly string _database = $"event-bus-{Guid.NewGuid()}";
     private readonly Seen _seen = new();
 
-    /// <summary>
-    /// Proof of ADR-022-R6/R17: a handler is given the org of its event, in the event and in the tenant context of its scope, and a
-    /// read without any org predicate sees the rows of that org only, never those of another org.
-    /// </summary>
     [Fact]
     public async Task PublishAsync_Handler_IsGivenTheOrgOfItsEvent_AndReadsNoOtherOrg()
     {
@@ -57,7 +53,6 @@ public class InProcessEventBusTests
                 Assert.Equal([OrgB], b.VisibleRoutineOrgs);
             });
 
-        // The scope that is not a bus scope (a Hangfire job, the dispatcher) still reads every org.
         await using var jobScope = services.CreateAsyncScope();
         var everyOrg = await jobScope.ServiceProvider.GetRequiredService<AppDbContext>().Routines.Select(r => r.OrgId).ToListAsync();
         Assert.Equal(2, everyOrg.Distinct().Count());
@@ -187,7 +182,6 @@ public class InProcessEventBusTests
     public sealed record ProbeTypedEvent(Guid Id, Guid OrgId, DomainEventType Type, Guid EntityId, DateTime OccurredAt, string PayloadJson)
         : DomainEvent(Id, OrgId, Type, EntityId, OccurredAt, PayloadJson);
 
-    /// <summary>Reads the routines without any org predicate: the tenant filter of its scope decides what it sees.</summary>
     public sealed class OrgProbeHandler(Seen seen, ITenantContext tenant, AppDbContext db) : IEventHandler<DomainEvent>
     {
         public async Task HandleAsync(DomainEvent domainEvent, CancellationToken ct)

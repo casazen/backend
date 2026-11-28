@@ -72,8 +72,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
 
     internal static HostDashboardService Dashboard(AppDbContext db) => new(db, new ConfigurationBuilder().Build(), Clock);
 
-    // --- The numbers of the Home --------------------------------------------------------------------------
-
     private static object Figures(HostDashboardFigures figures) => new
     {
         Period = (figures.Period.Kind, figures.Period.From, figures.Period.To),
@@ -99,7 +97,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
     public static TheoryData<HostDashboardPeriodKind, string> PeriodsAndScopes()
     {
         var data = new TheoryData<HostDashboardPeriodKind, string>();
-        // A free period needs its days, which the KPIs do not take (400): HostOverviewPostgresTests proves it with them.
         foreach (var kind in Enum.GetValues<HostDashboardPeriodKind>().Where(period => period != HostDashboardPeriodKind.Custom))
         {
             data.Add(kind, "whole-org");
@@ -122,7 +119,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
         var onReference = await Dashboard(_referenceDb).GetKpisAsync(ScopeOf(_reference, scope), query);
 
         Assert.Equal(Shape(KpiShape(onReference)), Shape(KpiShape(onPostgres)));
-        // The scenario has money in it: the test would prove nothing on zeroes.
         Assert.True(onReference.PropertyCount > 0);
         Assert.NotNull(onPostgres.Collected);
         Assert.NotNull(onPostgres.Previous);
@@ -146,10 +142,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
             _pg.OrgWide, new HostDashboardQuery(HostDashboardPeriodKind.Next30Days, PropertyId: _pg.OtherOrgProperty.Id)));
     }
 
-    // --- The day -------------------------------------------------------------------------------------
-
-    // Instants as ticks (the kind of a DateTime read from PostgreSQL is not the reference's), lists whose order the ids decide sorted
-    // by what they say (the two worlds have other ids).
     internal static object TodayShape(HostToday today) => new
     {
         Arrivals = today.Arrivals.Count,
@@ -182,8 +174,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
         Assert.Equal(Shape(TodayShape(onReference)), Shape(TodayShape(onPostgres)));
         Assert.True(onReference.Todo.Count > 0);
     }
-
-    // --- The booking list ---------------------------------------------------------------------------
 
     public static TheoryData<string> Searches()
     {
@@ -230,7 +220,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
             Assert.True(
                 (onReference.TotalCount, onReference.Items.Count) == (onPostgres.TotalCount, onPostgres.Items.Count),
                 $"{search}/{scope}: reference {onReference.TotalCount}/{onReference.Items.Count}, PostgreSQL {onPostgres.TotalCount}/{onPostgres.Items.Count}");
-            // The same bookings in the same order of check-in; the ids decide only among stays that start the same day.
             Assert.Equal(
                 onReference.Items.Select(b => (b.CheckInDate.Ticks, Status: b.Status.ToString(), b.Property.Name)).OrderByDescending(b => b.Ticks).ThenBy(b => b.Status).ThenBy(b => b.Name),
                 onPostgres.Items.Select(b => (b.CheckInDate.Ticks, Status: b.Status.ToString(), b.Property.Name)).OrderByDescending(b => b.Ticks).ThenBy(b => b.Status).ThenBy(b => b.Name));
@@ -241,7 +230,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
     public async Task BookingSearch_Pages_CutTheSameBookingsInTheSameOrder_NeverRepeatingOne()
     {
         await using var db = _database!.CreateContext();
-        // Many stays that start the same day: only the id tells them apart.
         var guest = await db.Guests.FirstAsync(g => g.OrgId == _pg.OrgId);
         db.Bookings.AddRange(Enumerable.Range(0, 37).Select(i => new Booking
         {
@@ -269,11 +257,9 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
         Assert.Equal(43, all.TotalCount);
         Assert.Equal(all.Items.Select(b => b.Id), seen);
         Assert.Equal(seen.Count, seen.Distinct().Count());
-        // A page past the end is empty and still says how many there are.
         var past = await service.SearchAsync(_pg.OrgWide, new BookingSearchCriteria(Page: 50, PageSize: 10));
         Assert.Empty(past.Items);
         Assert.Equal(43, past.TotalCount);
-        // The last page is not full and counts itself.
         var last = await service.SearchAsync(_pg.OrgWide, new BookingSearchCriteria(Page: 5, PageSize: 10));
         Assert.Equal((3, 43), (last.Items.Count, last.TotalCount));
     }
@@ -287,7 +273,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
         await db.SaveChangesAsync();
         var service = new BookingSearchService(db);
 
-        // "_" and "%" are in that guest's name only; "u_%l" is a piece of it; "t_u" would match "tru" with a wildcard, and does not.
         foreach (var (text, expectedMatch) in new[] { ("_", true), ("%", true), ("u_%l", true), ("t_u", false), ("tr%o", false), ("a%a", false) })
         {
             var page = await service.SearchAsync(_pg.OrgWide, new BookingSearchCriteria(Query: text));
@@ -297,8 +282,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
             Assert.All(page.Items, b => Assert.Equal("Tru_%llo", b.Guest.LastName));
         }
     }
-
-    // --- The payments --------------------------------------------------------------------------------
 
     [PostgresTheory]
     [InlineData("all")]
@@ -347,14 +330,10 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
         Assert.All(everything, p => Assert.Equal(_pg.Granted.Id, p.PropertyId));
         Assert.Empty(hiddenByProperty);
         Assert.Empty(hiddenByBooking);
-        // Two payments per property in the scenario, and none of the other org's.
         Assert.Equal(4, wholeOrg.Count);
         Assert.DoesNotContain(wholeOrg, p => p.PropertyId == _pg.OtherOrgProperty.Id);
     }
 
-    // --- No command per row ---------------------------------------------------------------------------
-
-    /// <summary>Counts the commands a context sends to the server.</summary>
     internal sealed class CommandCounter : DbCommandInterceptor
     {
         private int _count;
@@ -379,7 +358,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
     private AppDbContext NewCountingContext(CommandCounter counter) => new(
         new DbContextOptionsBuilder<AppDbContext>(_database!.CreateOptions()).AddInterceptors(counter).Options);
 
-    /// <summary>The commands each read sends for the whole org, by name.</summary>
     private async Task<Dictionary<string, int>> CommandsPerReadAsync()
     {
         var calls = new Dictionary<string, Func<AppDbContext, Task>>
@@ -408,11 +386,9 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
     {
         var before = await CommandsPerReadAsync();
         Assert.All(before, entry => Assert.True(entry.Value > 0, $"{entry.Key}: no command counted"));
-        // The page, and for the rows (SR-03b) the payments and the reports of its bookings: three commands, and the total when it is full.
         Assert.True(before["bookings-search-page"] <= 3, $"search: {before["bookings-search-page"]} commands");
         Assert.True(before["payments-list"] <= 1, $"payments: {before["payments-list"]} commands");
 
-        // Thirty more properties of the org, each with its stays, payments and feeds.
         await using (var db = _database!.CreateContext())
         {
             for (var i = 0; i < 30; i++)
@@ -427,7 +403,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
 
         var after = await CommandsPerReadAsync();
 
-        // The search asks for the total only when its page is full, which it is not with six stays and is with thirty-six.
         Assert.Equal(before.Where(read => read.Key != "bookings-search-page"), after.Where(read => read.Key != "bookings-search-page"));
         Assert.InRange(after["bookings-search-page"], 3, 4);
     }
@@ -463,7 +438,6 @@ public class ShortRentReadApiPostgresTests : IAsyncLifetime
         Assert.All(
             new[] { described.PropertiesPending, described.GuestCheckInsIncomplete, described.TurnoversPending }.SelectMany(s => s.Items),
             item => Assert.NotEmpty(item.Missing));
-        // Three reads for the stays and a handful for each of the first properties: the same with 3 stays or with 300.
         Assert.True(counter.Count <= 3 + (IComplianceMissingService.MaxDetailedProperties * 4), $"{counter.Count} commands");
     }
 }

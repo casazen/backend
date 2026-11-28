@@ -60,7 +60,6 @@ public class OwnerInvoiceCreditNoteTests
         var current = await CurrentVersionAsync(rig);
         Assert.Equal((-1000.00m, -1000.00m), (current.ClosingBalance, current.Commission));
 
-        // Nothing is left to credit: a second note is refused and posts nothing.
         var second = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Invoices.CreateCreditNoteAsync(rig.OrgId, invoice.Id, null, "TEST", confirm: true, null));
         Assert.Equal(FiscalDocumentErrors.CreditAmountExceeds, second.Code);
         Assert.Equal(2, (await VatLinesAsync(rig)).Count);
@@ -98,7 +97,6 @@ public class OwnerInvoiceCreditNoteTests
         Assert.All(lines.Where(l => l.SourceId != invoice.Id), l => Assert.Null(l.ReversesEntryId));
         Assert.Equal(-81.00m + 7.49m + 7.49m, lines.Sum(l => l.Amount));
 
-        // More than what is left is refused and posts nothing.
         var tooMuch = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Invoices.CreateCreditNoteAsync(rig.OrgId, invoice.Id, 881.01m, "TEST", confirm: true, null));
         Assert.Equal(FiscalDocumentErrors.CreditAmountExceeds, tooMuch.Code);
         Assert.Equal(3, (await VatLinesAsync(rig)).Count);
@@ -178,16 +176,9 @@ public class OwnerInvoiceCreditNoteTests
         Assert.Equal(-1000.00m, await LedgerTotalAsync(rig));
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. The property manager holds <c>payment.write</c> and no agency permission (DEB-01): the endpoints of the guest documents, open to
-    /// whoever holds <c>payment.write</c> and reaches the whole org, refuse an owner invoice (make it again, issue it, credit it, discard it: 422
-    /// <c>document_owner_invoice</c>) and write nothing, while its PDF stays readable there. The credit note and the discard are on <c>api/owner-invoices</c> behind
-    /// <c>agency.statement.manage</c> and its flag, of the org of the invoice only.
-    /// </summary>
     [Fact]
     public async Task OwnerInvoice_PropertyManagerCannotCreditOrDiscardAnOwnerInvoice_Test()
     {
-        // The roles: the property manager of the short-rent area writes payments, but no agency permission is its own; the owner and the administrator hold it.
         var propertyManager = OrgRoleCatalog.SeededRoles.Single(r => r.ContextKey == OrgRoleCatalog.ShortRent && r.RoleKey == OrgRoleCatalog.PropertyManagerRoleKey);
         Assert.Contains("payment.write", propertyManager.Permissions);
         Assert.DoesNotContain(AgencyPermissions.StatementManage, OrgRoleCatalog.AgencyPermissionsOf(OrgRole.PropertyManager));
@@ -195,7 +186,6 @@ public class OwnerInvoiceCreditNoteTests
         Assert.Contains(AgencyPermissions.StatementManage, OrgRoleCatalog.AgencyPermissionsOf(OrgRole.Owner));
         Assert.Contains(AgencyPermissions.StatementManage, OrgRoleCatalog.AgencyPermissionsOf(OrgRole.Admin));
 
-        // The owner invoices: both actions need agency.statement.manage, the whole controller its flag.
         var controller = typeof(OwnerInvoicesController);
         Assert.Equal(new[] { FeatureFlags.OwnerInvoicing }, GatesOf(controller));
         Assert.All(
@@ -209,13 +199,11 @@ public class OwnerInvoiceCreditNoteTests
         var draft = await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, null);
         var asPropertyManager = GuestDocumentsOf(rig);
 
-        // The draft: the generic endpoints neither make it again, nor issue it, nor discard it.
         await AssertUseOwnerInvoicesAsync(() => asPropertyManager.Refresh(draft.Id));
         await AssertUseOwnerInvoicesAsync(() => asPropertyManager.Issue(draft.Id, new IssueFiscalDocumentRequest { Confirm = true }));
         await AssertUseOwnerInvoicesAsync(() => asPropertyManager.Discard(draft.Id));
         Assert.Equal(FiscalDocumentStatus.Draft, (await rig.Db.FiscalDocuments.AsNoTracking().SingleAsync()).Status);
 
-        // The owner invoices discard it, of the org of the invoice only; the month is free for a new draft.
         await Assert.ThrowsAsync<NotFoundException>(() => rig.Invoices.DiscardDraftAsync(Guid.NewGuid(), draft.Id));
         Assert.Equal(FiscalDocumentStatus.Draft, (await rig.Db.FiscalDocuments.AsNoTracking().SingleAsync()).Status);
         await rig.Invoices.DiscardDraftAsync(rig.OrgId, draft.Id);
@@ -223,7 +211,6 @@ public class OwnerInvoiceCreditNoteTests
         var again = await rig.Invoices.CreateDraftAsync(rig.OrgId, version.Id, null);
         Assert.NotEqual(draft.Id, again.Id);
 
-        // The issued invoice: the generic credit note is refused and writes nothing (no note, no line in the ledger); the document is still read there.
         var issued = await rig.Invoices.IssueAsync(rig.OrgId, again.Id, confirm: true, null);
         var documents = await rig.Db.FiscalDocuments.AsNoTracking().CountAsync();
         var entries = await rig.Db.OwnerLedgerEntries.AsNoTracking().CountAsync();
@@ -232,7 +219,6 @@ public class OwnerInvoiceCreditNoteTests
         Assert.False((await rig.Db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Id == issued.Id)).CreditedInFull);
         Assert.IsType<OkObjectResult>((await asPropertyManager.Get(issued.Id)).Result);
 
-        // The owner invoices credit it (the confirmation is needed, the org of the invoice only), and an issued invoice is no draft to discard.
         var unconfirmed = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Invoices.CreateCreditNoteAsync(rig.OrgId, issued.Id, null, "TEST", confirm: false, null));
         Assert.Equal(FiscalDocumentErrors.ConfirmationRequired, unconfirmed.Code);
         await Assert.ThrowsAsync<NotFoundException>(() => rig.Invoices.CreateCreditNoteAsync(Guid.NewGuid(), issued.Id, null, "TEST", confirm: true, null));
@@ -264,7 +250,6 @@ public class OwnerInvoiceCreditNoteTests
         Assert.Equal(OwnerInvoiceErrors.UseOwnerInvoices, refused.Code);
     }
 
-    /// <summary>The endpoints of the guest documents as the property manager reaches them: signed in, the whole org, no booking to authorize.</summary>
     private static FiscalDocumentsController GuestDocumentsOf(OwnerInvoiceRig rig)
     {
         var org = new Mock<IOrgContextResolver>();

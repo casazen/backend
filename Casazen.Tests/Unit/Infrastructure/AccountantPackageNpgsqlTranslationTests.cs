@@ -26,7 +26,6 @@ public class AccountantPackageNpgsqlTranslationTests
         _ => new HostScope(OrgId),
     };
 
-    /// <summary>Every read of the package that the web layer reaches through the scope of the caller or the org, by the name the failure reports.</summary>
     private static readonly Dictionary<string, Func<AppDbContext, HostScope, Task>> Calls = new()
     {
         ["guest-documents-count"] = (db, scope) => AccountantPackageFacts.IssuedDocuments(db, scope, Year, FiscalDocumentPurpose.GuestStay).CountAsync(),
@@ -45,10 +44,6 @@ public class AccountantPackageNpgsqlTranslationTests
         ["portal-commission-lines"] = (db, _) => AccountantPackageFacts.PortalCommissionLinesAsync(db, new PortalAccountHolderResolver(db), OrgId, Year, CancellationToken.None),
     };
 
-    /// <summary>
-    /// How many statements each call sends at least (the probe must have reached them, or it proved nothing). The invoices to the owners are read only by a scope that reaches the whole org: for
-    /// any other the query is <c>WHERE false</c>, which EF may answer without sending it.
-    /// </summary>
     private static readonly Dictionary<string, int> MinimumStatements = new()
     {
         ["guest-documents-count"] = 1,

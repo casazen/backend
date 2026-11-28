@@ -47,20 +47,16 @@ public class FiscalControllersReachTests
         var resources = new Mock<IHostResourceLookup>();
         resources.Setup(r => r.ForBookingAsync(bookingId, It.IsAny<CancellationToken>())).ReturnsAsync(new HostResource(OrgId, "auth0|owner", Guid.NewGuid()));
 
-        // A caller restricted to some properties: the booking is of a property it does not reach (the authorization says no), and a document that belongs to no
-        // booking is for the whole org only.
         var restricted = Controller(documents.Object, resources.Object, Authorization(allowed: false), new HostScope(OrgId, GrantedToUserId: UserId));
         Assert.Equal(StatusCodes.Status404NotFound, StatusOf((await restricted.Get(onBooking.Id)).Result));
         Assert.Equal(StatusCodes.Status404NotFound, StatusOf((await restricted.Get(withoutBooking.Id)).Result));
         Assert.Equal(StatusCodes.Status404NotFound, StatusOf((await restricted.Get(foreign.Id)).Result));
         Assert.Equal(StatusCodes.Status404NotFound, StatusOf((await restricted.Get(Guid.NewGuid())).Result));
 
-        // The whole org: its own document without a booking is served, the document of another org is a 404 like a missing one.
         var wholeOrg = Controller(documents.Object, resources.Object, Authorization(allowed: false), new HostScope(OrgId));
         Assert.IsType<OkObjectResult>((await wholeOrg.Get(withoutBooking.Id)).Result);
         Assert.Equal(StatusCodes.Status404NotFound, StatusOf((await wholeOrg.Get(foreign.Id)).Result));
 
-        // A booking the caller may read: the document of the booking is served.
         var allowed = Controller(documents.Object, resources.Object, Authorization(allowed: true), new HostScope(OrgId, GrantedToUserId: UserId));
         Assert.IsType<OkObjectResult>((await allowed.Get(onBooking.Id)).Result);
     }
@@ -86,7 +82,6 @@ public class FiscalControllersReachTests
         resources.Setup(r => r.ForBookingAsync(bookingId, It.IsAny<CancellationToken>())).ReturnsAsync(new HostResource(OrgId, "auth0|owner", Guid.NewGuid()));
         var wholeOrg = Controller(documents.Object, resources.Object, Authorization(allowed: false), new HostScope(OrgId));
 
-        // Its own document: every member the drawer reads, with the name and the spelling it reads, the lines in order.
         var served = Assert.IsType<FiscalDocumentDto>(Assert.IsType<OkObjectResult>((await wholeOrg.Get(own.Id)).Result).Value);
         var json = JsonSerializer.SerializeToElement(served, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var lines = json.GetProperty("lines").EnumerateArray().ToList();
@@ -117,21 +112,17 @@ public class FiscalControllersReachTests
         foreach (var kept in new[] { "IBAN-MASKED-TEST", "QRIBAN-TEST", "TEST Agenzia Intermediaria" })
             Assert.DoesNotContain(kept, issuer.GetRawText(), StringComparison.Ordinal);
 
-        // The spellings the drawer knows are names of the enums it reads.
         string[] drawerLineTypes = ["Accommodation", "AdvancedExpense", "Cleaning", "Commission", "ExtraService", "Other", "Recharge", "TouristTax"];
         Assert.All(drawerLineTypes, name => Assert.Contains(name, Enum.GetNames<FiscalLineType>()));
         Assert.Contains("Portal", Enum.GetNames<FiscalPaymentChannel>());
 
-        // The issuer leaves with one document at a time: the rows of the list carry none.
         Assert.Null(FiscalDocumentDto.ForList(own).Issuer);
         Assert.Equal("Portal", FiscalDocumentDto.ForList(own).PaymentChannel);
 
-        // Another organization's document: a 404 that says nothing of it.
         var notFound = Assert.IsType<ObjectResult>((await wholeOrg.Get(foreign.Id)).Result);
         Assert.Equal(StatusCodes.Status404NotFound, notFound.StatusCode);
         Assert.DoesNotContain("TEST Altra Agenzia", JsonSerializer.Serialize(notFound.Value), StringComparison.Ordinal);
 
-        // A document of a booking the caller may not read: the same 404; one it may read is served with its issuer.
         var restricted = Controller(documents.Object, resources.Object, Authorization(allowed: false), new HostScope(OrgId, GrantedToUserId: UserId));
         var hidden = Assert.IsType<ObjectResult>((await restricted.Get(onBooking.Id)).Result);
         Assert.Equal(StatusCodes.Status404NotFound, hidden.StatusCode);
@@ -175,7 +166,6 @@ public class FiscalControllersReachTests
         await db.SaveChangesAsync();
         var octorate = new Mock<IOctorateApiClient>(MockBehavior.Strict);
 
-        // Another org's document: 404 for the whole org too. A document of the org without a booking: 404 for a caller restricted to some properties.
         foreach (var scope in new[] { new HostScope(OrgId), new HostScope(OrgId, GrantedToUserId: UserId) })
         {
             var controller = OctorateController(db, octorate.Object, scope);
@@ -187,7 +177,6 @@ public class FiscalControllersReachTests
         octorate.VerifyNoOtherCalls();
     }
 
-    /// <summary>A document without a booking (an imported one whose reservation CasaZen does not hold) is served from the accommodation it was read from.</summary>
     [Fact]
     public async Task OctorateDocuments_DocumentWithoutABooking_IsServedFromItsOwnAccommodation_Test()
     {
@@ -314,7 +303,6 @@ public class FiscalControllersReachTests
         return resolver.Object;
     }
 
-    /// <summary>A signed-in caller, and the services the problem answer of a 404 needs.</summary>
     private static ControllerContext Context()
     {
         var localizer = new Mock<IStringLocalizer<SharedResources>>();

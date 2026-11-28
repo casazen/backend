@@ -23,7 +23,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ShowcaseBookingTenancyTests
 {
-    /// <summary>The files that may read or write the tables for one supplier, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> TenantScopedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Services/ShowcaseBookingService.cs"] = "The booking: HoldsOf and CustomerByEmailOf carry the OrgId predicate, the rest is an insert or a remove of a row it loaded that way.",
@@ -33,7 +32,6 @@ public class ShowcaseBookingTenancyTests
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the customers of the duplicate org; both orgs are explicit.",
     };
 
-    /// <summary>The system jobs that work across every supplier on purpose: run only by Hangfire, reachable from no request.</summary>
     private static readonly IReadOnlyDictionary<string, string> SystemJobFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs"] = "Deletes the holds whose time has passed, whoever they belong to (ExpiredHoldIdsOf reads ids only; UnconsumedPaidHoldsOf reads ids and the supplier org of the ones with a card block, which the booking service releases one at a time).",
@@ -48,14 +46,11 @@ public class ShowcaseBookingTenancyTests
         @"db\.(?<set>ServiceCustomers|ShowcaseBookingHolds)(?<rest>[\s\S]{0,90})",
         RegexOptions.Compiled);
 
-    // What may follow "db.<DbSet>" (whitespace removed): the org predicate, an insert, or the removal of a row loaded that way.
     private static readonly Regex AllowedContinuation = new(
         @"^(\.AsNoTracking\(\))?\.Where\((?<x>\w+)=>\k<x>\.OrgId==|^\.Add\(|^\.Remove\(",
         RegexOptions.Compiled);
 
     private static readonly Type[] Entities = [typeof(ServiceCustomer), typeof(ShowcaseBookingHold)];
-
-    // ─── The model ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Entities_AreNotTenantOwned_AndHaveNoTenantFilter()
@@ -93,7 +88,6 @@ public class ShowcaseBookingTenancyTests
 
         var request = db.Model.FindEntityType(typeof(ServiceRequest))!;
         var customer = Assert.Single(request.GetForeignKeys(), fk => fk.PrincipalEntityType.ClrType == typeof(ServiceCustomer));
-        // A customer with a request is never deleted by accident: the retention anonymizes it, the repair moves it.
         Assert.Equal(DeleteBehavior.Restrict, customer.DeleteBehavior);
 
         var hold = db.Model.FindEntityType(typeof(ShowcaseBookingHold))!;
@@ -116,7 +110,6 @@ public class ShowcaseBookingTenancyTests
         Assert.Equal("UIX_ServiceCustomers_OrgId_EmailHash", customerUnique.GetDatabaseName());
 
         var holdUniques = holds.GetIndexes().Where(index => index.IsUnique).Select(index => index.GetDatabaseName()!).Order().ToArray();
-        // SP-15c-a: a PaymentIntent blocks the card of one hold only (the webhook finds the hold by it).
         Assert.Equal(
             ["UIX_ShowcaseBookingHolds_OrgId_ClientRequestId", "UIX_ShowcaseBookingHolds_OrgId_PublicCode", "UIX_ShowcaseBookingHolds_StripePaymentIntentId"],
             holdUniques);
@@ -153,8 +146,6 @@ public class ShowcaseBookingTenancyTests
         Assert.Equal("PayloadEncrypted", payload.GetColumnName());
     }
 
-    // ─── The SQL ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void TheQueriesOfOneSupplier_OnTheNpgsqlProvider_CarryTheSupplierOrgPredicateInSql()
     {
@@ -181,8 +172,6 @@ public class ShowcaseBookingTenancyTests
 
         var expired = ServiceRequestExpiryService.ExpiredHoldIdsOf(db, now).ToQueryString();
 
-        // Only the ids of the holds that lapsed, oldest first, a bounded batch: no payload, no e-mail index, no token, no tenant
-        // predicate (the job works across every supplier).
         Assert.Matches("\"ExpiresAt\" <= @", expired);
         Assert.Matches("SELECT \\w+\\.\"Id\"\\s+FROM \"ShowcaseBookingHolds\"", expired);
         Assert.Contains("LIMIT @p", expired, StringComparison.Ordinal);
@@ -228,16 +217,13 @@ public class ShowcaseBookingTenancyTests
 
         foreach (var sql in new[] { reminders, places })
         {
-            // The rental context of the showcase is in the statement itself, and the host's filters are not applied.
             Assert.Matches("\"RentalContext\" = 2", sql);
             Assert.DoesNotContain("PropertyId", sql, StringComparison.Ordinal);
             Assert.DoesNotContain("PayloadEncrypted", sql, StringComparison.Ordinal);
         }
 
-        // The reminder reads the id, the start and the take; it does not read the customer, nor the place.
         Assert.DoesNotContain("LocationAddress", reminders, StringComparison.Ordinal);
         Assert.DoesNotContain("CustomerId", reminders, StringComparison.Ordinal);
-        // The retention looks for requests that still carry a place; it reads no name, no e-mail and no phone.
         Assert.Contains("LocationAddress", places, StringComparison.Ordinal);
         Assert.DoesNotContain("FullName", places, StringComparison.Ordinal);
     }
@@ -245,7 +231,6 @@ public class ShowcaseBookingTenancyTests
     [Fact]
     public void TheRetentionOfTheCustomers_OnTheNpgsqlProvider_CutsTheListInSql_AndReadsAgainOnlyWhatItChanges()
     {
-        // With the encryption on, as in production: the converters of the encrypted columns are part of the translation.
         using var db = NewNpgsqlContext(encrypted: true);
         var cutoff = new DateTime(2024, 10, 9, 0, 0, 0, DateTimeKind.Utc);
 
@@ -253,14 +238,11 @@ public class ShowcaseBookingTenancyTests
         var again = Regex.Replace(
             ServiceCustomerPrivacyService.StillDue(db, [Guid.NewGuid(), Guid.NewGuid()]).ToQueryString(), @"\s+", " ");
 
-        // The cut is in the statement, so a night reads the customers whose period may have ended and not every customer there is;
-        // the list names no one (ids, supplier and two dates: nothing to decrypt).
         Assert.Matches(@"\) < @", list);
         Assert.Contains("\"AnonymizedAt\" IS NULL", list, StringComparison.Ordinal);
         foreach (var column in new[] { "FullName", "Email", "Phone", "PayloadEncrypted" })
             Assert.DoesNotContain($"\"{column}\"", list, StringComparison.Ordinal);
 
-        // Read again, just before the change, for the ids it is about: not anonymized and with no open request (looked for in SQL).
         Assert.Contains("= ANY (@", again, StringComparison.Ordinal);
         Assert.Contains("\"AnonymizedAt\" IS NULL", again, StringComparison.Ordinal);
         Assert.Contains("NOT EXISTS", again, StringComparison.Ordinal);
@@ -270,14 +252,12 @@ public class ShowcaseBookingTenancyTests
     [Fact]
     public void TheSuppliersInbox_OnTheNpgsqlProvider_SelectsThePlaceAndTheContactsOnlyForARequestTheSupplierTook()
     {
-        // With the encryption on, as in production: a CASE takes its type mapping (and so the converter) from its first branch.
         using var db = NewNpgsqlContext(encrypted: true);
         var reader = new SupplierServiceRequestReader(db);
 
         var sql = reader.Rows(Guid.NewGuid()).ToQueryString();
         var normalized = Regex.Replace(sql, @"\s+", " ");
 
-        // Scoped by the supplier, the host's filters off (the stay and the property belong to another tenant).
         Assert.Matches("\"SupplierOrgId\" = @", sql);
 
         // The street address, the floor, the notes, the e-mail and the phone are each selected exactly once, inside a CASE on the
@@ -299,8 +279,6 @@ public class ShowcaseBookingTenancyTests
             Assert.Contains($"\"{table}\"", normalized, StringComparison.Ordinal);
         }
     }
-
-    // ─── The code that may touch the tables ──────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void TheTables_AreUsedOnlyByTheBookingTheReadersTheJobsTheRepairAndTheContext()
@@ -354,7 +332,6 @@ public class ShowcaseBookingTenancyTests
     [Fact]
     public void TheBookingFiles_UseBothTables_AGuardOnTheGuard()
     {
-        // If the regexes stopped matching, the checks above would pass for nothing.
         var root = FindRepositoryRoot();
         var used = TenantScopedFiles.Keys
             .SelectMany(relative => DbSetUse.Matches(CodeWithoutComments(File.ReadAllText(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar)))))
@@ -389,8 +366,6 @@ public class ShowcaseBookingTenancyTests
         Assert.True(offenders.Count == 0, "A system job of the booking is reachable from a request: " + string.Join(", ", offenders));
     }
 
-    // ─── The behavior ────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task TwoSuppliers_NeverSeeEachOthersHoldsCustomersOrRequests()
     {
@@ -402,7 +377,6 @@ public class ShowcaseBookingTenancyTests
         var now = s.Clock.GetUtcNow().UtcDateTime;
         var day = new DateTime(2026, 10, 9, 0, 0, 0, DateTimeKind.Utc);
 
-        // The planner of the other supplier counts nothing of mine: its Friday is entirely free.
         var theirHolds = await s.Kit.Holds.ListLiveAsync(other.OrgId, day, day.AddDays(1), now);
         var myHolds = await s.Kit.Holds.ListLiveAsync(s.SupplierOrgId, day, day.AddDays(1), now);
         Assert.Empty(theirHolds);
@@ -411,11 +385,9 @@ public class ShowcaseBookingTenancyTests
         Assert.Contains(ServiceRequestScenario.FridayAt10, await s.FreeSlotsOfFridayAsync(other.OrgId));
         Assert.Contains(ServiceRequestScenario.FridayAt14, await s.FreeSlotsOfFridayAsync(other.OrgId));
 
-        // The contact of a customer is found by its own supplier only.
         Assert.NotNull(await s.Kit.Customers.FindContactAsync(s.SupplierOrgId, mine.CustomerId!.Value));
         Assert.Null(await s.Kit.Customers.FindContactAsync(other.OrgId, mine.CustomerId!.Value));
 
-        // And nothing of it is in the other supplier's tables or inbox.
         Assert.Empty(await s.HoldsAsync(other.OrgId));
         Assert.Empty(await s.CustomersAsync(other.OrgId));
         var (items, total) = await s.Reader.ListAsync(other.OrgId, new Casazen.Core.Suppliers.SupplierInboxQuery([], null, null, 1, 100));
@@ -446,7 +418,6 @@ public class ShowcaseBookingTenancyTests
         var (showcase, _) = await s.BookedAsync();
         var org = s.SupplierOrgId;
 
-        // The same org id is the host of its own requests and the supplier of its showcase's: a check on the org alone would mix them.
         var asHost = await s.Db.ServiceRequests
             .IgnoreQueryFilters()
             .Where(r => r.OrgId == org && r.RentalContext != ServiceRequestRentalContext.Showcase)
@@ -462,8 +433,6 @@ public class ShowcaseBookingTenancyTests
         Assert.Equal(org, showcase.SupplierOrgId);
     }
 
-    // ─── helpers ───
-
     /// <summary>A context on the Npgsql provider that never connects; <paramref name="encrypted"/> gives it the encryption of the columns.</summary>
     private static AppDbContext NewNpgsqlContext(bool encrypted = false) =>
         new(
@@ -475,7 +444,6 @@ public class ShowcaseBookingTenancyTests
             tenantContext: null,
             encrypted ? TestDataProtection.Shared : null);
 
-    /// <summary>The source without the lines that are only a comment (documentation names the tables without using them).</summary>
     private static string CodeWithoutComments(string text) =>
         string.Join('\n', text.Split('\n').Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
 

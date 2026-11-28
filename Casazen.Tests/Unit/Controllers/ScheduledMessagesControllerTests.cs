@@ -18,10 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E05/F07/US01/T02, T03 (NF-71): the endpoints of the scheduled messages. The controller is behind its flag (404 before authentication while it is off), each action asks the policy it needs, a booking or a
-/// message that the caller does not reach, or that it may not write, is a 404 and the service is never asked, and the answer that carries the words of a message is private.
-/// </summary>
 public class ScheduledMessagesControllerTests
 {
     private const string UserId = "auth0|owner_messages";
@@ -92,7 +88,6 @@ public class ScheduledMessagesControllerTests
         foreach (var write in new[] { nameof(ScheduledMessagesController.Edit), nameof(ScheduledMessagesController.Skip), nameof(ScheduledMessagesController.SendNow) })
             Assert.Equal(CasazenPolicies.BookingWrite, type.GetMethod(write)!.GetCustomAttribute<AuthorizeAttribute>()!.Policy);
 
-        // «Send now» writes to a guest: it has the limit of the other sends of the host.
         Assert.Equal(RateLimitPolicies.HostMessageSend, type.GetMethod(nameof(ScheduledMessagesController.SendNow))!.GetCustomAttribute<EnableRateLimitingAttribute>()!.PolicyName);
     }
 
@@ -110,9 +105,6 @@ public class ScheduledMessagesControllerTests
         _messages.Verify(m => m.ListForBookingAsync(It.Is<HostScope>(s => s.OrgId == OrgId), BookingId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. A booking that does not exist for the caller (another org's, or one of a property it does not reach) is a 404 on the timeline, and the service that reads the messages is never asked.
-    /// </summary>
     [Theory]
     [InlineData(false, UserId)]
     [InlineData(true, "auth0|somebody_else")]
@@ -126,10 +118,6 @@ public class ScheduledMessagesControllerTests
         _messages.Verify(m => m.ListForBookingAsync(It.IsAny<HostScope>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. A message the caller does not reach (the service finds no booking for it in its scope) or may not write (its role lacks <c>booking.write</c>) is a 404 for the edit, the skip and
-    /// «Send now», and the service that changes a message is never asked.
-    /// </summary>
     [Theory]
     [InlineData("out-of-reach")]
     [InlineData("cannot-write")]

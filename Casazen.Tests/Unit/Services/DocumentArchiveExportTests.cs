@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// NF-99, E07/F03/US03/T02: the ZIP of the document archive. The service tests run on the InMemory data of <see cref="DocumentArchiveWorld"/>;
-/// the builder of the ZIP is also run alone on handmade rows, to prove the names, the index and the streaming.
-/// </summary>
 public class DocumentArchiveExportTests
 {
     private static DocumentArchiveQuery EveryDocument { get; } = new(null, null, null, null, null, null, 1, DocumentArchiveQuery.MaxPageSize);
@@ -46,7 +42,6 @@ public class DocumentArchiveExportTests
         return copy.ToArray();
     }
 
-    /// <summary>The rows of <c>indice.csv</c> (the header first): the cells split on the separator, the BOM dropped.</summary>
     private static List<string[]> IndexOf(byte[] zip)
     {
         var text = Encoding.UTF8.GetString(Entries(zip)[DocumentArchiveExport.IndexFileName]).TrimStart((char)0xFEFF);
@@ -66,8 +61,6 @@ public class DocumentArchiveExportTests
     private static Func<ArchiveRow, CancellationToken, Task<ArchiveFile?>> Opening(string fileName, byte[] content) =>
         (_, _) => Task.FromResult<ArchiveFile?>(new ArchiveFile(new MemoryStream(content), fileName, "application/pdf"));
 
-    // ---------------------------------------------------------------- what the ZIP holds
-
     /// <summary>
     /// PROOF TEST: permission rule. The ZIP holds exactly what the list shows to the same caller: no document of a type the caller may not read
     /// (even if the request asks for it), none of a property outside its scope, none of another org.
@@ -79,7 +72,6 @@ public class DocumentArchiveExportTests
         var withoutPayments = new DocumentArchiveAccess(
             new HashSet<ArchiveDocumentType> { ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract });
 
-        // A collaborator «Solo alcuni» who may read the property documents and the leases, not the payments.
         var (zip, result) = await ExportAsync(world, world.Hosts.Restricted, withoutPayments);
         var names = Entries(zip).Keys.Order(StringComparer.Ordinal).ToList();
 
@@ -92,17 +84,14 @@ public class DocumentArchiveExportTests
             names);
         Assert.Equal(new DocumentArchiveExportResult(2, 2, result.Bytes), result);
 
-        // The same documents the list shows to that caller, and the index names no other.
         var listed = await world.Service().ListAsync(world.Hosts.Restricted, withoutPayments, EveryDocument);
         Assert.Equal(listed.Items.Select(i => i.Title).Order(), IndexOf(zip).Skip(1).Select(row => row[4]).Order());
 
-        // Asking for a type it may not read gives an archive with the index only: nothing of that type, nothing of the others.
         var asked = EveryDocument with { Types = [ArchiveDocumentType.TouristTax] };
         var (nothing, nothingResult) = await ExportAsync(world, world.Hosts.OrgWide, withoutPayments, asked);
         Assert.Equal([DocumentArchiveExport.IndexFileName], Entries(nothing).Keys);
         Assert.Equal(new DocumentArchiveExportResult(0, 0, 0), nothingResult);
 
-        // And what is in another org or behind the property the caller was not given is nowhere in the file, names, bytes or index.
         var everything = Entries((await ExportAsync(world, world.Hosts.Restricted, DocumentArchiveWorld.Everything)).Zip);
         var text = string.Join('\n', everything.Keys) + string.Join('\n', everything.Values.Select(Encoding.UTF8.GetString));
         Assert.Contains("Trullo", text, StringComparison.Ordinal);
@@ -132,7 +121,6 @@ public class DocumentArchiveExportTests
         Assert.Equal(DocumentArchiveWorld.Pdf("contratto-trullo.pdf"), entries["contratti/2026-09-01-contratto-trullo.pdf"]);
         Assert.Equal(DocumentArchiveWorld.Pdf("Licenza-Casa-Bianca.pdf"), entries["documenti-immobile/2026-10-06-Licenza-Casa-Bianca.pdf"]);
 
-        // The index at the root: type, date, property, booking code, title, file, size and SHA-256 of the file, in the order of the archive.
         var index = IndexOf(zip);
         Assert.Equal(["Tipo", "Data", "Immobile", "Codice prenotazione", "Titolo", "File", "Dimensione (byte)", "SHA-256"], index[0]);
         Assert.Equal(6, index.Count);
@@ -175,8 +163,6 @@ public class DocumentArchiveExportTests
             ZipNamesInOrder(ofTheTrullo.Zip).Where(n => n != DocumentArchiveExport.IndexFileName));
     }
 
-    // ---------------------------------------------------------------- the caps
-
     [Fact]
     public async Task Export_BeyondTheFileCap_AnswersTheNumberFound_BeforeAByteIsWritten()
     {
@@ -200,8 +186,6 @@ public class DocumentArchiveExportTests
         var world = await DocumentArchiveWorld.CreateAsync();
         using var destination = new MemoryStream();
 
-        // The files of the leases and the receipt declare their size, and the property documents count as the largest upload; together they are
-        // far above ten bytes.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(
             () => world.Service(new DocumentArchiveOptions { MaxExportBytes = 10 })
                 .ExportAsync(world.Hosts.OrgWide, DocumentArchiveWorld.Everything, EveryDocument, destination));
@@ -211,10 +195,6 @@ public class DocumentArchiveExportTests
         Assert.Equal(0, destination.Length);
     }
 
-    /// <summary>
-    /// A property document stores no size, so the byte cap counts it as the largest upload (10 MB), never as zero: the two property documents of
-    /// the world do not fit in a cap of 15 MB, and fit exactly in one of 20 MB (a cap is exceeded, not reached).
-    /// </summary>
     [Fact]
     public async Task Export_APropertyDocumentWithNoSize_CountsAsTheLargestUploadInTheByteCap()
     {
@@ -240,10 +220,6 @@ public class DocumentArchiveExportTests
         Assert.Equal(2, result.Documents);
     }
 
-    /// <summary>
-    /// With the default caps (300 files, 200 MB) an export of property documents is refused from the 21st file, far below the file cap: 21 times
-    /// 10 MB is more than 200 MB. Twenty are allowed. Nothing is written before the refusal.
-    /// </summary>
     [Fact]
     public async Task Export_OfPropertyDocumentsWithNoSize_IsRefusedByTheDefaultByteCapFromTheTwentyFirst()
     {
@@ -276,8 +252,6 @@ public class DocumentArchiveExportTests
         Assert.Equal(5, result.Documents);
         Assert.Equal(6, Entries(zip).Count);
     }
-
-    // ---------------------------------------------------------------- the builder of the ZIP
 
     [Fact]
     public async Task Export_ADocumentWithoutAFile_IsInTheIndexWithAnEmptyFileName()
@@ -313,7 +287,6 @@ public class DocumentArchiveExportTests
 
         Assert.False(destination.CanSeek);
         Assert.Equal(new DocumentArchiveExportResult(1, 1, content.Length), result);
-        // The file was never read whole: many reads, none larger than one chunk.
         Assert.True(reads.Count > 3, $"read in {reads.Count} calls");
         Assert.All(reads, size => Assert.True(size <= 81_920, $"a read asked for {size} bytes"));
         Assert.Equal(content, Entries(destination.ToArray())["contratti/2026-01-02-grande.pdf"]);
@@ -401,7 +374,6 @@ public class DocumentArchiveExportTests
         Assert.Equal("documenti-immobile/2026-08-15-nota", oddExtension);
     }
 
-    /// <summary>The dates of the names and of the index are ISO whatever the culture of the server (here one with another calendar).</summary>
     [Fact]
     public void Date_IsIsoWhateverTheCultureOfTheServer()
     {
@@ -477,7 +449,6 @@ public class DocumentArchiveExportTests
             _inner.WriteAsync(buffer, cancellationToken);
     }
 
-    /// <summary>A source file that records the size of every read asked of it.</summary>
     private sealed class RecordingReadStream(byte[] content, List<int> reads) : Stream
     {
         private readonly MemoryStream _inner = new(content, writable: false);

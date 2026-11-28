@@ -44,10 +44,8 @@ public class HostScopeNpgsqlTranslationTests
     private static HostDashboardService Dashboard(AppDbContext db) =>
         new(db, new ConfigurationBuilder().Build(), Clock);
 
-    // The service as the API builds it (SP-04 kit, over the database of the test): the listings below write no file.
     private static ServiceRequestService ServiceRequests(AppDbContext db) => new ServiceRequestTestKit(db).Service;
 
-    // The approval queue as the API builds it, with no action and no alert: the reads of the list and of one item are what is probed (the alert is not reached).
     private static ApprovalQueueService ApprovalQueue(AppDbContext db) =>
         new(
             db,
@@ -57,22 +55,16 @@ public class HostScopeNpgsqlTranslationTests
             null!,
             NullLogger<ApprovalQueueService>.Instance);
 
-    // The CRM profiles (E07/F01/US03): the read model, the list, the detail, and the decisions on the merges.
     private static CrmProfileReadService CrmRead(AppDbContext db) => CrmProfileApiWorld.ReadService(db, Clock);
 
     private static CrmProfileMergeService CrmMerge(AppDbContext db) => CrmProfileApiWorld.MergeService(db, Clock);
 
     private static Task<CrmProfilePage> CrmList(AppDbContext db, HostScope scope, CrmProfileFilter filter) => CrmRead(db).ListAsync(scope, filter, 1, 20);
 
-    /// <summary>Every filter of the list at once, and the order by name, which sorts by a sub-query: the filters must translate together too.</summary>
     private static readonly CrmProfileFilter EveryFilter = new("anna ross", "Italia", "it", "Direct", "vip", 2, true, CrmProfileSort.Name);
 
     private static readonly Regex ProfileSelect = new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""Country"",\s*\w+\.""Language"",\s*\w+\.""TotalStays""", RegexOptions.Compiled);
 
-    /// <summary>
-    /// The row of a CRM profile, for the statement that selects it (id, country, language, stays, spend, first and last stay, tags, primary
-    /// guest) in the detail and in the items of a page: with that row the probe goes on to the queries that need the profile.
-    /// </summary>
     private static DataTable? ProfileRowOf(string sql)
     {
         if (!ProfileSelect.IsMatch(sql.TrimStart()))
@@ -92,14 +84,8 @@ public class HostScopeNpgsqlTranslationTests
         return table;
     }
 
-    /// <summary>What the probe answers for a call that cannot go on with an empty answer (see <see cref="AnswerFor"/>).</summary>
     private sealed record ProbeAnswer(int Count = 0, Func<string, DataTable?>? Rows = null);
 
-    /// <summary>
-    /// The CRM list and the merge proposals ask for a count and send the page behind it only when the count is not zero, so the probe answers
-    /// the count with one (the order of the page is the part that needs the provider); the detail and the items of a page need the row of the
-    /// profile to send the queries that follow it. Every other call goes on with the default answer.
-    /// </summary>
     private static ProbeAnswer AnswerFor(string call) => call switch
     {
         "crm-detail" or "crm-items-of-a-page" => new ProbeAnswer(Rows: ProfileRowOf),
@@ -108,7 +94,6 @@ public class HostScopeNpgsqlTranslationTests
         _ => new ProbeAnswer(),
     };
 
-    /// <summary>Every call of the code that takes the scope of the caller, by the name the failure reports.</summary>
     private static readonly Dictionary<string, Func<AppDbContext, HostScope, Task>> Calls = new()
     {
         ["bookings"] = (db, scope) => new BookingRepository(db).GetByScopeAsync(scope),
@@ -134,13 +119,9 @@ public class HostScopeNpgsqlTranslationTests
         ["alloggiati-list"] = (db, scope) =>
             new AlloggiatiWebService(db, NullLogger<AlloggiatiWebService>.Instance, Clock).GetSummaryAsync(scope, null),
 
-        // The approval queue (E05/F04/US01/T02): the list, and the read of one item that the edit, the approval and the rejection all start with (the item of a property
-        // the scope reaches is one IN (SELECT ...) on the properties of the scope, in the same statement).
         ["approval-queue-list"] = (db, scope) => ApprovalQueue(db).GetPendingAsync(scope),
         ["approval-queue-item"] = (db, scope) => ApprovalQueue(db).EditAsync(scope, Guid.NewGuid(), "Un testo", "auth0|utente"),
 
-        // The CRM profiles (E07/F01/US03): every order of the list, every filter and the three searches, the detail, the items of a page and
-        // the merge proposals, for every kind of scope.
         ["crm-list-by-last-stay"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.LastStay)),
         ["crm-list-by-spend"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.Spend)),
         ["crm-list-by-stays"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.Stays)),
@@ -158,7 +139,6 @@ public class HostScopeNpgsqlTranslationTests
         ["crm-merge-candidates"] = (db, scope) => CrmMerge(db).ListProposedAsync(scope, 1, 20),
     };
 
-    /// <summary>How many statements each call sends at least (all of them are reached when nothing was swallowed early).</summary>
     private static readonly Dictionary<string, int> MinimumStatements = new()
     {
         ["bookings"] = 1,
@@ -180,8 +160,6 @@ public class HostScopeNpgsqlTranslationTests
         ["approval-queue-list"] = 1,
         ["approval-queue-item"] = 1,
 
-        // The CRM: the count and the page behind it (the probe answers the count with one); a search by an exact e-mail address asks for the
-        // contacts first, one by a phone number for the contacts and the profiles that carry the number.
         ["crm-list-by-last-stay"] = 2,
         ["crm-list-by-spend"] = 2,
         ["crm-list-by-stays"] = 2,
@@ -194,12 +172,8 @@ public class HostScopeNpgsqlTranslationTests
         ["crm-list-search-email"] = 3,
         ["crm-list-search-phone"] = 4,
         ["crm-list-everything-at-once"] = 2,
-        // The row of the profile, then the guests that give the name, the contacts, the stays and the proposals (the reviews are asked for
-        // only when there is a stay).
         ["crm-detail"] = 5,
-        // The row of the profile, then the guests that give the name, the bookings, the contacts and the proposals.
         ["crm-items-of-a-page"] = 5,
-        // The count and the page of the proposals; the properties and the contacts of the page come after.
         ["crm-merge-candidates"] = 2,
     };
 
@@ -225,7 +199,6 @@ public class HostScopeNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Calls[call](db, ScopeOf(scope)));
 
-        // The probe must have got as far as the last query of the call, or it proved nothing about the ones after the first.
         Assert.True(
             statements.Count >= MinimumStatements[call],
             $"{call}: only {statements.Count} of the expected {MinimumStatements[call]} statements were reached.");
@@ -240,7 +213,6 @@ public class HostScopeNpgsqlTranslationTests
     [Fact]
     public async Task Probe_CatchesAQueryThatNpgsqlCannotTranslate()
     {
-        // The probe must be able to fail: a method call EF has no SQL for is a translation failure, not an empty result.
         await using var db = NpgsqlTranslationProbe.NewContext();
 
         await Assert.ThrowsAnyAsync<InvalidOperationException>(() => NpgsqlTranslationProbe.AssertTranslatesAsync(

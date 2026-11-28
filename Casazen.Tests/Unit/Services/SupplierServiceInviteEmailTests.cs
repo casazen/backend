@@ -15,7 +15,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>FD-13: the supplier invite email is rendered from the template engine and queued, never sent inline.</summary>
 public class SupplierServiceInviteEmailTests
 {
     [Fact]
@@ -34,7 +33,6 @@ public class SupplierServiceInviteEmailTests
         Assert.Equal(EmailTemplates.Names.SupplierInvite, template);
         Assert.Equal("Invito CasaZen — Console fornitore", content.Subject);
 
-        // SU-01: the link is the web app page with a random token only (no id, email or comune in the URL).
         var token = InviteToken(content.HtmlBody);
         Assert.Contains($"href=\"{EmailTestHelpers.PublicSiteBaseUrl}/register?inviteToken={token}\"", content.HtmlBody);
         Assert.DoesNotContain("railway.app", content.HtmlBody);
@@ -86,7 +84,6 @@ public class SupplierServiceInviteEmailTests
         var queue = new RecordingEmailQueue();
         var service = CreateService(db, queue);
 
-        // F205 is Milano; the old registry says Firenze (A4-12): no name is derived from it.
         await service.CreateInviteAsync("supplier@test.com", "F205", null, null);
 
         var html = Assert.Single(queue.Queued).Content.HtmlBody;

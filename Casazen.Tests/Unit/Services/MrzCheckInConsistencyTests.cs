@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>E03/F04/US02/T02: the MRZ against the check-in data, one flag per field, after normalization.</summary>
 public class MrzCheckInConsistencyTests
 {
     private static MrzExtractionResult Mrz(string surname, string givenNames, string? number = "CA12345AB", string? nationality = "ITA") => new()
@@ -52,7 +51,6 @@ public class MrzCheckInConsistencyTests
         var notDeclared = MrzCheckInConsistency.Compare(Mrz("ROSSI", "MARIA"), new CheckInIdentity("Maria", "Rossi", null, null, "Italia"));
         Assert.Null(notDeclared.BirthDate);
         Assert.Null(notDeclared.DocumentNumber);
-        // A citizenship written as a name is never guessed into a code.
         Assert.Null(notDeclared.Nationality);
 
         var declared = MrzCheckInConsistency.Compare(

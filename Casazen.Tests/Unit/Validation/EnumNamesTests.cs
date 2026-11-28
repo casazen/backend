@@ -4,13 +4,12 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Validation;
 
-/// <summary>PL-07 (A1-35, A7-31): the strict enum parse behind the fix for the numeric-value 500.</summary>
 public class EnumNamesTests
 {
     [Theory]
     [InlineData("ShortTerm", RentalType.ShortTerm)]
-    [InlineData("longterm", RentalType.LongTerm)] // case-insensitive
-    [InlineData("  Both  ", RentalType.Both)] // trimmed
+    [InlineData("longterm", RentalType.LongTerm)]
+    [InlineData("  Both  ", RentalType.Both)]
     public void TryParseDefined_DeclaredMemberName_ReturnsTrueWithValue(string value, RentalType expected)
     {
         var success = EnumNames.TryParseDefined<RentalType>(value, out var result);
@@ -32,10 +31,6 @@ public class EnumNamesTests
         Assert.Equal(default, result);
     }
 
-    /// <summary>
-    /// The actual A1-35/A7-31 bug: plain <c>Enum.TryParse</c> accepts "7" (no member of RentalType declares it)
-    /// and would hand a value nothing downstream was written to handle.
-    /// </summary>
     [Theory]
     [InlineData("7")]
     [InlineData("-1")]
@@ -47,11 +42,6 @@ public class EnumNamesTests
         Assert.False(success);
     }
 
-    /// <summary>
-    /// Even a numeric string that happens to match a declared ordinal (1 == RentalType.LongTerm) is rejected: API
-    /// input must always spell a member name, never its numeric encoding (established convention, see
-    /// DashboardController.TryParsePeriod).
-    /// </summary>
     [Fact]
     public void TryParseDefined_NumericStringMatchingDeclaredOrdinal_ReturnsFalse()
     {
@@ -60,10 +50,6 @@ public class EnumNamesTests
         Assert.False(success);
     }
 
-    /// <summary>
-    /// Plain <c>Enum.TryParse</c> also bitwise-ORs a comma-separated name list into whatever value that combination
-    /// happens to equal, even on a non-[Flags] enum (UserRole.PropertyOwner=1 | PropertyManager=2 == UserRole.Guest=3).
-    /// </summary>
     [Fact]
     public void TryParseDefined_CommaSeparatedNames_ReturnsFalse()
     {

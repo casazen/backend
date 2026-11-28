@@ -25,11 +25,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E01/F04/US01/T03 (NF-21, ADR-022): the routines page's endpoints. What the controller adds to the service: the flag, the policies, the org of the caller,
-/// the reach (a routine acts on every property of the org, so a collaborator limited to some properties changes nothing and sees none), and the shapes
-/// the frontend client reads. The rules of what is saved are proved on the service (<see cref="RoutineManagementServiceTests"/>).
-/// </summary>
 public class RoutinesControllerTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -42,9 +37,6 @@ public class RoutinesControllerTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    // ─── The surface ─────────────────────────────────────────────────────────────
-
-    /// <summary>The flag, the privacy of the answers and the exact list of endpoints, each with its verb, route and policy: a change to any of them changes this list.</summary>
     [Fact]
     public void TheController_IsBehindTheFlag_Private_AndEveryEndpointHasItsVerbRouteAndPolicy()
     {
@@ -104,8 +96,6 @@ public class RoutinesControllerTests : IAsyncLifetime
         Assert.True(offValid);
     }
 
-    // ─── The reach (permission rule) ─────────────────────────────────────────────
-
     /// <summary>
     /// Proof (permission rule): a collaborator limited to some properties changes no routine and simulates none: every write is a 403
     /// <c>routines_need_org_scope</c> and nothing is asked of the services (strict mocks), because a routine acts on every property of the org.
@@ -134,7 +124,6 @@ public class RoutinesControllerTests : IAsyncLifetime
         engine.VerifyNoOtherCalls();
     }
 
-    /// <summary>The same caller reads none: an empty list, a 404 for one routine and for its log (as an item of the org is in every restricted scope), and the services are not asked.</summary>
     [Fact]
     public async Task CollaboratorWithLimitedScope_ReadsNoRoutine()
     {
@@ -175,8 +164,6 @@ public class RoutinesControllerTests : IAsyncLifetime
         engine.VerifyNoOtherCalls();
     }
 
-    // ─── The org-wide caller: the shapes the client reads ────────────────────────
-
     [Fact]
     public async Task List_AndGet_AnswerTheRoutinesOfTheOrg_InTheShapeOfTheClient()
     {
@@ -198,7 +185,6 @@ public class RoutinesControllerTests : IAsyncLifetime
         Assert.Equal(first.ConditionJson, one.ConditionJson);
         Assert.Equal(first.ActionsJson, one.ActionsJson);
 
-        // routine.types.ts: id, orgId, name, eventType, eventConfig, conditionJson, actionsJson, testMode, active.
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(one, Web));
         Assert.Equal(
             ["actionsJson", "active", "agentObjective", "conditionJson", "eventConfig", "eventType", "id", "name", "orgId", "testMode"],
@@ -308,8 +294,6 @@ public class RoutinesControllerTests : IAsyncLifetime
         Assert.DoesNotContain("7f0e2c7e", item.ResultJson, StringComparison.Ordinal);
     }
 
-    // ─── The simulation ──────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Simulate_AsksTheEngineWithTheOrgOfTheCaller_AndTheBodyAsItIs()
     {
@@ -345,9 +329,6 @@ public class RoutinesControllerTests : IAsyncLifetime
         engine.VerifyNoOtherCalls();
     }
 
-    // ─── The catalog of the actions (AC-NF21-1) ──────────────────────────────────
-
-    /// <summary>Every action of the enum, in its order, with the availability the engine and the activation read: the page shows what is real and what is not.</summary>
     [Fact]
     public void Actions_ListEveryActionWithItsAvailability_FromTheCatalogTheEngineReads()
     {
@@ -384,8 +365,6 @@ public class RoutinesControllerTests : IAsyncLifetime
         var response = await controller.SuggestAction(new RoutineInstructionDto("Organizza le pulizie"), ai.Object, Ct);
         Assert.Equal(expected, Assert.IsType<RoutineActionSuggestion>(Assert.IsType<OkObjectResult>(response.Result).Value).Type);
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
 
     private RoutinesController Controller(
         IRoutineManagementService management,

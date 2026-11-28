@@ -16,7 +16,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class OwnerPortalCorsArchitectureTests
 {
-    /// <summary>The acceptance endpoints the invitation pages call before the owner has an <c>agency_ids</c> claim.</summary>
     private static readonly string[] AcceptanceActions =
     [
         $"{nameof(OwnerInvitationAcceptanceController)}.{nameof(OwnerInvitationAcceptanceController.Accept)}",
@@ -44,7 +43,6 @@ public class OwnerPortalCorsArchitectureTests
             .ToList();
 
         Assert.True(outsideThePolicy.Count == 0, "Actions reachable from an agency domain without the OwnerPortal policy: " + string.Join(", ", outsideThePolicy));
-        // The prefixes really reach the portal and the two acceptance actions (a renamed route would make this test pass on nothing).
         Assert.Contains(reached, a => a.Controller == typeof(OwnerPortalController));
         Assert.All(AcceptanceActions, key => Assert.Contains(reached, a => a.Key == key));
     }
@@ -88,7 +86,6 @@ public class OwnerPortalCorsArchitectureTests
         route.Equals(prefix, StringComparison.OrdinalIgnoreCase)
         || route.StartsWith(prefix + "/", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>Every routed action of the web assembly with its full route template (<c>/api/...</c>, lower-case segments as written).</summary>
     private static IEnumerable<(string Key, string Route, Type Controller, MethodInfo Method)> Actions()
     {
         var controllers = typeof(OwnerPortalController).Assembly.GetTypes()

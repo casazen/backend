@@ -7,7 +7,6 @@ using Casazen.Tests.Integration.Postgres;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
-// OrgEntity alias from Casazen.Tests.csproj
 
 namespace Casazen.Tests.Integration;
 
@@ -84,7 +83,6 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task UnregisterDevice_OwnDevice_RemovesOnlyThatDevice()
     {
-        // MO-05: the app logout deregisters the current device only; the user's other devices keep their pushes.
         var userId = $"auth0|device-{Guid.NewGuid():N}";
         await SeedHostAsync(userId);
 
@@ -107,8 +105,6 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task UnregisterDevice_DeviceOfAnotherUser_Returns404AndKeepsIt()
     {
-        // MO-05: the same device id under another account (a second host on the same phone, or a guessed id) is not
-        // the caller's: 404, and the other user's registration and pushes stay untouched.
         var ownerId = $"auth0|device-owner-{Guid.NewGuid():N}";
         var otherId = $"auth0|device-other-{Guid.NewGuid():N}";
         await SeedHostAsync(ownerId);
@@ -150,8 +146,6 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task UnregisterDevice_DeviceIdWithReservedCharacters_RemovesTheDevice()
     {
-        // Device ids sent by the current app are OS build fingerprints on Android ("brand/product/device:13/..."): the
-        // app sends them percent-encoded in the path, and the round trip must find the registration.
         var userId = $"auth0|device-{Guid.NewGuid():N}";
         await SeedHostAsync(userId);
         const string fingerprint = "google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.036/10727383:user/release-keys";
@@ -212,8 +206,6 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task RegisterDevice_SameTokenUnderNewInstallationId_ReplacesTheLegacyRegistration()
     {
-        // MO-03 (A6-06): builds before MO-03 sent the OS build id as device id. After the update the same phone
-        // registers its installation UUID with the same Expo push token: the legacy row goes, no duplicate push.
         var userId = $"auth0|device-{Guid.NewGuid():N}";
         await SeedHostAsync(userId);
         const string legacyId = "google/sdk_gphone64_x86_64/emu64xa:14/UE1A.230829.036/10727383:user/release-keys";
@@ -235,8 +227,6 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task RegisterDevice_LegacyRegistrationWithAnotherToken_IsKept()
     {
-        // MO-03: prudent migration. A legacy row whose token is not re-registered belongs to a phone still on an old
-        // build (or not opened yet): it keeps its pushes until that phone registers again or Expo drops the token.
         var userId = $"auth0|device-{Guid.NewGuid():N}";
         await SeedHostAsync(userId);
 
@@ -258,8 +248,6 @@ public class DeviceRegistrationIntegrationTests : IClassFixture<CasazenWebApplic
     [Fact]
     public async Task RegisterDevice_TwoInstallationsOfTheSameUser_KeepBothTokens()
     {
-        // MO-03 (A6-06): two phones on the same OS build used to share one device id and overwrite each other's
-        // token. With one UUID per installation both keep receiving pushes.
         var userId = $"auth0|device-{Guid.NewGuid():N}";
         await SeedHostAsync(userId);
 

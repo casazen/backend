@@ -61,7 +61,6 @@ public class WizardDraftServiceTests
         Assert.Equal((DraftStatus.Saved, 2), (second.Status, second.ServerVersion));
         Assert.Equal(_clock.GetUtcNow().UtcDateTime, second.ServerDraft!.LastSavedAt);
 
-        // Another device still on version 1 saves: the server is ahead, so it is told so and shown the draft it would have overwritten.
         var stale = await SaveAsync(OrgA, Alice, WizardType.ListingCreate, null, 1, """{"name":"Casa tre"}""");
 
         Assert.Equal(DraftStatus.Conflict, stale.Status);
@@ -72,7 +71,6 @@ public class WizardDraftServiceTests
         Assert.Equal(2, row.Version);
         Assert.Contains("Casa due", row.DraftJson);
 
-        // The client that took the server's version saves on top of it.
         var next = await SaveAsync(OrgA, Alice, WizardType.ListingCreate, null, 2, """{"name":"Casa tre"}""");
         Assert.Equal((DraftStatus.Saved, 3), (next.Status, next.ServerVersion));
     }
@@ -84,9 +82,7 @@ public class WizardDraftServiceTests
             OrgA, Alice, WizardType.CheckIn, BookingId, 0,
             """{"step":"ospiti","guests":[{"room":1,"guestName":"Giulia Verdi","documentNumber":"CA12345AB"}]}""");
 
-        // The same org and wizard, another person: no draft, the answer of a draft that does not exist.
         Assert.Null(await GetAsync(OrgA, Bob, WizardType.CheckIn, BookingId));
-        // The same person in another org, another wizard, another entity: none either.
         Assert.Null(await GetAsync(OrgB, Alice, WizardType.CheckIn, BookingId));
         Assert.Null(await GetAsync(OrgA, Alice, WizardType.CheckOut, BookingId));
         Assert.Null(await GetAsync(OrgA, Alice, WizardType.CheckIn, null));
@@ -98,7 +94,6 @@ public class WizardDraftServiceTests
         Assert.Equal("CA12345AB", guest.GetProperty("documentNumber").GetString());
         Assert.Equal(1, guest.GetProperty("room").GetInt32());
 
-        // A call with no user would match the anonymized rows (they have none): it is refused, not answered.
         await Assert.ThrowsAsync<ArgumentException>(() => GetAsync(OrgA, string.Empty, WizardType.CheckIn, BookingId));
     }
 
@@ -129,7 +124,6 @@ public class WizardDraftServiceTests
         Assert.Null(await GetAsync(OrgA, Alice, WizardType.BookingCreate, null));
         var again = await SaveAsync(OrgA, Alice, WizardType.BookingCreate, null, 0, """{"step":9}""");
 
-        // The version keeps counting, so a copy an old device still holds can never be taken for the new draft.
         Assert.Equal((DraftStatus.Saved, 3), (again.Status, again.ServerVersion));
         var row = Assert.Single(await RowsAsync());
         Assert.Contains("9", row.DraftJson);
@@ -144,7 +138,6 @@ public class WizardDraftServiceTests
         await using (var db = NewDb())
         {
             var service = new WizardDraftService(db, _clock);
-            // Another org, another wizard, another entity: nothing of Bob's or Alice's is reached.
             await service.DeleteDraftAsync(OrgB, Alice, WizardType.CheckIn, BookingId, CancellationToken.None);
             await service.DeleteDraftAsync(OrgA, Alice, WizardType.CheckOut, BookingId, CancellationToken.None);
             await service.DeleteDraftAsync(OrgA, Alice, WizardType.CheckIn, null, CancellationToken.None);
@@ -161,7 +154,6 @@ public class WizardDraftServiceTests
         var bobs = await GetAsync(OrgA, Bob, WizardType.CheckIn, BookingId);
         Assert.Equal("Luca Neri", bobs!.Data.RootElement.GetProperty("guestName").GetString());
 
-        // Both rows are still there: the discarded one has no data and no person (as after the retention), Bob's is intact.
         var rows = await RowsAsync();
         Assert.Equal(2, rows.Count);
         var discarded = Assert.Single(rows, r => r.UserId == string.Empty);
@@ -170,7 +162,6 @@ public class WizardDraftServiceTests
         Assert.Equal((OrgA, WizardType.CheckIn, (Guid?)BookingId), (discarded.OrgId, discarded.WizardType, discarded.EntityId));
         Assert.Equal(Bob, Assert.Single(rows, r => r.UserId != string.Empty).UserId);
 
-        // Discarding what is not there is not an error, and a new draft of the same wizard starts from the beginning.
         await using (var db = NewDb())
         {
             await new WizardDraftService(db, _clock).DeleteDraftAsync(OrgA, Alice, WizardType.CheckIn, BookingId, CancellationToken.None);
@@ -191,7 +182,6 @@ public class WizardDraftServiceTests
             service.SaveDraftAsync(OrgA, Alice, new SaveDraftRequest(WizardType.ListingCreate, null, 0, list), CancellationToken.None));
         Assert.Equal(WizardDraftErrors.DataInvalid, notAnObject.Code);
 
-        // A text with the character U+0000 (here as a value, and as a property name inside a list) cannot be stored in a jsonb column.
         using var nul = JsonDocument.Parse("{\"note\":\"a\\u0000b\"}");
         using var nulName = JsonDocument.Parse("{\"rooms\":[{\"a\\u0000\":1}]}");
         foreach (var data in new[] { nul, nulName })

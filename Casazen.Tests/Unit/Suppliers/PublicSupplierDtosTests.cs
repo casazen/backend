@@ -7,15 +7,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-09: the public answers (<see cref="PublicSupplierMapper"/> and the DTOs): composed only of what the supplier published,
-/// with no field for a person, the supplier's private calendar or the console's bookkeeping; the slot times in UTC and on the
-/// clock of Rome (the offset tells apart the two passes of the hour that happens twice); the estimate with its lines.
-/// </summary>
 public class PublicSupplierDtosTests
 {
-    // The words no public answer may carry as a field: contact data of the supplier or of a customer, the private calendar,
-    // the bookkeeping of the console and the supplier's status.
     private static readonly string[] ForbiddenFieldWords =
     [
         "phone", "email", "mail", "vatnumber", "partitaiva", "address", "indirizzo", "fiscal", "iban",
@@ -102,7 +95,6 @@ public class PublicSupplierDtosTests
         foreach (var answer in answers)
             AssertNoForbiddenField(JsonSerializer.SerializeToElement(answer, Web), answer.GetType().Name);
 
-        // The page itself: the new members only (the legal name of the supplier is the page's title, not an addition).
         var added = JsonSerializer.SerializeToElement(showcase, Web);
         Assert.Equal(25, added.GetProperty("medianResponseMinutes").GetInt32());
         AssertNoForbiddenField(added.GetProperty("services"), "SupplierShowcaseDto.services");
@@ -126,8 +118,8 @@ public class PublicSupplierDtosTests
             120,
             new DateOnly(2026, 11, 12),
             [
-                new PublicSlotDay(new DateOnly(2026, 10, 20), [new SupplierSlot(Utc(2026, 10, 20, 7), Utc(2026, 10, 20, 9))]), // summer time
-                new PublicSlotDay(new DateOnly(2026, 11, 3), [new SupplierSlot(Utc(2026, 11, 3, 8), Utc(2026, 11, 3, 10))]), // winter time
+                new PublicSlotDay(new DateOnly(2026, 10, 20), [new SupplierSlot(Utc(2026, 10, 20, 7), Utc(2026, 10, 20, 9))]),
+                new PublicSlotDay(new DateOnly(2026, 11, 3), [new SupplierSlot(Utc(2026, 11, 3, 8), Utc(2026, 11, 3, 10))]),
                 new PublicSlotDay(new DateOnly(2026, 10, 21), []),
             ]);
 
@@ -150,7 +142,6 @@ public class PublicSupplierDtosTests
     [Fact]
     public void TheHourThatHappensTwice_HasTwoSlotsWithTheSameClockTime_ToldApartByTheirOffsets()
     {
-        // 25 October 2026, 02:30 Rome happens at 00:30 UTC (summer time) and again at 01:30 UTC (winter time).
         var slots = new PublicSlots(
             "s",
             60,
@@ -161,9 +152,9 @@ public class PublicSupplierDtosTests
 
         var first = dto.Days[0].Slots[0].StartLocal;
         var second = dto.Days[0].Slots[1].StartLocal;
-        Assert.Equal(first.TimeOfDay, second.TimeOfDay); // both read 02:30 on the wall clock...
-        Assert.Equal(TimeSpan.FromHours(2), first.Offset); // ...in summer time...
-        Assert.Equal(TimeSpan.FromHours(1), second.Offset); // ...and in winter time
+        Assert.Equal(first.TimeOfDay, second.TimeOfDay);
+        Assert.Equal(TimeSpan.FromHours(2), first.Offset);
+        Assert.Equal(TimeSpan.FromHours(1), second.Offset);
         Assert.NotEqual(first.UtcDateTime, second.UtcDateTime);
     }
 
@@ -187,7 +178,6 @@ public class PublicSupplierDtosTests
         Assert.False(dto.RequiresQuote);
         Assert.Equal(PublicQuoteCoverage.Covered, dto.Coverage);
         Assert.Equal("00184", dto.PostalCode);
-        // 3 hours at 45 euro, 2 extra bathrooms at 10, 100 m² = 2 blocks of 30 above 60 at 5.
         Assert.Equal(new[] { SupplierQuoteLineKind.Base, SupplierQuoteLineKind.Supplement, SupplierQuoteLineKind.Supplement }, dto.Lines.Select(l => l.Kind));
         Assert.Equal(new[] { 13_500, 2_000, 1_000 }, dto.Lines.Select(l => l.AmountCents));
         Assert.Equal(16_500, dto.TotalCents);
@@ -230,8 +220,6 @@ public class PublicSupplierDtosTests
         Assert.Null(dto.TotalCents);
         Assert.Empty(dto.Lines);
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
 
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 

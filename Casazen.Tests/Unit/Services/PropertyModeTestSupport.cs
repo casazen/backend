@@ -11,13 +11,8 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PM-02: the scheduled change of rental mode on the EF InMemory database, with a clock the test moves, the notifications and
-/// the compliance service as mocks. "Today" in Rome is 10 October 2026 (the clock is 12:00 there).
-/// </summary>
 internal sealed class PropertyModeHarness : IDisposable
 {
-    /// <summary>10 October 2026, midnight UTC: the calendar day of Rome the clock shows.</summary>
     public static readonly DateTime Today = Day(10);
 
     public static readonly DateTimeOffset Now = new(2026, 10, 10, 10, 0, 0, TimeSpan.Zero);
@@ -46,13 +41,8 @@ internal sealed class PropertyModeHarness : IDisposable
 
     public PropertyModeService Service { get; }
 
-    /// <summary>The given day of October 2026, midnight UTC (negative or past 31: the days around it).</summary>
     public static DateTime Day(int day) => new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(day - 1);
 
-    /// <summary>
-    /// A service on another context over the same database, as a second request or a second job run would have. The activity log is
-    /// required (every host has it); the default is the one of <paramref name="db"/>.
-    /// </summary>
     public PropertyModeService NewService(
         AppDbContext db,
         IActivityLog? activityLog = null,
@@ -69,7 +59,6 @@ internal sealed class PropertyModeHarness : IDisposable
             changeRecorder,
             jobs);
 
-    /// <summary>The activity log writer of AM-02c on <paramref name="db"/>.</summary>
     public ActivityLog ActivityLogFor(AppDbContext db) => new(db, Clock);
 
     public AppDbContext SecondContext() => new(DbOptions);
@@ -85,12 +74,8 @@ internal sealed class PropertyModeHarness : IDisposable
         _options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        // No Data Protection provider, like every other unit test: EF caches one model per provider, so a provider per test
-        // would build (and keep) one model per test and crowd out the cache the other tests share.
         return new AppDbContext(_options);
     }
-
-    // ─── Seed ───────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<Property> SeedPropertyAsync(
         RentalMode mode = RentalMode.Short,
@@ -161,7 +146,6 @@ internal sealed class PropertyModeHarness : IDisposable
             Status = status,
             Source = source,
             CreatedAt = createdAt ?? Now.UtcDateTime.AddDays(-1),
-            // A checkout hold: a Pending booking of the public checkout with its PaymentIntent (BK-21).
             StripeSetupIntentId = checkoutHold ? $"seti_{Guid.NewGuid():N}" : null,
         };
         Db.Bookings.Add(booking);
@@ -257,7 +241,6 @@ internal sealed class PropertyModeHarness : IDisposable
         return lease;
     }
 
-    /// <summary>A change straight in the database, as the creation would have written it.</summary>
     public async Task<PropertyModeChange> SeedChangeAsync(
         Property property,
         RentalMode to,

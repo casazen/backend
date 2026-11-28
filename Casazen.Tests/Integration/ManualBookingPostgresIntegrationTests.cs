@@ -32,8 +32,6 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
     [PostgresFact]
     public async Task CreateManualBooking_GuestOpensCheckoutThirtyMinutesLater_HostBookingStaysConfirmedAndDatesStayTaken()
     {
-        // Audit scenario: at 10:00 the host records a phone booking for 1-5 October; at 10:30 a guest opens the public
-        // checkout for the same dates, then for other dates. The host booking must survive both.
         var (hostId, property) = await SeedCheckoutReadyHostPropertyAsync();
         var october1 = new DateTime(RomeToday().Year + 1, 10, 1, 0, 0, 0, DateTimeKind.Utc);
         var october5 = october1.AddDays(4);
@@ -119,7 +117,6 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
         Assert.Equal(HttpStatusCode.OK, holdDates.StatusCode);
         var expired = await LoadBookingAsync(abandonedHoldId);
         Assert.Equal(BookingStatus.Cancelled, expired.Status);
-        // BK-21: same routine as the expiry job, so the abandoned PaymentIntent is cancelled on the host's account first.
         Assert.Equal(BookingCancellationReason.CheckoutHoldExpired, expired.CancellationReason);
         var cancellation = Assert.Single(
             FakeStripeService.CancelledIntents,
@@ -142,7 +139,6 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
         Assert.Equal(HttpStatusCode.OK, link.StatusCode);
         var linkBody = await link.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(string.IsNullOrWhiteSpace(linkBody.GetProperty("checkInLink").GetString()));
-        // No email provider in the test host: the link is returned anyway and the email is reported as failed (CO-09).
         Assert.Equal("Failed", linkBody.GetProperty("emailStatus").GetString());
 
         var checkIn = await host.PostAsync($"/api/bookings/{bookingId}/check-in", null);
@@ -195,7 +191,6 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
         paymentOption = nameof(PaymentOption.Immediate),
     };
 
-    /// <summary>A host with an org ready for Stripe Connect and an active, bookable property it owns.</summary>
     private async Task<(string HostId, Property Property)> SeedCheckoutReadyHostPropertyAsync()
     {
         var hostId = $"auth0|manual-host-{Guid.NewGuid():N}";
@@ -213,7 +208,6 @@ public class ManualBookingPostgresIntegrationTests : IClassFixture<CasazenWebApp
         return (hostId, property);
     }
 
-    /// <summary>An abandoned public checkout: Pending direct booking with a PaymentIntent, created 30 minutes ago.</summary>
     private async Task<Guid> SeedExpiredPaymentIntentHoldAsync(Property property, DateTime checkIn, DateTime checkOut)
     {
         using var scope = _factory.Services.CreateScope();

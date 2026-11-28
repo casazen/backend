@@ -34,8 +34,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
 
     public void Dispose() => _harness.Dispose();
 
-    // ─── GET account ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetAccount_HasTheShapeOfThePlan_AndItsDomainIsTheObjectTheConsoleGets()
     {
@@ -58,7 +56,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         Assert.Equal($"https://{OwnDomain}", json.GetProperty("publicAddress").GetString());
         Assert.Equal("customDomain", json.GetProperty("publicAddressKind").GetString());
 
-        // domain: the same object, member by member, that GET api/orgs/{orgId}/domain gives the console.
         var consoleAnswer = await _harness.Console(org.Id).GetDomain(org.Id, CancellationToken.None);
         var consoleDomain = Assert.IsType<OrgDomainConfigDto>(Assert.IsType<OkObjectResult>(consoleAnswer.Result).Value);
         Assert.Equal(SiteApiHarness.Serialize(consoleDomain), json.GetProperty("domain").GetRawText());
@@ -94,8 +91,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         Assert.Equal((503, "site_public_address_not_configured"), SiteApiHarness.Refusal(answer.Result));
     }
 
-    // ─── PUT domain ────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task SetDomain_AValidDomain_IsStoredAsTheConsoleDoes_AndTheAnswerHasTheRecordsToCreate()
     {
@@ -113,10 +108,8 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         Assert.EndsWith($".{OwnDomain}", instructions.TxtHost, StringComparison.Ordinal);
         Assert.Equal(stored.DomainVerificationToken, instructions.TxtValue);
 
-        // The same records and state the console shows for this domain.
         var console = Assert.IsType<OrgDomainConfigDto>(Assert.IsType<OkObjectResult>((await _harness.Console(org.Id).GetDomain(org.Id, CancellationToken.None)).Result).Value);
         Assert.Equal(SiteApiHarness.Serialize(console), SiteApiHarness.Serialize(account.Domain));
-        // A domain waiting for its records is not served: the plugin keeps the address of CasaZen until it is.
         Assert.Equal((SiteAccountDto.CasazenKind, SiteApiHarness.CasazenAddress), (account.PublicAddressKind, account.PublicAddress));
     }
 
@@ -144,7 +137,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         if (scenario == "plan")
             Assert.Equal("Pro", SiteApiHarness.ToJson(Assert.IsType<ObjectResult>(plugin.Result).Value).GetProperty("requiredPlan").GetString());
 
-        // Nothing was stored, and the other org keeps its domain.
         Assert.Null((await _harness.ReadAsync(org.Id)).CustomDomain);
         Assert.Equal(OtherDomain, (await _harness.ReadAsync(other.Id)).CustomDomain);
     }
@@ -155,7 +147,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         var org = _harness.SeedOrgWithDomain("quokka360", "Quokka360", OwnDomain);
         var plugin = _harness.Plugin(SiteApiHarness.Site(org.Id));
 
-        // `{}`: a client that dropped its empty values. That is not «go back to CasaZen»: the member is required.
         var missing = JsonSerializer.Deserialize<SetSiteDomainRequest>("{}", Web)!;
         Assert.False(missing.CustomDomainSpecified);
         var refused = await plugin.SetDomain(missing, CancellationToken.None);
@@ -186,8 +177,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         Assert.Equal(OwnDomain, (await _harness.ReadAsync(org.Id)).CustomDomain);
     }
 
-    // ─── POST domain/verify ────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task VerifyDomain_AnswersTheCheckAsTheConsoleDoes_AndTheAccountAsItIsAfterIt()
     {
@@ -204,7 +193,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
 
         var response = Assert.IsType<SiteDomainVerifyResponse>(Assert.IsType<OkObjectResult>(answer.Result).Value);
         Assert.Equal((DomainVerificationStatus.Verified, OwnDomain, (string?)null), (response.Verify.DomainVerificationStatus, response.Verify.CustomDomain, response.Verify.Detail));
-        // The account is read after the check: the domain is served now, so the plugin is told to use it.
         Assert.Equal(DomainVerificationStatus.Verified, response.Account.Domain.DomainVerificationStatus);
         Assert.Equal((SiteAccountDto.CustomDomainKind, $"https://{OwnDomain}"), (response.Account.PublicAddressKind, response.Account.PublicAddress));
     }
@@ -247,8 +235,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         _harness.Verification.Verify(v => v.VerifyAsync(It.IsAny<OrgEntity>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // ─── PUT domain/surfaces ───────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task SetSurfaces_ChangesTheThreeChoices_AndTheAnswerCarriesThem()
     {
@@ -261,13 +247,11 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         var account = AccountOf(answer);
         var surfaces = Assert.IsType<OrgDomainSurfacesDto>(account.Domain.Surfaces);
         Assert.Equal((true, false, true), (surfaces.GuestAreaOnOwnDomain, surfaces.OwnerPortalOnOwnDomain, surfaces.UseOwnDomainForLinks));
-        // The domain is served, so the guest area and its links are really on its host.
         Assert.True(surfaces.Effective.GuestArea);
         Assert.False(surfaces.Effective.OwnerPortal);
         var stored = await _harness.ReadAsync(org.Id);
         Assert.Equal((true, false, true), (stored.GuestAreaOnOwnDomain, stored.OwnerPortalOnOwnDomain, stored.UseOwnDomainForLinks));
 
-        // Saved again with other choices: the answer follows.
         var again = AccountOf(await _harness.Plugin(SiteApiHarness.Site(org.Id)).SetSurfaces(
             new SetOrgDomainSurfacesRequest { GuestAreaOnOwnDomain = false, OwnerPortalOnOwnDomain = false, UseOwnDomainForLinks = false },
             CancellationToken.None));
@@ -293,8 +277,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         Assert.False((await _harness.ReadAsync(org.Id)).GuestAreaOnOwnDomain);
     }
 
-    // ─── Isolation and the credential ──────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Isolation_TheCredentialOfOrgA_NeverReadsOrChangesOrgB_AndABodyCarryingBsIdIsIgnored()
     {
@@ -303,13 +285,11 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         var pluginA = _harness.Plugin(SiteApiHarness.Site(orgA.Id));
         var stateOfB = StateOf(await _harness.ReadAsync(orgB.Id));
 
-        // Reads: the account of A, nothing of B.
         var account = AccountOf(await pluginA.GetAccount(CancellationToken.None));
         Assert.Equal(orgA.Id, account.Org.Id);
         Assert.Equal(orgA.Id, account.Domain.OrgId);
         Assert.DoesNotContain("altra", SiteApiHarness.Serialize(account), StringComparison.OrdinalIgnoreCase);
 
-        // Writes: a body that names B (the plugin's DTOs have no such member, so it is not read) changes A and nothing else.
         var domainBody = $$"""{ "customDomain": "{{OwnDomain}}", "orgId": "{{orgB.Id}}", "OrgId": "{{orgB.Id}}", "org": { "id": "{{orgB.Id}}" } }""";
         var changed = AccountOf(await pluginA.SetDomain(JsonSerializer.Deserialize<SetSiteDomainRequest>(domainBody, Web)!, CancellationToken.None));
         Assert.Equal(orgA.Id, changed.Domain.OrgId);
@@ -320,11 +300,9 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         Assert.Equal(orgA.Id, surfaces.Domain.OrgId);
         Assert.True((await _harness.ReadAsync(orgA.Id)).GuestAreaOnOwnDomain);
 
-        // The domain of B is B's: A cannot take it.
         var taken = await pluginA.SetDomain(new SetSiteDomainRequest { CustomDomain = OtherDomain }, CancellationToken.None);
         Assert.Equal((409, "org_domain_in_use"), SiteApiHarness.Refusal(taken.Result));
 
-        // The check is A's too.
         _harness.Verification.Setup(v => v.VerifyAsync(It.IsAny<OrgEntity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((OrgEntity checkedOrg, CancellationToken _) =>
                 new DomainVerificationResult(DomainVerificationStatus.Pending, checkedOrg.CustomDomain!, _harness.Clock.GetUtcNow().UtcDateTime, DomainIssues.DnsNotPointing));
@@ -354,8 +332,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
         Assert.IsType<UnauthorizedResult>(await controller.Disconnect(CancellationToken.None));
     }
 
-    // ─── The pipeline declarations ─────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Actions_ThePathsAndVerbsOfThePlan_TheCommercialGateOnAllButTheDisconnection_TheVerifyLimit_TheSurfacesFlag()
     {
@@ -381,11 +357,9 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
             Assert.Equal((verb, template), (Assert.Single(method.HttpMethods), method.Template));
         }
 
-        // The commercial module of the console's domain endpoints: every operation on the domain, never the disconnection.
         foreach (var (name, action) in actions)
             Assert.Equal(name != nameof(SiteApiController.Disconnect), action.GetCustomAttribute<SiteDomainAccessAttribute>() is not null);
 
-        // 120 a minute per credential for the class; the check has its own, tighter budget.
         Assert.Equal(
             RateLimitPolicies.SiteDomainVerify,
             actions[nameof(SiteApiController.VerifyDomain)].GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName);
@@ -393,7 +367,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
             actions.Where(a => a.Key != nameof(SiteApiController.VerifyDomain)).Select(a => a.Value),
             action => Assert.Null(action.GetCustomAttribute<EnableRateLimitingAttribute>()));
 
-        // surfaces, like the console's: WhiteLabelHost on top of SiteEmbed; nothing else has a gate of its own.
         Assert.Equal(
             new[] { FeatureFlags.WhiteLabelHost },
             actions[nameof(SiteApiController.SetSurfaces)].GetCustomAttributes<FeatureGateAttribute>().Select(g => g.Flag));
@@ -401,8 +374,6 @@ public sealed class SiteApiDomainEndpointsTests : IDisposable
             actions.Where(a => a.Key != nameof(SiteApiController.SetSurfaces)).Select(a => a.Value),
             action => Assert.Empty(action.GetCustomAttributes<FeatureGateAttribute>()));
     }
-
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
     private static SiteAccountDto AccountOf(ActionResult<SiteAccountDto> answer) =>
         Assert.IsType<SiteAccountDto>(Assert.IsType<OkObjectResult>(answer.Result).Value);

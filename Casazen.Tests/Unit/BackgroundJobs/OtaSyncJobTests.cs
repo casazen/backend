@@ -22,30 +22,24 @@ public class OtaSyncJobTests
     [Fact]
     public async Task ExecuteAsync_ValidPropertyId_CallsOtaManager()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
             .ReturnsAsync(true);
 
-        // Act
         await _job.ExecuteAsync(propertyId);
 
-        // Assert
         _otaManagerMock.Verify(m => m.SyncAllAsync(propertyId), Times.Once);
     }
 
     [Fact]
     public async Task ExecuteAsync_SuccessfulSync_LogsInformation()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
             .ReturnsAsync(true);
 
-        // Act
         await _job.ExecuteAsync(propertyId);
 
-        // Assert
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Information,
@@ -59,15 +53,12 @@ public class OtaSyncJobTests
     [Fact]
     public async Task ExecuteAsync_FailedSync_LogsWarning()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
             .ReturnsAsync(false);
 
-        // Act
         await _job.ExecuteAsync(propertyId);
 
-        // Assert
         _loggerMock.Verify(
             x => x.Log(
                 LogLevel.Warning,
@@ -81,13 +72,11 @@ public class OtaSyncJobTests
     [Fact]
     public async Task ExecuteAsync_OtaManagerThrowsException_RethrowsException()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var expectedException = new Exception("OTA sync failed");
         _otaManagerMock.Setup(m => m.SyncAllAsync(propertyId))
             .ThrowsAsync(expectedException);
 
-        // Act & Assert
         var exception = await Assert.ThrowsAsync<Exception>(() => _job.ExecuteAsync(propertyId));
         Assert.Equal(expectedException.Message, exception.Message);
     }

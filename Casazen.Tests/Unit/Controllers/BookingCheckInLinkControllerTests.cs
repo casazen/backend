@@ -19,7 +19,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>Host check-in link endpoints (CO-09): the checks that come before a link is issued.</summary>
 public class BookingCheckInLinkControllerTests
 {
     private const string OwnerId = "auth0|owner_link";
@@ -76,10 +75,6 @@ public class BookingCheckInLinkControllerTests
         _linkEmails.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (E23/F01/US01/T01). A booking the caller cannot see (another org's: the tenant filter hides it) is a 404 and the delivery of its link is never
-    /// read; a booking whose property the caller does not reach is refused with 403, whatever else it can do.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_OtherOrganizationBooking404_Test()
     {
@@ -91,7 +86,6 @@ public class BookingCheckInLinkControllerTests
 
         Assert.Equal(StatusCodes.Status404NotFound, Assert.IsType<ObjectResult>(notFound.Result).StatusCode);
 
-        // A booking of this org whose property the caller does not reach (another owner's): refused.
         var booking = SetupBooking(BookingStatus.Confirmed, propertyOwner: "auth0|somebody_else");
         var outsider = CreateController(EmailTestHelpers.Links(), deliveries: _deliveries.Object);
 
@@ -101,11 +95,6 @@ public class BookingCheckInLinkControllerTests
         _deliveries.VerifyNoOtherCalls();
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule (E23/F01/US01/T01). The link to copy is returned only to a caller who can already copy one (<c>booking.write</c> on the property, as for the
-    /// endpoint that generates it); a caller who can only read the booking gets the state and the reason, never the link; and nobody gets it for a booking that no longer takes a
-    /// check-in.
-    /// </summary>
     [Fact]
     public async Task LinkDelivery_LinkHiddenWithoutPermission_Test()
     {
@@ -142,7 +131,6 @@ public class BookingCheckInLinkControllerTests
         _deliveries.Verify(d => d.GetAsync(OrgId, booking.Id, false, It.IsAny<CancellationToken>()), Times.Once);
         _deliveries.Verify(d => d.GetAsync(OrgId, cancelled.Id, false, It.IsAny<CancellationToken>()), Times.Once);
 
-        // A booking with no delivery record answers with empty members, not with an error.
         _deliveries
             .Setup(d => d.GetAsync(OrgId, booking.Id, It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((CheckInLinkDeliveryView?)null);
@@ -151,10 +139,6 @@ public class BookingCheckInLinkControllerTests
         Assert.Null(none.CheckInLink);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (the review of S010, fix 8). The answer that can hold the link of the guest page is private: the action carries <see cref="PrivateAnswerAttribute"/>, which
-    /// puts <c>Cache-Control: no-store</c> and <c>X-Robots-Tag: noindex</c> on it, so no cache keeps the secret.
-    /// </summary>
     [Fact]
     public void LinkDelivery_TheAnswerThatCanHoldTheLinkIsNeverStored_Test()
     {
@@ -167,10 +151,6 @@ public class BookingCheckInLinkControllerTests
         Assert.Equal("noindex", response.Headers["X-Robots-Tag"].ToString());
     }
 
-    /// <summary>
-    /// When the host issues a link itself (it copies a new one or sends it), the delivery of the link the system was trying to take to the guest ends: the previous link stopped working
-    /// and the host carries the link from here (E23/F01/US01/T01).
-    /// </summary>
     [Fact]
     public async Task CreateCheckInLink_TheHostIssuesALink_EndsTheDeliveryOfThePreviousOne()
     {

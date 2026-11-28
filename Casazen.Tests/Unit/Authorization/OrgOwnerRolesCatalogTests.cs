@@ -21,8 +21,6 @@ public class OrgOwnerRolesCatalogTests
 
     private static IReadOnlyList<SeedRole> SeededRoles()
     {
-        // The Npgsql model is built without a connection (as the architecture tests do); the design-time model carries
-        // the HasData rows.
         using var db = new AppDbContext(
             new DbContextOptionsBuilder<AppDbContext>()
                 .UseNpgsql("Host=localhost;Database=casazen_design;Username=postgres;Password=postgres")
@@ -99,8 +97,6 @@ public class OrgOwnerRolesCatalogTests
     [Fact]
     public void OwnerRoles_AgreeWithTheContextBootstrapOwners()
     {
-        // The fallback derived from the token (ContextAccessBootstrap) grants the owner roles of the three contexts: they
-        // are the owner roles of OrgOwnerRoles, so the two never describe different owners.
         foreach (var (jwtRole, contextKey) in new[] { ("PropertyOwner", "short-rent"), ("LongTermLandlord", "long-rent"), ("Admin", "admin") })
         {
             var fallback = Assert.Single(ContextAccessBootstrap.BuildFallbackAccess([jwtRole]));
@@ -113,7 +109,6 @@ public class OrgOwnerRolesCatalogTests
     [Fact]
     public void OrgRoles_OnlyOwnerAndAdminMapToAnOwnerRole()
     {
-        // The org role -> role key mapping and OrgOwnerRoles say the same thing about who administers the org.
         foreach (var role in Enum.GetValues<OrgRole>())
         {
             var administers = OrgRoleCatalog.ProjectionOf(role, ["short-rent", "long-rent"])

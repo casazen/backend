@@ -66,8 +66,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
             .Select(i => i.GetProperty("id").GetGuid())
             .ToList();
 
-    // --- Preview ----------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Preview_TheOwner_GetsTheSureMatchOfItsTenant_AndNeverAnInstallmentOfTheColleaguesProperty()
     {
@@ -91,7 +89,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
         Assert.Equal(900m, verdi.GetProperty("amount").GetDecimal());
         Assert.Contains(verdi.GetProperty("reasons").EnumerateArray().Select(r => r.GetString()), r => r == "Surname");
 
-        // The colleague's installment is outside the owner's reach: not proposed, not even as an option.
         Assert.DoesNotContain(_world.Installment("ColleagueOct"), InstallmentIds(preview));
     }
 
@@ -107,7 +104,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
         Assert.Equal(_world.Installment("ColleagueOct"), only.GetProperty("installment").GetProperty("id").GetGuid());
         Assert.DoesNotContain(_world.Installment("ActiveOct"), InstallmentIds(preview));
         Assert.Equal(1, preview.GetProperty("summary").GetProperty("unmatched").GetInt32());
-        // The tenant of the other property is nowhere in what the colleague gets back as an installment.
         Assert.DoesNotContain("Giulia Verdi", preview.GetProperty("suggestions").ToString(), StringComparison.Ordinal);
     }
 
@@ -132,7 +128,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
 
         var preview = await PreviewAsync(client, Statement);
 
-        // The stranger has its own installments of 900: they are what it is offered, never this world's.
         Assert.DoesNotContain(_world.Installment("ActiveOct"), InstallmentIds(preview));
         Assert.DoesNotContain(_world.Installment("ColleagueOct"), InstallmentIds(preview));
     }
@@ -153,8 +148,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
 
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsync(Preview, Form(Statement))).StatusCode);
     }
-
-    // --- Confirm ----------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Confirm_DeclaresTheInstallmentPaidOffline_WithTheDayOfTheCreditAndTheNote_AndTheRegisterShowsIt()
@@ -184,7 +177,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
             register.GetProperty("items").EnumerateArray(),
             row => row.GetProperty("id").GetGuid() == _world.Installment("ActiveOct") && row.GetProperty("paidVia").GetString() == "Offline");
 
-        // The credit is not offered any more.
         var again = await PreviewAsync(client, Statement);
         Assert.Equal(1, again.GetProperty("summary").GetProperty("alreadyImported").GetInt32());
         Assert.DoesNotContain(_world.Installment("ActiveOct"), InstallmentIds(again));
@@ -233,7 +225,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
         using var client = _world.OwnerClient(factory);
         var fingerprint = FingerprintOf(await PreviewAsync(client, Statement), "VERDI");
 
-        // 700 is the expiring lease's rent: the credit is 900.
         var response = await client.PostAsync(Confirm, Form(Statement, Selections((fingerprint, _world.Installment("ExpiringOct")))));
 
         var skipped = Assert.Single((await ReadAsync(response)).GetProperty("skipped").EnumerateArray());
@@ -257,8 +248,6 @@ public class LongRentBankImportIntegrationTests(LongRentAggregatesFactory factor
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("bank_import_selections_invalid", (await ReadAsync(response)).GetProperty("code").GetString());
     }
-
-    // --- The file ---------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Preview_ThereIsNoFile_Is400()

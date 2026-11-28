@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Configuration;
 
-/// <summary>
-/// PL-11 (A1-31): live Stripe keys only in Production, test keys everywhere else (the Railway test environment runs as
-/// Staging), and in Production every plan offered has its Stripe Price id. A wrong configuration stops the startup.
-/// </summary>
 public class BillingConfigurationTests
 {
     private const string LiveSecretKey = "sk_live_51LiveSecretNeverShown";
@@ -39,7 +35,6 @@ public class BillingConfigurationTests
     [Fact]
     public void Startup_ProductionWithLiveKeyAndCommittedAppsettingsWithoutPriceIds_FailsNamingEveryPlan()
     {
-        // The real appsettings.json: a price id committed there would silently satisfy the validation.
         var configuration = new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(FindSolutionRoot(), "Casazen.Web", "appsettings.json"), optional: false)
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -98,7 +93,6 @@ public class BillingConfigurationTests
     [Fact]
     public void Startup_ProductionWithoutStripeKeys_DoesNotRequirePriceIds()
     {
-        // Payments stay optional (FD-12): without a secret key the plans cannot be sold anyway, /api/health/ready says so.
         using var provider = BuildProvider(
             Environments.Production,
             With(new Dictionary<string, string?> { ["Stripe:SecretKey"] = "sk_test_YOUR_KEY", ["Stripe:PublishableKey"] = "pk_test_YOUR_KEY" }));
@@ -141,7 +135,6 @@ public class BillingConfigurationTests
     [Fact]
     public void Startup_StagingWithTestKeysAndNoPriceIds_Starts()
     {
-        // Outside Production a plan without price is only not purchasable (422 billing_plan_unavailable).
         using var provider = BuildProvider(Environments.Staging, With(TestKeys()));
 
         provider.GetRequiredService<IStartupValidator>().Validate();

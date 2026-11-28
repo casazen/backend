@@ -47,18 +47,11 @@ public class OwnerIssuedDocumentsTests
 {
     private static readonly CultureInfo Italian = CultureInfo.GetCultureInfo("it-IT");
 
-    /// <summary>
-    /// Privacy: the owner sees the documents issued on the issuer profile of its own owner profiles and nothing else: not the agency's own documents, not another owner's, not a
-    /// draft, a discarded one, a proforma or an imported one, not an invoice of the agency to the owner. A document of another owner, a draft and one that does not exist are the same
-    /// 404, and nothing of a guest but the name the document prints (no contact, no fiscal code, no address) reaches the answer. The contacts of the guest (e-mail, phone, PEC) are in no
-    /// file either: not in the text of a PDF, not in the cells of a register (CSV or Excel), not in any file of the ZIPs of the year.
-    /// </summary>
     [Fact]
     public async Task OwnerIssuedDocuments_OnlyOwnIssuerProfile_Test()
     {
         var world = await World.CreateAsync();
 
-        // Both agencies the owner has ownerships with, the newest first; the credit note sits between the invoices it follows.
         var mine = await world.Portal.GetOwnerIssuedDocumentsAsync(world.OwnerUserA);
         Assert.Equal(new[] { world.A4, world.A3, world.A2, world.A1, world.X1, world.A0 }, mine.Select(d => d.DocumentId));
         var first = mine.Single(d => d.DocumentId == world.A1);
@@ -68,14 +61,11 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal("TEST Altra Agenzia", mine.Single(d => d.DocumentId == world.X1).AgencyName);
         Assert.Equal(FiscalDocumentKind.CreditNote, mine.Single(d => d.DocumentId == world.A2).Kind);
 
-        // The month narrows the list.
         var october = await world.Portal.GetOwnerIssuedDocumentsAsync(world.OwnerUserA, AccountantPackagePeriod.OfMonth(2026, 10));
         Assert.Equal(new[] { world.A2, world.A1, world.X1 }, october.Select(d => d.DocumentId));
 
-        // The other owner reads its own receipts and none of ours.
         Assert.Equal(new[] { world.B2, world.B1 }, (await world.Portal.GetOwnerIssuedDocumentsAsync(world.OwnerUserB)).Select(d => d.DocumentId));
 
-        // Anything that is not an issued document of the owner is the same 404, for the PDF and for the XML.
         foreach (var id in new[] { world.B1, world.AgencyServices, world.Draft, world.Discarded, world.Proforma, world.Imported, world.AgencyInvoice, Guid.NewGuid() })
         {
             var pdf = await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.OpenOwnerIssuedDocumentPdfAsync(world.OwnerUserA, id));
@@ -83,10 +73,8 @@ public class OwnerIssuedDocumentsTests
             Assert.Equal((OwnerIssuedDocumentsErrors.NotFound, OwnerIssuedDocumentsErrors.NotFound), (pdf.Code, xml.Code));
         }
 
-        // A person with no ownership in force has nothing to see: an empty list, not an error.
         Assert.Empty(await world.Portal.GetOwnerIssuedDocumentsAsync(Guid.NewGuid()));
 
-        // The file is the one of the document: a PDF, and the XML as it was stored; a receipt has no XML.
         var pdfFile = await world.Portal.OpenOwnerIssuedDocumentPdfAsync(world.OwnerUserA, world.A1);
         await using (pdfFile.Content)
         {
@@ -104,13 +92,10 @@ public class OwnerIssuedDocumentsTests
         var noXml = await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.OpenOwnerIssuedDocumentXmlAsync(world.OwnerUserB, world.B1));
         Assert.Equal(FiscalDocumentErrors.XmlUnavailable, noXml.Code);
 
-        // Nothing of a guest is in the list: not its name, a contact, a fiscal code, an address or a PEC (the PDF and the XML hold what the document says).
         var json = JsonSerializer.Serialize(mine.Select(OwnerPortalIssuedDocumentDto.From));
         foreach (var secret in new[] { "TEST Ospite", World.GuestEmail, World.GuestPhone, "RSSMRA80A01H501U", "Via Privata 1", World.GuestPec })
             Assert.DoesNotContain(secret, json, StringComparison.Ordinal);
 
-        // Nor is a contact of the guest in any file the portal hands out: the PDF prints what the document says (the name of its recipient), the registers the name, never an e-mail, a phone or a PEC.
-        // The PDF is read from what the renderer was given (its bytes are compressed), an Excel register from the parts of its own zip, every other file of the ZIPs of the year as text.
         var contacts = new[] { World.GuestEmail, World.GuestPhone, World.GuestPec };
         var pdfText = TextOf(world.Renderer.Rendered.Last());
         Assert.Contains("TEST Ospite Uno", pdfText, StringComparison.Ordinal);
@@ -127,8 +112,6 @@ public class OwnerIssuedDocumentsTests
         var files = zips.SelectMany(TextsOf).ToList();
         var pdfs = world.Renderer.Rendered.Select(TextOf).Append(pdfText).ToList();
 
-        // The readers are not blind: they see the name of the recipient in a CSV register and in an Excel one, and every PDF of the two ZIPs went through the renderer (the seven documents of 2026:
-        // A1 to A4 and X1 of the owner A, B1 and B2 of the owner B; the PDFs of the invoices of the agency are not made by it).
         Assert.Contains(files, file => file.Path.EndsWith(".csv", StringComparison.Ordinal) && file.Text.Contains("TEST Ospite Uno", StringComparison.Ordinal));
         Assert.Contains(files, file => file.Path.Contains(".xlsx!", StringComparison.Ordinal) && file.Text.Contains("TEST Ospite Uno", StringComparison.Ordinal));
         var documentPdfs = zips.Sum(zip => zip.Keys.Count(path => path.EndsWith(".pdf", StringComparison.Ordinal) && !path.Contains("fatture-agenzia/", StringComparison.Ordinal)));
@@ -141,17 +124,11 @@ public class OwnerIssuedDocumentsTests
             Assert.Empty(files.Where(file => file.Text.Contains(contact, StringComparison.Ordinal)).Select(file => file.Path));
         }
 
-        // The words of the two answers are in the resource files, in both languages (the parity test of the package reads the keys of its labels).
         Assert.Equal(
             (PackageLabels.OwnerIssuedDocumentNotFoundMessage, PackageLabels.OwnerIssuedDocumentsNotAvailableMessage),
             (OwnerIssuedDocumentsErrors.NotFoundMessageKey, OwnerIssuedDocumentsErrors.NotAvailableMessageKey));
     }
 
-    /// <summary>
-    /// Permission: a delegated contact the owner did not give <c>accounting.read</c> is refused (403) on the list, the PDF, the XML and the ZIP; with the permission it reads what the
-    /// owner it is a contact of reads (not the other owner's, not the owner's other agency); a withdrawn contact has nothing. With <c>Features:AgencyTier</c> or
-    /// <c>Features:FiscalDocumentIssuance</c> off the list stays empty and a file is not there, whoever asks.
-    /// </summary>
     [Fact]
     public async Task OwnerIssuedDocuments_ContactNeedsAccountingRead_AndTheFlagsDecide_Test()
     {
@@ -172,7 +149,6 @@ public class OwnerIssuedDocumentsTests
 
         Assert.Equal(0, zip.Length);
 
-        // With the permission the contact reads the documents of the owner that gave it, in the agency of the delegation only.
         Assert.Equal(new[] { world.A4, world.A3, world.A2, world.A1, world.A0 }, (await world.Portal.GetOwnerIssuedDocumentsAsync(world.ContactWithAccounting)).Select(d => d.DocumentId));
         await using (var file = (await world.Portal.OpenOwnerIssuedDocumentPdfAsync(world.ContactWithAccounting, world.A1)).Content)
             Assert.Equal("%PDF", Encoding.ASCII.GetString(await ReadAsync(file), 0, 4));
@@ -180,12 +156,10 @@ public class OwnerIssuedDocumentsTests
         await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.OpenOwnerIssuedDocumentPdfAsync(world.ContactWithAccounting, world.B1));
         await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.OpenOwnerIssuedDocumentPdfAsync(world.ContactWithAccounting, world.X1));
 
-        // A withdrawn contact has nothing, and there is nothing to export.
         Assert.Empty(await world.Portal.GetOwnerIssuedDocumentsAsync(world.RevokedContact));
         var nothing = await Assert.ThrowsAsync<NotFoundException>(() => world.Portal.ExportOwnerIssuedDocumentsAsync(world.RevokedContact, AccountantPackagePeriod.OfYear(2026), zip));
         Assert.Equal(OwnerIssuedDocumentsErrors.NotAvailable, nothing.Code);
 
-        // Either flag off: the list is empty (not a 403 for the contact without the permission either: the flag decides first) and no file is there.
         foreach (var flag in new[] { FeatureFlags.AgencyTier, FeatureFlags.FiscalDocumentIssuance })
         {
             world.Flags.Set(flag, false);
@@ -212,7 +186,6 @@ public class OwnerIssuedDocumentsTests
     {
         var world = await World.CreateAsync();
 
-        // The company owner, the year 2026: A1 and A3 and A4 are invoices, A2 credits part of A1.
         var company = await world.ExportAsync(world.Owner(world.OwnerA), AccountantPackagePeriod.OfYear(2026));
         var register = Csv(company[RegisterOf(company)]);
         var rows = TableRows(register, "Documenti emessi agli ospiti");
@@ -225,7 +198,6 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(new[] { 108m, 10m, 0m, 118m }, Amounts(rows[3].Skip(5).Take(4)));
         Assert.All(rows, r => Assert.Equal("EUR", r[9]));
 
-        // The totals of the period are the sums of the rows, and so are the totals for each rate and nature.
         var total = Assert.Single(TableRows(register, "Totale del periodo per valuta"));
         Assert.Equal(("EUR", "4"), (total[0], total[1]));
         Assert.Equal(new[] { 388m, 38m, 0m, 426m }, Amounts(total.Skip(2)));
@@ -240,7 +212,6 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(new[] { 8m, 0m, 8m }, Amounts(rates[1].Skip(3).Take(3)));
         Assert.Equal(Amount(total[5]), rates.Sum(r => Amount(r[5])));
 
-        // The private owner: the stamp duty is its own column, and it is not part of the total when the issuer bears it.
         var private1 = await world.ExportAsync(world.Owner(world.OwnerB), AccountantPackagePeriod.OfYear(2026));
         var receipts = Csv(private1[RegisterOf(private1)]);
         Assert.Equal(new[] { "2026/1", "2026/2" }, TableRows(receipts, "Documenti emessi agli ospiti").Select(r => r[1]));
@@ -248,7 +219,6 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(("EUR", "2"), (receiptTotal[0], receiptTotal[1]));
         Assert.Equal(new[] { 360m, 0m, 2m, 360m }, Amounts(receiptTotal.Skip(2)));
 
-        // The month: only the documents issued in it, and no summary of the year.
         var october = await world.ExportAsync(world.Owner(world.OwnerA), AccountantPackagePeriod.OfMonth(2026, 10));
         var octoberRegister = Csv(october[RegisterOf(october)]);
         Assert.Equal(new[] { "SRL2026/1", "SRL2026/2" }, TableRows(octoberRegister, "Documenti emessi agli ospiti").Select(r => r[1]));
@@ -256,7 +226,6 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(("EUR", "2"), (octoberTotal[0], octoberTotal[1]));
         Assert.Equal(new[] { 80m, 8m, 0m, 88m }, Amounts(octoberTotal.Skip(2)));
 
-        // The Excel file carries the same rows as the CSV.
         var index = Index(company);
         var csvPath = RegisterOf(company);
         Assert.Equal(index.Single(r => r[0] == csvPath)[2], index.Single(r => r[0] == csvPath[..^4] + ".xlsx")[2]);
@@ -274,7 +243,6 @@ public class OwnerIssuedDocumentsTests
 
         var year = await world.ExportAsync(world.Owner(world.OwnerA), AccountantPackagePeriod.OfYear(2026));
 
-        // The index is made of the files of the ZIP and nothing else, each with the SHA-256 of its bytes; the documents have their PDF, and their XML when they have one.
         var index = Index(year);
         Assert.Equal(year.Keys.Where(k => k != "indice.csv").Order(StringComparer.Ordinal), index.Select(r => r[0]).Order(StringComparer.Ordinal));
         foreach (var row in index)
@@ -301,7 +269,6 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(("EUR", "4"), (yearTotal[0], yearTotal[1]));
         Assert.Equal(new[] { 388m, 38m, 0m, 426m }, Amounts(yearTotal.Skip(2)));
 
-        // The invoices of the agency to the owner: their register and files (the other owner's invoice is not there), and the commission, the recharges and the expenses.
         var invoices = Csv(year["fatture-agenzia/registro.csv"]);
         Assert.Equal(new[] { "PM2026/1", "PM2026/2" }, TableRows(invoices, "Fatture emesse ai proprietari").Select(r => r[1]));
         Assert.Equal(World.AgencyInvoicePdf(world.AgencyInvoice), year["fatture-agenzia/2026-10-31-PM2026-1.pdf"]);
@@ -318,7 +285,6 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(new[] { 100m, 50m, 11m, 30m, 213m }, Amounts(detail[0].Skip(4)));
         Assert.Equal(new[] { 0m, -10m, -2.2m, 0m, -12.2m }, Amounts(detail[1].Skip(4)));
 
-        // A month has the documents of the month and no summary, no invoice of the agency.
         var month = await world.ExportAsync(world.Owner(world.OwnerA), AccountantPackagePeriod.OfMonth(2026, 11));
         Assert.Equal(
             new[] { "documenti-emessi/2026-11-05-SRL2026-3.pdf", "documenti-emessi/2026-11-05-SRL2026-3.xml" },
@@ -340,7 +306,6 @@ public class OwnerIssuedDocumentsTests
         var result = await world.Portal.ExportOwnerIssuedDocumentsAsync(world.OwnerUserA, AccountantPackagePeriod.OfYear(2026), stream);
         var files = Unzip(stream);
 
-        // The owner of the agency of the lower id is the first folder; each folder has the register of its owner only.
         var folders = files.Keys.Where(k => k.StartsWith("proprietario-", StringComparison.Ordinal)).Select(k => k[..k.IndexOf('/', StringComparison.Ordinal)]).Distinct().Order(StringComparer.Ordinal).ToList();
         Assert.Equal(2, folders.Count);
         Assert.StartsWith("proprietario-1-it-01234567897", folders[0], StringComparison.Ordinal);
@@ -352,16 +317,13 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(files.Keys.Where(k => k != "indice.csv").Order(StringComparer.Ordinal), Index(files).Select(r => r[0]).Order(StringComparer.Ordinal));
         Assert.Equal(files.Count, result.Files);
 
-        // Nobody: an empty list is not «every owner».
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => world.Export.BuildAsync([], AccountantPackagePeriod.OfYear(2026), new MemoryStream()));
         Assert.Empty(await world.Export.ListAsync([], null, 10));
         Assert.Null(await world.Export.GetPdfAsync([], world.A1, null));
 
-        // An owner of another org.
         var other = await Assert.ThrowsAsync<NotFoundException>(() => world.Export.BuildAsync([new OwnerIssuedDocumentsOwner(world.OrgId, world.OwnerA2)], AccountantPackagePeriod.OfYear(2026), new MemoryStream()));
         Assert.Equal(OwnerFiscalErrors.OwnerNotFound, other.Code);
 
-        // The caps: four documents are more than one file, and nothing is written.
         var tight = World.ExportOf(world, new DocumentArchiveOptions { MaxExportFiles = 1 });
         await using var refused = new MemoryStream();
         var tooLarge = await Assert.ThrowsAsync<DomainRuleException>(() => tight.BuildAsync([world.Owner(world.OwnerA)], AccountantPackagePeriod.OfYear(2026), refused));
@@ -369,16 +331,11 @@ public class OwnerIssuedDocumentsTests
         Assert.Equal(0, refused.Length);
     }
 
-    /// <summary>
-    /// Money: the PDF an owner gets says what the agency's PDF says, and that includes whether the document was paid. The payment state is read now from the payments of the booking,
-    /// naming the org (the portal has no tenant): a document stored as «to collect» that a card payment settled is printed as paid, not as «to collect».
-    /// </summary>
     [Fact]
     public async Task OwnerIssuedDocuments_PdfOfAPaidDocumentSaysPaid_AlsoWithoutATenant_Test()
     {
         var world = await World.CreateAsync();
 
-        // What the portal could not see before: with its own tenant filter the payments of the booking are nowhere, naming the org they are found.
         Assert.Equal(0m, (await FiscalDocumentService.CollectedByBookingAsync(world.Reader, [world.BookingOfA4], CancellationToken.None)).GetValueOrDefault(world.BookingOfA4));
         Assert.Equal(118m, (await FiscalDocumentService.CollectedByBookingAsync(world.Reader, [world.BookingOfA4], CancellationToken.None, world.OrgId)).GetValueOrDefault(world.BookingOfA4));
 
@@ -395,13 +352,10 @@ public class OwnerIssuedDocumentsTests
 
     private sealed class World
     {
-        /// <summary>The contacts of the guest of the stay of A4 (its e-mail and phone) and the PEC every document of the world holds for its recipient: what must never reach an owner, in whatever file.</summary>
         public const string GuestEmail = "ospite.riservato@example.com";
 
-        /// <inheritdoc cref="GuestEmail"/>
         public const string GuestPhone = "+41790000000";
 
-        /// <inheritdoc cref="GuestEmail"/>
         public const string GuestPec = "ospite@pec.example.com";
 
         private static readonly DateTime Cutoff = new(2026, 11, 20, 8, 0, 0, DateTimeKind.Utc);
@@ -426,7 +380,6 @@ public class OwnerIssuedDocumentsTests
 
         public AppDbContext Seed { get; }
 
-        /// <summary>A context with the tenant filter of the owner portal: it has no org, so the filter matches nothing.</summary>
         public AppDbContext Reader { get; }
 
         public TestFeatureFlags Flags { get; }
@@ -459,7 +412,6 @@ public class OwnerIssuedDocumentsTests
 
         public Guid BookingOfA4 { get; } = Guid.NewGuid();
 
-        // The documents of the owner A (a company): the invoices A0 (2025), A1, A3, A4, and the credit note A2 of A1; X1 is the receipt of its other agency.
         public Guid A0 { get; } = Guid.NewGuid();
 
         public Guid A1 { get; } = Guid.NewGuid();
@@ -472,12 +424,10 @@ public class OwnerIssuedDocumentsTests
 
         public Guid X1 { get; } = Guid.NewGuid();
 
-        // The receipts of the owner B (a private person).
         public Guid B1 { get; } = Guid.NewGuid();
 
         public Guid B2 { get; } = Guid.NewGuid();
 
-        // What is not a document issued in the name of an owner.
         public Guid AgencyServices { get; } = Guid.NewGuid();
 
         public Guid Draft { get; } = Guid.NewGuid();
@@ -504,7 +454,6 @@ public class OwnerIssuedDocumentsTests
 
         public static string XmlOf(string name) => $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><p:FatturaElettronica>TEST {name}</p:FatturaElettronica>";
 
-        /// <summary>What the agency's invoice PDF is in this world: the files of the statements are not under test here.</summary>
         public static byte[] AgencyInvoicePdf(Guid id) => Encoding.ASCII.GetBytes($"%PDF-1.4 TEST agency invoice {id:N}");
 
         public static OwnerIssuedDocumentsExport ExportOf(World world, DocumentArchiveOptions limits) =>
@@ -519,7 +468,6 @@ public class OwnerIssuedDocumentsTests
             return world;
         }
 
-        /// <summary>The ZIP for one owner, made as the agency asks for it, read back.</summary>
         public async Task<Dictionary<string, byte[]>> ExportAsync(OwnerIssuedDocumentsOwner owner, AccountantPackagePeriod period)
         {
             await using var stream = new MemoryStream();
@@ -583,7 +531,6 @@ public class OwnerIssuedDocumentsTests
                 FiscalCode = "RSSMRA70A01H501S",
             });
 
-            // A guest with contacts, and the booking and the payment of A4: stored as «to collect», settled by a card payment.
             var guest = new Guest { OrgId = OrgId, FirstName = "Ospite", LastName = "Riservato", Email = GuestEmail, PhoneNumber = GuestPhone };
             Seed.Guests.Add(guest);
             Seed.Bookings.Add(new Booking
@@ -600,7 +547,6 @@ public class OwnerIssuedDocumentsTests
             });
             Seed.Payments.Add(new Payment { OrgId = OrgId, BookingId = BookingOfA4, Amount = 118m, Status = PaymentStatus.Completed, TransactionId = "TEST-PAY-1" });
 
-            // The company's invoices and its credit note, in its own series; the receipts of the private owner; a receipt of the other agency.
             var a1 = Document(A1, OrgId, ProfileA, FiscalDocumentKind.Invoice, "SRL2026", 1, new DateOnly(2026, 10, 14), 100m, 10m, 0m, 110m, "A1", "TEST Ospite Uno", Line(FiscalLineType.Accommodation, 100m, 10m, 10m));
             var a2 = Document(A2, OrgId, ProfileA, FiscalDocumentKind.CreditNote, "SRL2026", 2, new DateOnly(2026, 10, 20), 20m, 2m, 0m, 22m, "A2", "TEST Ospite Uno", Line(FiscalLineType.Accommodation, 20m, 10m, 2m));
             a2.CreditedDocumentId = A1;
@@ -614,7 +560,6 @@ public class OwnerIssuedDocumentsTests
             var b2 = Document(B2, OrgId, ProfileB, FiscalDocumentKind.Receipt, "2026", 2, new DateOnly(2026, 11, 10), 60m, 0m, 0m, 60m, null, "TEST Ospite Due", Line(FiscalLineType.Accommodation, 60m, 0m, 0m));
             var x1 = Document(X1, OtherOrgId, ProfileA2, FiscalDocumentKind.Receipt, "2026", 1, new DateOnly(2026, 10, 5), 50m, 0m, 0m, 50m, null, "TEST Ospite Uno", Line(FiscalLineType.Accommodation, 50m, 0m, 0m));
 
-            // What is not issued in the name of an owner: the agency's own document of its services, a draft, a discarded one, a proforma, one imported from a channel manager.
             var services = Document(AgencyServices, OrgId, ProfileOrg, FiscalDocumentKind.Invoice, "2026", 9, new DateOnly(2026, 11, 12), 40m, 8.8m, 0m, 48.8m, "AS", "TEST Ospite Uno", Line(FiscalLineType.Cleaning, 40m, 22m, 8.8m));
             services.ForAgencyServices = true;
             var draft = Document(Draft, OrgId, ProfileA, FiscalDocumentKind.Invoice, "SRL2026", 0, new DateOnly(2026, 11, 14), 10m, 1m, 0m, 11m, "D", "TEST Ospite Uno", Line(FiscalLineType.Accommodation, 10m, 10m, 1m));
@@ -631,7 +576,6 @@ public class OwnerIssuedDocumentsTests
             var imported = Document(Imported, OrgId, ProfileA, FiscalDocumentKind.Invoice, "OCT", 1, new DateOnly(2026, 11, 14), 10m, 1m, 0m, 11m, "I", "TEST Ospite Uno", Line(FiscalLineType.Accommodation, 10m, 10m, 1m));
             imported.Source = FiscalDocumentSource.Octorate;
 
-            // The invoices of the agency to the owner A (an invoice and a credit note of 10 of the recharge), and one to the other owner.
             var agencyInvoice = OwnerInvoice(AgencyInvoice, OwnerA, FiscalDocumentKind.Invoice, "PM2026", 1, new DateOnly(2026, 10, 31), 180m, 33m, 213m, "PM1", Line(FiscalLineType.Commission, 100m, 22m, 22m), Line(FiscalLineType.Recharge, 50m, 22m, 11m), Line(FiscalLineType.AdvancedExpense, 30m, 0m, 0m, "N1"));
             var agencyCredit = OwnerInvoice(AgencyCreditNote, OwnerA, FiscalDocumentKind.CreditNote, "PM2026", 2, new DateOnly(2026, 11, 30), 10m, 2.2m, 12.2m, "PM2", Line(FiscalLineType.Recharge, 10m, 22m, 2.2m));
             agencyCredit.CreditedDocumentId = AgencyInvoice;
@@ -682,7 +626,6 @@ public class OwnerIssuedDocumentsTests
             VatNatureCode = nature,
         };
 
-        /// <summary>An issued document of a stay issued on <paramref name="profile"/>, with its recipient (a guest with contacts, a fiscal code and an address that must never reach the portal list), its issuer snapshot and its XML when it has one.</summary>
         private FiscalDocument Document(
             Guid id,
             Guid org,
@@ -742,7 +685,6 @@ public class OwnerIssuedDocumentsTests
             return document;
         }
 
-        /// <summary>The issuer as its profile says it: the same name and tax id as the profile, so the documents of one owner are the register of one issuer.</summary>
         private FiscalIssuerSnapshot SnapshotOf(Guid profile)
         {
             if (profile == ProfileA)
@@ -757,7 +699,6 @@ public class OwnerIssuedDocumentsTests
             return new FiscalIssuerSnapshot { LegalName = "TEST Agenzia Srl", CountryCode = "IT", Regime = DocumentRegime.VatOrdinary, VatNumber = "09876543210", FiscalCode = "09876543210" };
         }
 
-        /// <summary>The lines of a document, numbered and owned by its org.</summary>
         private static void Attach(FiscalDocument document, FiscalDocumentLine[] lines, Guid org)
         {
             document.Lines = [.. lines.Select((line, index) => new FiscalDocumentLine
@@ -776,8 +717,6 @@ public class OwnerIssuedDocumentsTests
             })];
         }
     }
-
-    // ---------------------------------------------------------------- reading what a test gets back
 
     private static async Task<byte[]> ReadAsync(Stream stream)
     {
@@ -802,7 +741,6 @@ public class OwnerIssuedDocumentsTests
         return files;
     }
 
-    /// <summary>Everything a PDF was given to print: its title, its watermark, its headings, its paragraphs and the headers and the cells of its tables (a block this does not read stops the proof).</summary>
     private static string TextOf(PdfDocumentContent pdf)
     {
         var texts = new List<string> { pdf.Title, pdf.Watermark ?? string.Empty };
@@ -828,7 +766,6 @@ public class OwnerIssuedDocumentsTests
         return string.Join('\n', texts);
     }
 
-    /// <summary>The files of a ZIP of the export as text, each with its path: a CSV, an XML or a PDF as they are, an Excel file as each part of its own zip (<c>path.xlsx!part</c>).</summary>
     private static List<(string Path, string Text)> TextsOf(Dictionary<string, byte[]> files)
     {
         var texts = new List<(string Path, string Text)>();
@@ -848,7 +785,6 @@ public class OwnerIssuedDocumentsTests
         return texts;
     }
 
-    /// <summary>The rows of a CSV as the writer makes it: the cells split on <c>;</c>, a quoted cell kept whole, the BOM dropped; an empty row is one empty cell.</summary>
     private static List<List<string>> Csv(byte[] bytes)
     {
         var rows = new List<List<string>>();
@@ -887,7 +823,6 @@ public class OwnerIssuedDocumentsTests
         return rows;
     }
 
-    /// <summary>The rows of the table whose title starts with <paramref name="titlePrefix"/>: after its title and its header, up to the empty row.</summary>
     private static List<List<string>> TableRows(List<List<string>> csv, string titlePrefix)
     {
         var title = csv.FindIndex(r => r[0].StartsWith(titlePrefix, StringComparison.Ordinal));
@@ -897,13 +832,10 @@ public class OwnerIssuedDocumentsTests
 
     private static decimal Amount(string cell) => decimal.Parse(cell, NumberStyles.Number, Italian);
 
-    /// <summary>The amounts of the cells, as numbers: «-0,00» and «0,00» are the same amount.</summary>
     private static decimal[] Amounts(IEnumerable<string> cells) => [.. cells.Select(Amount)];
 
-    /// <summary>The files of the index of a ZIP: path, description, rows and SHA-256.</summary>
     private static List<List<string>> Index(Dictionary<string, byte[]> files) => TableRows(Csv(files["indice.csv"]), "Indice del pacchetto per il commercialista");
 
-    /// <summary>The path of the only CSV register of the documents issued in the name of the owner (the folder of the documents).</summary>
     private static string RegisterOf(Dictionary<string, byte[]> files) =>
         files.Keys.Single(k => k.StartsWith("documenti-emessi/registro-", StringComparison.Ordinal) && k.EndsWith(".csv", StringComparison.Ordinal));
 
@@ -925,7 +857,6 @@ public class OwnerIssuedDocumentsTests
         public bool FilterEnabled => false;
     }
 
-    /// <summary>The tenant of the owner portal: signed in, with no org: the filter of its request matches nothing.</summary>
     private sealed class FailClosedTenant : ITenantContext
     {
         public Guid? OrgId => null;
@@ -980,7 +911,6 @@ public class OwnerIssuedDocumentsControllerTests
         whole.VerifyNoOtherCalls();
     }
 
-    /// <summary>The owner portal: 401 without its claim, a period that is not one is a 400, and the service is asked for the owner of the token.</summary>
     [Fact]
     public async Task OwnerPortal_IssuedDocuments_AreAskedForTheOwnerOfTheToken_Test()
     {

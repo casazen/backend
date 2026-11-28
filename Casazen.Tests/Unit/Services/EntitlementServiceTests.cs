@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// AC8 â€” plan entitlement. Verifies the tierâ†’limit map, the boundary at which another
-/// property may/may not be created, configuration overrides, and the Starter fallback.
-/// </summary>
 public class EntitlementServiceTests
 {
     private static AppDbContext NewDb(string? name = null, ITenantContext? tenant = null) =>
@@ -33,7 +29,6 @@ public class EntitlementServiceTests
             .AddInMemoryCollection(values ?? new Dictionary<string, string?>())
             .Build();
 
-    /// <summary>A paid tier is seeded with the active subscription that pays for it (#274).</summary>
     private static async Task<Guid> SeedOrgWithPropertiesAsync(AppDbContext db, PlanTier tier, int properties)
     {
         var paid = tier != PlanTier.Starter;
@@ -106,7 +101,7 @@ public class EntitlementServiceTests
         var result = await service.GetEntitlementAsync(orgId);
 
         Assert.Equal(1, result.MaxProperties);
-        Assert.False(result.CanAddProperty); // 1 used, limit 1
+        Assert.False(result.CanAddProperty);
     }
 
     [Fact]
@@ -149,7 +144,6 @@ public class EntitlementServiceTests
     [Fact]
     public async Task GetEntitlementAsync_CallerOfAnotherOrg_CountsEveryPropertyOfTheOrg()
     {
-        // A1-21: the admin plan change runs with the admin's tenant filter; usage must still be the org's.
         var dbName = $"entitlement-{Guid.NewGuid()}";
         Guid orgId;
         await using (var seed = NewDb(dbName))
@@ -159,7 +153,7 @@ public class EntitlementServiceTests
 
         var result = await service.GetEntitlementAsync(orgId);
 
-        Assert.Equal(0, await adminDb.Properties.CountAsync(p => p.OrgId == orgId)); // the filter hides them
+        Assert.Equal(0, await adminDb.Properties.CountAsync(p => p.OrgId == orgId));
         Assert.Equal(2, result.PropertyCount);
         Assert.True(result.CanAddProperty);
     }
@@ -264,8 +258,6 @@ public class EntitlementServiceTests
         Assert.NotNull(updated);
         Assert.Equal(PlanTier.Starter, updated!.PlanTier);
     }
-
-    // ── Effective tier (#274, A3-07, A9-02, A3-37) ───────────────────────────────
 
     private static OrgEntity OrgWith(PlanTier tier, SubscriptionStatus status, DateTime? pastDueSince = null) => new()
     {
@@ -393,8 +385,6 @@ public class EntitlementServiceTests
         Assert.True(await service.CanUseCustomDomainAsync(org.Id));
     }
 
-    // ─── Seats of the org team (AM-02, D13 and D35) ────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(PlanTier.Starter, 2)]
     [InlineData(PlanTier.Pro, 10)]
@@ -434,7 +424,6 @@ public class EntitlementServiceTests
         Assert.Equal(10, service.ResolveMaxSeats(PlanTier.Pro));
     }
 
-    /// <summary>D35: with a subscription not in good standing the effective tier is Starter, and so are the seats.</summary>
     [Fact]
     public void ResolveMaxSeats_OfTheEffectiveTierOfAnUnpaidProOrg_IsTheStarterNumber()
     {

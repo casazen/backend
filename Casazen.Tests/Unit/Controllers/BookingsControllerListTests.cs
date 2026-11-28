@@ -153,8 +153,6 @@ public class BookingsControllerListTests
     private void NothingWasSearched() => _search.Verify(
         s => s.SearchAsync(It.IsAny<HostScope>(), It.IsAny<BookingSearchCriteria>(), It.IsAny<CancellationToken>()), Times.Never);
 
-    // --- The words of the request ---------------------------------------------------------------------------
-
     [Theory]
     [InlineData("view", "done", BookingsController.InvalidViewCode)]
     [InlineData("view", "1", BookingsController.InvalidViewCode)]
@@ -294,8 +292,6 @@ public class BookingsControllerListTests
             Times.Once);
     }
 
-    // --- The money --------------------------------------------------------------------------------------------
-
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -327,8 +323,6 @@ public class BookingsControllerListTests
             Times.Once);
     }
 
-    // --- What a row says ----------------------------------------------------------------------------------------
-
     [Fact]
     public async Task Search_EachRowSaysItsChannel_HowMuchWasPaid_WhereItsAlloggiatiStands_AndNothingMoreThanTheyAreTold()
     {
@@ -349,10 +343,8 @@ public class BookingsControllerListTests
 
         var rows = page.Items.ToList();
         Assert.Equal(("Airbnb", "Partial", 120m, "DaInviareManualmente"), (rows[0].Channel, rows[0].PaymentState, rows[0].PaidAmount, rows[0].AlloggiatiStatus));
-        // The exact source stays; the channel is the group the filter speaks of.
         Assert.Equal(("Expedia", "Expedia", "Paid", (decimal?)null, (string?)null), (rows[1].Source, rows[1].Channel, rows[1].PaymentState, rows[1].PaidAmount, rows[1].AlloggiatiStatus));
         Assert.Equal(("Manual", "None", (decimal?)null, (string?)null), (rows[2].Channel, rows[2].PaymentState, rows[2].PaidAmount, rows[2].AlloggiatiStatus));
-        // Still the booking, as everywhere.
         Assert.Equal("ABCDE-FGHJK", rows[0].BookingCode);
         Assert.Equal("Trullo", rows[0].PropertyName);
         Assert.Equal(300m, rows[0].TotalPrice);
@@ -379,12 +371,9 @@ public class BookingsControllerListTests
         Assert.Null(BookingMapper.ToListItem(waitingForTheGuest, null, now).RespondBy);
         Assert.Null(BookingMapper.ToListItem(expired, null, now).RespondBy);
         Assert.Null(BookingMapper.ToListItem(confirmed, null, now).RespondBy);
-        // The state of the request itself keeps saying who has to answer.
         Assert.Equal("AwaitingHostApproval", BookingMapper.ToListItem(forTheHost, null, now).OnSiteRequestState);
         Assert.Equal("AwaitingGuestEmail", BookingMapper.ToListItem(waitingForTheGuest, null, now).OnSiteRequestState);
     }
-
-    // --- The counters of the chips --------------------------------------------------------------------------------
 
     [Fact]
     public async Task Counts_AnswersTheCountersOfTheChips_FilteredByTheScopeOfTheCaller()
@@ -417,7 +406,6 @@ public class BookingsControllerListTests
                     && c.Channels.SequenceEqual(new[] { BookingChannel.Airbnb })
                     && c.CheckInStates != null
                     && c.CheckInStates.SequenceEqual(new[] { HostTodayCheckInState.Sent })
-                    // The chip, the order and the page are the list's, not the counters'.
                     && c.View == BookingListView.All
                     && c.Sort == null),
                 It.IsAny<CancellationToken>()),

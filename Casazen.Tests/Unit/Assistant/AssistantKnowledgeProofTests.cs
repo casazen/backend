@@ -29,8 +29,6 @@ public class AssistantKnowledgeProofTests
     private const string SecretOfOrganizationA = "SEGRETO-ORG-A: chiama Marco al numero riservato";
     private const string SignatureOfA = "Firma riservata di A";
 
-    // ─── tenant ───
-
     [Fact]
     public async Task AssistantKnowledge_OtherOrg_NotVisible_Test()
     {
@@ -43,22 +41,18 @@ public class AssistantKnowledgeProofTests
         var propertyOfA = world.Granted;
         var propertyOfB = world.OtherOrgProperty;
 
-        // Organization A writes: an entry of its property, one of the whole organization, its rules and the exceptions of its property.
         var entryOfA = await knowledge.CreateEntryAsync(orgA, propertyOfA.Id, AssistantTestKit.Fact(KnowledgeTopic.WiFi, SecretOfA), Host);
         var wideOfA = await knowledge.CreateEntryAsync(orgA, null, AssistantTestKit.Fact(KnowledgeTopic.Contacts, SecretOfOrganizationA), Host);
         await rules.SaveAsync(orgA, AssistantTestKit.RulesInput(signature: SignatureOfA, forbidden: ["Pets"], tone: AssistantTone.Formal), Host);
         await rules.SavePropertySettingsAsync(orgA, propertyOfA.Id, new PropertyAssistantSettingsInput(false, AssistantTone.Friendly, "Firma di A sulla casa", null, null, 0.99m, ["Noise"]), Host);
         var versionOfA = (await rules.GetAsync(orgA)).InstructionVersion;
 
-        // Organization B writes its own.
         var entryOfB = await knowledge.CreateEntryAsync(orgB, propertyOfB.Id, AssistantTestKit.Fact(KnowledgeTopic.WiFi, "Rete di B."), Host);
 
-        // Listed: organization B sees none of A's, not even through the organization-wide list.
         var listedForB = await knowledge.ListOrganizationEntriesAsync(orgB);
         Assert.Empty(listedForB);
         Assert.DoesNotContain(listedForB, e => e.Id == wideOfA.Id);
 
-        // Read: A's property is a 404 for B, in the view, in the settings and in what the pipeline retrieves.
         foreach (var attempt in new Func<Task>[]
                  {
                      () => knowledge.GetViewAsync(orgB, propertyOfA.Id, "it"),
@@ -69,7 +63,6 @@ public class AssistantKnowledgeProofTests
             Assert.Equal("property_not_found", (await Assert.ThrowsAsync<NotFoundException>(attempt)).Code);
         }
 
-        // The rules: B has the defaults, never A's, and A's exceptions do not apply to B.
         var rulesOfB = await rules.GetAsync(orgB);
         Assert.Null(rulesOfB.Signature);
         Assert.Equal(AssistantTone.Neutral, rulesOfB.Tone);
@@ -81,13 +74,11 @@ public class AssistantKnowledgeProofTests
         Assert.Equal(0.85m, effectiveForB.ConfidenceThreshold);
         Assert.Empty(effectiveForB.ForbiddenTopics);
 
-        // B's own property shows B's entry and none of A's, the organization-wide one included.
         var viewOfB = await knowledge.GetViewAsync(orgB, propertyOfB.Id, "it");
         Assert.Equal([entryOfB.Id], viewOfB.Entries.Select(e => e.Id));
         var retrievedForB = await knowledge.RetrieveAsync(orgB, propertyOfB.Id, [KnowledgeTopic.WiFi, KnowledgeTopic.Contacts], "it");
         Assert.DoesNotContain(retrievedForB, f => f.Text.Contains("SEGRETO", StringComparison.Ordinal));
 
-        // Written: B changes or deletes none of A's entries, through its own routes, A's property's or the organization's, and creates nothing on A's property.
         var edit = AssistantTestKit.Fact(KnowledgeTopic.WiFi, "Cambiato da B.");
         foreach (var attempt in new Func<Task>[]
                  {
@@ -104,7 +95,6 @@ public class AssistantKnowledgeProofTests
             await Assert.ThrowsAsync<NotFoundException>(attempt);
         }
 
-        // Organization A is as it was: its words, its rules, its exceptions and its version.
         Assert.Equal(SecretOfA, (await db.PropertyKnowledgeEntries.AsNoTracking().SingleAsync(e => e.Id == entryOfA.Id)).Text);
         Assert.Equal(SecretOfOrganizationA, (await db.PropertyKnowledgeEntries.AsNoTracking().SingleAsync(e => e.Id == wideOfA.Id)).Text);
         Assert.Equal(SignatureOfA, (await rules.GetAsync(orgA)).Signature);
@@ -112,14 +102,11 @@ public class AssistantKnowledgeProofTests
         Assert.Equal(versionOfA, (await rules.GetAsync(orgA)).InstructionVersion);
         Assert.Equal(2, await db.PropertyKnowledgeEntries.AsNoTracking().CountAsync(e => e.OrgId == orgA));
 
-        // And A reads its own: the entries, the organization-wide one under its property, and what the pipeline retrieves.
         var viewOfA = await knowledge.GetViewAsync(orgA, propertyOfA.Id, "it");
         Assert.Equal(new[] { entryOfA.Id, wideOfA.Id }.Order(), viewOfA.Entries.Select(e => e.Id).Order());
         Assert.Contains(await knowledge.RetrieveAsync(orgA, propertyOfA.Id, [KnowledgeTopic.WiFi], "it"), f => f.Text == SecretOfA);
         Assert.DoesNotContain(viewOfB.Entries, e => e.Text == SecretOfA);
     }
-
-    // ─── permission ───
 
     [Fact]
     public async Task AssistantKnowledge_Collaborator_OnlyReachableProperties_Test()
@@ -132,7 +119,6 @@ public class AssistantKnowledgeProofTests
         var granted = world.Granted;
         var hidden = world.Hidden;
 
-        // The administrator writes on both properties, and for the whole organization.
         var entryOfGranted = await knowledge.CreateEntryAsync(orgId, granted.Id, AssistantTestKit.Fact(KnowledgeTopic.Parking, "Parcheggio del Trullo."), Host);
         var entryOfHidden = await knowledge.CreateEntryAsync(orgId, hidden.Id, AssistantTestKit.Fact(KnowledgeTopic.WiFi, SecretOfA), Host);
         var wide = await knowledge.CreateEntryAsync(orgId, null, AssistantTestKit.Fact(KnowledgeTopic.Contacts, SecretOfOrganizationA), Host);
@@ -145,7 +131,6 @@ public class AssistantKnowledgeProofTests
         var entriesBefore = await db.PropertyKnowledgeEntries.AsNoTracking().CountAsync();
         var versionBefore = (await rules.GetAsync(orgId)).InstructionVersion;
 
-        // The property it was given: it reads the knowledge, writes an entry, and reads and saves the exceptions.
         var view = Assert.IsType<OkObjectResult>((await knowledgeController.GetForProperty(granted.Id, "it", CancellationToken.None)).Result).Value as AssistantKnowledgeViewDto;
         Assert.Contains(view!.Entries, e => e.Id == entryOfGranted.Id);
         Assert.DoesNotContain(view.Entries, e => e.Id == entryOfHidden.Id);
@@ -155,7 +140,6 @@ public class AssistantKnowledgeProofTests
         Assert.IsType<OkObjectResult>((await rulesController.SaveForProperty(granted.Id, new SavePropertyAssistantSettingsRequest { Tone = AssistantTone.Friendly }, CancellationToken.None)).Result);
         Assert.IsType<OkObjectResult>((await rulesController.GetForProperty(granted.Id, CancellationToken.None)).Result);
 
-        // The property it was not given: the same 404 as a property that does not exist, for every read and every write, and nothing leaks into the answer.
         var missing = Guid.NewGuid();
         foreach (var propertyId in new[] { hidden.Id, missing })
         {
@@ -168,7 +152,6 @@ public class AssistantKnowledgeProofTests
             AssertNotFound(await rulesController.DeleteForProperty(propertyId, CancellationToken.None));
         }
 
-        // An entry is asked for through its own property: the hidden property's entry, and the organization's, through the property it was given are 404 too.
         foreach (var attempt in new Func<Task>[]
                  {
                      () => knowledgeController.UpdateForProperty(granted.Id, entryOfHidden.Id, Request(KnowledgeTopic.WiFi, "Intruso."), CancellationToken.None),
@@ -180,7 +163,6 @@ public class AssistantKnowledgeProofTests
             Assert.Equal("assistant_entry_not_found", (await Assert.ThrowsAsync<NotFoundException>(attempt)).Code);
         }
 
-        // Nothing of the hidden property changed: its entry, its exceptions, and no row was added for it (only the one the collaborator wrote on its own property).
         Assert.Equal(SecretOfA, (await db.PropertyKnowledgeEntries.AsNoTracking().SingleAsync(e => e.Id == entryOfHidden.Id)).Text);
         Assert.Equal(SecretOfOrganizationA, (await db.PropertyKnowledgeEntries.AsNoTracking().SingleAsync(e => e.Id == wide.Id)).Text);
         Assert.Equal("Firma di Casa Bianca", (await rules.GetPropertySettingsAsync(orgId, hidden.Id)).Signature);
@@ -188,7 +170,6 @@ public class AssistantKnowledgeProofTests
         Assert.Equal(1, await db.PropertyKnowledgeEntries.AsNoTracking().CountAsync(e => e.PropertyId == hidden.Id));
         Assert.True((await rules.GetAsync(orgId)).InstructionVersion > versionBefore);
 
-        // The administrator of the organization (every property) reaches both.
         var administrator = AssistantTestKit.Administrator(world);
         var allProperties = AssistantTestKit.Authorization(world, administrator: true);
         var asAdministrator = KnowledgeController(db, allProperties, administrator, orgId);
@@ -236,8 +217,6 @@ public class AssistantKnowledgeProofTests
         Assert.Equal(expected.Count, new[] { typeof(AssistantKnowledgeController), typeof(AssistantRulesController) }
             .Sum(type => type.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.DeclaredOnly).Length));
     }
-
-    // ─── the controllers over the real services, the real scope resolver and the real resource handler ───
 
     private static SaveKnowledgeEntryRequest Request(KnowledgeTopic topic, string text) =>
         new() { Topic = topic, Kind = KnowledgeEntryKind.Fact, Text = text };

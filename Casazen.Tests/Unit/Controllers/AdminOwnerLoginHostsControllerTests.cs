@@ -27,10 +27,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// E40/F01/US02/T01 (NF-141): the queue of the owner sign-ins and the hand of a platform administrator while <c>Auth0HostSync</c> is off. Only a platform
-/// administrator sets the state; Ready only for a verified custom domain the org pays for; nothing calls Auth0; the org's administrators are told.
-/// </summary>
 public sealed class AdminOwnerLoginHostsControllerTests : IDisposable
 {
     private const string Domain = "prenota.agenzia-esempio.it";
@@ -46,7 +42,6 @@ public sealed class AdminOwnerLoginHostsControllerTests : IDisposable
     [Fact]
     public async Task PutState_NonAdmin_Forbidden()
     {
-        // Every action of the controller is behind AdminOnly and nothing else, and behind the flag of the surfaces.
         var controller = typeof(AdminOwnerLoginHostsController);
         Assert.Equal([CasazenPolicies.AdminOnly], controller.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy));
         Assert.Equal([FeatureFlags.WhiteLabelHost], controller.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag));
@@ -60,7 +55,6 @@ public sealed class AdminOwnerLoginHostsControllerTests : IDisposable
             Assert.Empty(action.GetCustomAttributes<AuthorizeAttribute>(inherit: true));
         });
 
-        // The registered policy refuses an agency (its owner included), a supplier and a guest; it lets the platform administrator through.
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddCasazenAuthorization();
@@ -124,7 +118,6 @@ public sealed class AdminOwnerLoginHostsControllerTests : IDisposable
             It.Is<PushNotificationPayload>(payload => payload.Type == PushTypes.OwnerLoginReady)), Times.Once);
         _registrar.VerifyNoOtherCalls();
 
-        // The same state again changes nothing and tells nobody again.
         await Controller().SetState(org.Id, new OwnerLoginStateDto { State = OwnerLoginHostState.Ready }, CancellationToken.None);
         _push.Verify(p => p.Enqueue(It.IsAny<string>(), It.IsAny<PushAudience>(), It.IsAny<PushNotificationPayload>()), Times.Once);
     }
@@ -152,8 +145,6 @@ public sealed class AdminOwnerLoginHostsControllerTests : IDisposable
         var invalid = Assert.IsType<ObjectResult>((await Controller().List("7", CancellationToken.None)).Result);
         Assert.Equal(StatusCodes.Status400BadRequest, invalid.StatusCode);
     }
-
-    // ─── Helpers ───────────────────────────────────────────────────────────────────────────────────
 
     private AdminOwnerLoginHostsController Controller(PlanTier tier = PlanTier.Pro)
     {

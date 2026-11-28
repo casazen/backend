@@ -25,7 +25,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
 {
     private const string Actor = "auth0|owner";
 
-    /// <summary>What the reading of a contract writes into a document when it fills the draft (version 3), with the day of the signature it found.</summary>
     private const string ReadIntoDraft = """{"version":3,"kind":"contract","stipulaDate":"2026-09-19","containsAttestation":true,"fields":[]}""";
 
     private readonly LeaseDraftHarness _harness = new();
@@ -36,8 +35,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
     private readonly Mock<ILeaseDocumentReadQueue> _queue = new();
 
     public void Dispose() => _harness.Dispose();
-
-    // ---- which leases are the service's ---------------------------------------------------------------------------------
 
     [Fact]
     public async Task ALeaseThatIsNotTheServices_IsLeftAlone()
@@ -62,7 +59,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
 
         var result = await NewService().SyncAsync(leaseId, _harness.OrgId, Actor);
 
-        // Imported and marked: the documents are read into it from now on, and the list stops asking for its data.
         var lease = await _harness.LoadAsync(leaseId);
         Assert.True(lease.IsConcordatoFacileSource);
         Assert.Equal(LeaseOrigin.Imported, lease.Origin);
@@ -118,7 +114,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
         var legacy = await SeedLegacyConcordatoDraftAsync(formOpened: true);
         var service = await _harness.Service.CreateCfDraftAsync(_harness.PropertyId, _harness.OrgId);
 
-        // The old draft is a draft like any other until the service takes it over; the service's draft never is.
         var before = await StepOfAsync(legacy);
         Assert.Equal(LeaseNextStepCode.CompleteStep, before);
         await NewService().SyncAsync(legacy, _harness.OrgId, Actor);
@@ -126,8 +121,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
         Assert.Equal(LeaseNextStepCode.AwaitPartnerContract, await StepOfAsync(legacy));
         Assert.Equal(LeaseNextStepCode.AwaitPartnerContract, await StepOfAsync(service));
     }
-
-    // ---- the contract ---------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task WithNoContractDocument_TheLeaseWaitsForIt()
@@ -241,7 +234,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
 
         var result = await NewService().SyncAsync(leaseId, _harness.OrgId, Actor);
 
-        // The signed copy is the document the person uploaded, and the day is the one the contract says (not today's).
         _signing.Verify(
             s => s.ImportSignedContractFromDocumentAsync(
                 leaseId,
@@ -249,7 +241,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
                 It.Is<ImportedDocumentDeclaration>(d => d.DocumentId == document.Id && d.StipulaDate == new DateTime(2026, 9, 19)),
                 It.IsAny<CancellationToken>()),
             Times.Once);
-        // Signed now, no receipt uploaded yet: what is left is the receipt.
         Assert.Equal(new CfCompletionResult(CfCompletionStates.WaitingForReceipt, LeaseStatus.Signed), result);
     }
 
@@ -258,7 +249,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
     {
         var leaseId = await SeedServiceDraftAsync();
         await AddDocumentAsync(leaseId, LeaseDocumentKind.Contract, LeaseDocumentExtractionStatus.Completed, ReadIntoDraft);
-        // A second practice, closed as a duplicate, is newer than the one under way: it does not count either way.
         _statuses
             .Setup(s => s.GetPracticesAsync(leaseId, _harness.OrgId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Practices(
@@ -333,8 +323,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
 
         Assert.Equal(CfCompletionStates.WaitingForReceipt, result.State);
     }
-
-    // ---- the registration -----------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task ASignedLease_WithAReceiptReadAsARegistration_DeclaresItWithItsCodeAndDay()
@@ -468,14 +456,11 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
         _queue.VerifyNoOtherCalls();
     }
 
-    // ---- the whole way: the lease of the screenshot ---------------------------------------------------------------------
-
     [Fact]
     public async Task TheWholeWay_AnOldDraftWithItsDocuments_FollowsThePracticeUpToRegistered()
     {
         await _harness.SeedAsync();
         var leaseId = await SeedLegacyConcordatoDraftAsync(formOpened: true);
-        // What the person uploaded: the signed contract with its attestation (read the old way, as the old draft read it) and the receipt.
         var contract = await AddDocumentAsync(leaseId, LeaseDocumentKind.Contract, LeaseDocumentExtractionStatus.Completed, """{"version":1,"fields":[]}""");
         var receipt = await AddDocumentAsync(leaseId, LeaseDocumentKind.Registration, LeaseDocumentExtractionStatus.Completed, null);
         SetupPractice(CfPracticeStatus.Registered);
@@ -483,13 +468,11 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
         ImportMakesTheLeaseSigned(leaseId);
         RegistrationMakesTheLeaseRegistered(leaseId);
 
-        // 1. the draft becomes the service's and the contract is put back to be read into it.
         var first = await NewService().SyncAsync(leaseId, _harness.OrgId, Actor);
         Assert.Equal(CfCompletionStates.ReadingContract, first.State);
         Assert.True((await _harness.LoadAsync(leaseId)).IsConcordatoFacileSource);
         _queue.Verify(q => q.Enqueue(contract.Id), Times.Once);
 
-        // 2. the job has read it into the draft (what ExtractLeaseDocumentDataJob writes), and the next call goes all the way.
         await using (var db = _harness.SecondContext())
         {
             var document = await db.LeaseDocuments.SingleAsync(d => d.Id == contract.Id);
@@ -504,12 +487,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
         Assert.Equal(LeaseStatus.Registered, (await _harness.LoadAsync(leaseId)).Status);
     }
 
-    // ---- helpers --------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// The service of one request: its context starts with nothing tracked, as a scoped context of a new request does (the seed and the
-    /// mocks write through other contexts, and the harness context would still hold the lease as it was created).
-    /// </summary>
     private ConcordatoFacileCompletionService NewService()
     {
         _harness.Db.ChangeTracker.Clear();
@@ -524,14 +501,12 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
             _harness.Clock);
     }
 
-    /// <summary>The draft «Parto da zero» makes: imported, marked, one per property.</summary>
     private async Task<Guid> SeedServiceDraftAsync()
     {
         await _harness.SeedAsync();
         return await _harness.Service.CreateCfDraftAsync(_harness.PropertyId, _harness.OrgId);
     }
 
-    /// <summary>A lease of the service in the given status, as it is after the contract was imported or the registration declared.</summary>
     private async Task<Guid> SeedServiceLeaseAsync(LeaseStatus status)
     {
         var leaseId = await SeedServiceDraftAsync();
@@ -539,10 +514,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
         return leaseId;
     }
 
-    /// <summary>
-    /// The draft of the screenshots: made on 23 October through the generic draft (origin Created, not marked), typed as a concordato; the
-    /// guided form was opened afterwards (the event the signed link leaves).
-    /// </summary>
     private async Task<Guid> SeedLegacyConcordatoDraftAsync(bool formOpened)
     {
         var created = await _harness.CreateAsync(LeaseOrigin.Created);
@@ -610,7 +581,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
             .Callback(() => SetStatus(leaseId, LeaseStatus.Registered))
             .ReturnsAsync(new LeaseRegistration());
 
-    /// <summary>The status API says the one practice of the lease is in <paramref name="status"/>.</summary>
     private void SetupPractice(CfPracticeStatus status) =>
         _statuses
             .Setup(s => s.GetPracticesAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -642,7 +612,6 @@ public sealed class ConcordatoFacileCompletionServiceTests : IDisposable
                     outcome, code, number, series, registrationDate, "Ufficio di Milano", 7140m, "2026-09-19", "2029-09-18", stipulation,
                     "Locazione agevolata", true, "Bollate", "MI", [])));
 
-    /// <summary>The next step the lease list gives the lease, read from the same statement the list of the long-term area uses.</summary>
     private async Task<LeaseNextStepCode> StepOfAsync(Guid leaseId)
     {
         await using var db = _harness.SecondContext();

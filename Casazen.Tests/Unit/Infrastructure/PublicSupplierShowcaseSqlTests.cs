@@ -25,8 +25,7 @@ public class PublicSupplierShowcaseSqlTests
         var sql = PublicSupplierShowcaseService.ActiveBySlugOf(db, "pulizie-citta").ToQueryString();
 
         Assert.Contains("\"ShowcaseSlug\" = @", sql);
-        Assert.Matches("\"Status\" = 1", sql); // Active
-        // Nothing else of the profile table is asked of: no join with the owner, the users or the requests.
+        Assert.Matches("\"Status\" = 1", sql);
         Assert.DoesNotContain("JOIN", sql, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -39,8 +38,6 @@ public class PublicSupplierShowcaseSqlTests
 
         Assert.Matches("\"OrgId\" = @", sql);
         Assert.Contains("\"DeletedAt\" IS NULL", sql);
-        // The status of the service (Active = 1) and the status of the supplier's profile (Active = 1): two predicates,
-        // the second on the profile of the same org, joined.
         Assert.Matches("(?s)JOIN \"SupplierProfiles\"", sql);
         Assert.Equal(2, Regex.Matches(sql, "\"Status\" = 1").Count);
     }
@@ -72,7 +69,6 @@ public class PublicSupplierShowcaseSqlTests
         Assert.Contains("\"TakenAt\" >= @", sql);
         Assert.Matches("ORDER BY .*\"TakenAt\" DESC", sql);
         Assert.Matches("LIMIT @|LIMIT \\d+", sql);
-        // Only the two instants leave the table: nothing of the property, the guest or the notes.
         Assert.DoesNotContain("\"Notes\"", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("GuestId", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("\"PropertyId\"", sql, StringComparison.Ordinal);

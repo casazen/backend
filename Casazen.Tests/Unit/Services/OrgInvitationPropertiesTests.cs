@@ -60,8 +60,6 @@ public class OrgInvitationPropertiesTests
         return await db.OrgInvitations.IgnoreQueryFilters().CountAsync(i => i.OrgId == orgId);
     }
 
-    // ─── Writing the invitation ─────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateAsync_ACollaboratorSoloAlcuni_CarriesItsProperties_SortedAndEachOnce()
     {
@@ -75,7 +73,6 @@ public class OrgInvitationPropertiesTests
         Assert.Equal(expected, sent.Invitation.PropertyIds);
         Assert.Equal(PropertyScope.Selected, sent.Invitation.PropertyScope);
         Assert.Equal(expected, await _kit.ReadInvitationPropertiesAsync(sent.Invitation.Id));
-        // The rows are the org's (tenant key) and nobody else's.
         await using var db = _kit.NewDb();
         Assert.All(await db.OrgInvitationProperties.IgnoreQueryFilters().ToListAsync(), row => Assert.Equal(orgId, row.OrgId));
     }
@@ -148,7 +145,6 @@ public class OrgInvitationPropertiesTests
 
         foreach (var wrong in new[] { Guid.NewGuid(), deleted, foreign })
         {
-            // One good property and one wrong: the whole invitation is refused, not the good part of it.
             var error = await Assert.ThrowsAsync<DomainRuleException>(() => InviteAsync(orgId, propertyIds: [trullo, wrong]));
             Assert.Equal(OrgMembershipErrors.PropertyUnknown, error.Code);
         }
@@ -164,14 +160,11 @@ public class OrgInvitationPropertiesTests
         var orgId = await SeedOrgAsync();
         await _kit.SeedMemberAsync(orgId, "auth0|admin", OrgRole.Admin);
 
-        // Not the owner: 403 first, whatever the ids say (the same rule as before this change).
         var error = await Assert.ThrowsAsync<DomainForbiddenException>(
             () => InviteAsync(orgId, role: OrgRole.Admin, scope: PropertyScope.All, actor: "auth0|admin"));
 
         Assert.Equal(OrgInvitationErrors.OwnerRequired, error.Code);
     }
-
-    // ─── The acceptance ─────────────────────────────────────────────────────────────────────────────────
 
     private async Task<(Guid OrgId, Guid Trullo, Guid Bilocale, Guid Casa)> OrgWithThreePropertiesAsync()
     {
@@ -198,7 +191,6 @@ public class OrgInvitationPropertiesTests
         Assert.Equal((OrgRole.Collaborator, PropertyScope.Selected, OrgMemberStatus.Active), (member.Role, member.PropertyScope, member.Status));
         Assert.Equal(OrgInvitationStatus.Accepted, (await _kit.ReadInvitationAsync(sent.Invitation.Id)).Status);
 
-        // Who gave it, when: the inviter, at the acceptance.
         await using var db = _kit.NewDb();
         var rows = await db.PropertyMemberAccesses.IgnoreQueryFilters().Where(a => a.UserId == AnnaId).ToListAsync();
         Assert.All(rows, row => Assert.Equal((orgId, OwnerId), (row.OrgId, row.CreatedByUserId)));
@@ -218,7 +210,6 @@ public class OrgInvitationPropertiesTests
             (line.ActorUserId, line.SubjectId, line.Area, line.SubjectType));
         var details = OrgActivityDetails.Parse(line.DetailsJson);
         Assert.Equal(("Selected", "2", "0"), (details["scope"], details["granted"], details["revoked"]));
-        // The invitation was accepted by the person, the properties were given by the one who invited.
         Assert.Contains(await _kit.ReadActivityAsync(orgId), e => e.Type == OrgActivityType.InvitationAccepted && e.ActorUserId == AnnaId);
     }
 
@@ -292,7 +283,6 @@ public class OrgInvitationPropertiesTests
     [Fact]
     public async Task AcceptAsync_APropertyOfAnotherOrgInTheTable_IsNeverGiven()
     {
-        // Written by hand (the service never writes it): the acceptance reads the live properties of the org it joins.
         var (orgId, trullo, _, _) = await OrgWithThreePropertiesAsync();
         var (other, _) = await _kit.SeedOwnerOrgAsync("auth0|other-owner");
         var foreign = await _kit.SeedPropertyAsync(other.Id, "Altrui", ownerId: "auth0|other-owner");
@@ -311,8 +301,6 @@ public class OrgInvitationPropertiesTests
     [Fact]
     public async Task AcceptAsync_AnInvitationOfBeforeTheRuleForAnotherRole_JoinsWithEveryProperty_AndGivesNoGrant()
     {
-        // An invitation written when «Solo alcuni» was not yet the collaborator's alone: the person is not blocked, it reaches the
-        // whole org as its role does (AM-03), and what the invitation carried is not turned into grants.
         var (orgId, trullo, _, _) = await OrgWithThreePropertiesAsync();
         var (invitation, token) = await _kit.SeedInvitationAsync(orgId, AnnaEmail, OrgRole.PropertyManager);
         await using (var db = _kit.NewDb())
@@ -335,7 +323,6 @@ public class OrgInvitationPropertiesTests
         await InviteAsync(orgId, propertyIds: [trullo]);
         var token = LastTokenSent();
 
-        // The account that accepts is not the one the invitation is for.
         await _kit.SeedNewUserAsync("auth0|mallory", "mallory@example.com");
         var error = await Assert.ThrowsAsync<DomainForbiddenException>(() => AcceptAsync(token, "auth0|mallory", "mallory@example.com"));
 
@@ -344,8 +331,6 @@ public class OrgInvitationPropertiesTests
         Assert.Empty(await _kit.ReadGrantsAsync("auth0|mallory"));
         Assert.Empty(await _kit.ReadGrantsAsync(AnnaId));
     }
-
-    // ─── What nobody else sees, and what goes with the invitation ───────────────────────────────────────
 
     [Fact]
     public async Task Lookup_TheAnonymousPreview_ShowsNothingAboutTheProperties()
@@ -357,7 +342,6 @@ public class OrgInvitationPropertiesTests
         var preview = await _kit.Invitations(db).LookupAsync(LastTokenSent());
 
         Assert.NotNull(preview);
-        // The preview and the response of the public lookup name no property, by id or by name.
         foreach (var type in new[] { typeof(OrgInvitationPreview), typeof(OrgInvitationLookupResponse) })
             Assert.DoesNotContain(type.GetProperties(BindingFlags.Public | BindingFlags.Instance), p => p.Name.Contains("Propert", StringComparison.Ordinal));
     }
@@ -370,7 +354,6 @@ public class OrgInvitationPropertiesTests
         await using (var db = _kit.NewDb())
             await _kit.Invitations(db).RevokeAsync(orgId, sent.Invitation.Id, OwnerId);
 
-        // Within the retention the closed invitation and what it carried are still there; after it, both are gone.
         _kit.Clock.Advance(TimeSpan.FromDays(OrgInvitationRules.DefaultRetentionDays - 1));
         await using (var db = _kit.NewDb())
             await _kit.Maintenance(db).RunAsync();

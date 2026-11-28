@@ -83,7 +83,7 @@ public class NormalizeCinCodesPostgresIntegrationTests : IAsyncLifetime
             Name = $"Casa {index}",
             Address = $"Via Roma {index}",
             City = "Roma",
-            CinCode = cin, // raw value: the DbContext does not normalize, like rows saved before CO-01
+            CinCode = cin,
         }).ToList();
         db.Properties.AddRange(properties);
         await db.SaveChangesAsync();

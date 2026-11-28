@@ -19,7 +19,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class SupplierServiceListingTenancyTests
 {
-    /// <summary>The files that may read or write the table, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSet and the model.",
@@ -27,8 +26,6 @@ public class SupplierServiceListingTenancyTests
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the services of the duplicate org.",
     };
 
-    // The statements that are allowed after "db.SupplierServiceListings" (whitespace removed): the org predicate (of one supplier,
-    // or of the list of suppliers the host's picker asks about, SR-09a), or an insert.
     private static readonly string[] AllowedContinuations =
     [
         ".Where(l=>l.OrgId==",
@@ -37,10 +34,8 @@ public class SupplierServiceListingTenancyTests
         ".Add(",
     ];
 
-    // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
     private static readonly Regex AnyTableUse = new(@"\.SupplierServiceListings\b|Set<SupplierServiceListing>\(", RegexOptions.Compiled);
 
-    // The statements of the two files that are allowed to: they call the context "db".
     private static readonly Regex DbSetUse = new(@"db\.SupplierServiceListings(?<rest>[\s\S]{0,80})", RegexOptions.Compiled);
 
     [Fact]
@@ -56,16 +51,13 @@ public class SupplierServiceListingTenancyTests
         var entity = db.Model.FindEntityType(typeof(SupplierServiceListing));
         Assert.NotNull(entity);
 
-        // Not tenant-filtered: the host-org filter would hide the rows of a supplier-only account.
         Assert.Null(entity.FindDeclaredQueryFilter(AppDbContext.TenantQueryFilter));
 
-        // A child of the supplier profile, deleted with it (the repair moves the services before it deletes a profile).
         var foreignKey = Assert.Single(entity.GetForeignKeys());
         Assert.Equal(typeof(SupplierProfile), foreignKey.PrincipalEntityType.ClrType);
         Assert.Equal(nameof(SupplierServiceListing.OrgId), Assert.Single(foreignKey.Properties).Name);
         Assert.Equal(DeleteBehavior.Cascade, foreignKey.DeleteBehavior);
 
-        // The slug is unique per supplier among the services that are not deleted.
         var slugIndex = Assert.Single(entity.GetIndexes(), index => index.IsUnique);
         Assert.Equal(new[] { "OrgId", "Slug" }, slugIndex.Properties.Select(p => p.Name));
         Assert.Equal("\"DeletedAt\" IS NULL", slugIndex.GetFilter());
@@ -88,7 +80,6 @@ public class SupplierServiceListingTenancyTests
     public void Model_DatabaseChecksMirrorTheRules()
     {
         using var db = NewNpgsqlContext();
-        // The check constraints are design-time metadata: not in the read-optimized runtime model.
         var checks = db.GetService<IDesignTimeModel>().Model
             .FindEntityType(typeof(SupplierServiceListing))!
             .GetCheckConstraints()
@@ -140,8 +131,6 @@ public class SupplierServiceListingTenancyTests
     {
         using var db = NewNpgsqlContext();
 
-        // SP-09: the anonymous reads go through this query (ListPublicAsync, FindPublicAsync), so the supplier org, the
-        // not-deleted and Active predicates of the service and the Active status of the supplier's profile are one statement.
         var sql = SupplierServiceCatalogService.PublicListingsOf(db, Guid.NewGuid()).AsNoTracking().ToQueryString();
 
         Assert.Matches("\"OrgId\" = @", sql);
@@ -153,7 +142,6 @@ public class SupplierServiceListingTenancyTests
     [Fact]
     public void ThePublicShowcase_ReadsTheCatalogOnlyThroughTheCatalogService()
     {
-        // SP-09 adds no file to the allow-list: the public service, the controller and the DTOs never name the table.
         var root = FindRepositoryRoot();
         var publicFiles = new[]
         {

@@ -11,10 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// DB-03b over HTTP: the expected arrival time the guest gives at the public checkout is a note for the host. A time is kept as
-/// <c>HH:mm</c>, <c>late</c> is kept, and anything else is refused with a stable code before anything is written.
-/// </summary>
 public class ExpectedArrivalTimeIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string ConsentVersion = "2026-06-direct-checkout-v1";
@@ -34,7 +30,6 @@ public class ExpectedArrivalTimeIntegrationTests : IClassFixture<CasazenWebAppli
         using var client = _factory.CreateClient();
         var monday = FarMonday();
 
-        // " 9:30 " is a time (kept as 09:30), "LATE" is the late arrival, nothing at all is fine.
         var time = await client.PostAsJsonAsync("/api/public/bookings", Payload(propertyId, monday, " 9:30 "));
         var late = await client.PostAsJsonAsync("/api/public/bookings", Payload(propertyId, monday.AddDays(7), "LATE"));
         var none = await client.PostAsJsonAsync("/api/public/bookings", Payload(propertyId, monday.AddDays(14), null));
@@ -43,7 +38,6 @@ public class ExpectedArrivalTimeIntegrationTests : IClassFixture<CasazenWebAppli
         Assert.Equal("late", await StoredArrivalTimeAsync(await BookingIdAsync(late)));
         Assert.Null(await StoredArrivalTimeAsync(await BookingIdAsync(none)));
 
-        // Not a time: 422 with the stable code, and no booking is made for those dates.
         var refused = await client.PostAsJsonAsync("/api/public/bookings", Payload(propertyId, monday.AddDays(21), "25:00"));
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, refused.StatusCode);
@@ -71,7 +65,6 @@ public class ExpectedArrivalTimeIntegrationTests : IClassFixture<CasazenWebAppli
             .SingleAsync();
     }
 
-    /// <summary>A Monday far enough ahead for any rule of the stay (midnight UTC of its Rome date).</summary>
     private static DateTime FarMonday()
     {
         var day = TimeProvider.System.TodayInRome().AddDays(60);
@@ -101,7 +94,6 @@ public class ExpectedArrivalTimeIntegrationTests : IClassFixture<CasazenWebAppli
         expectedArrivalTime,
     };
 
-    /// <summary>An org with a ready Stripe Connect account and a property published in Seveso (no tourist tax rate).</summary>
     private async Task<Guid> SeedPropertyAsync()
     {
         using var scope = _factory.Services.CreateScope();

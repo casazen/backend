@@ -75,7 +75,6 @@ public class ReportTableTests
         Assert.Equal(CsvWriter.Write([table]), CsvWriter.Write(table));
     }
 
-    /// <summary>A text a spreadsheet would run (<c>= + - @</c>, a tab or a CR first) gets the apostrophe; an amount never does, a negative one included.</summary>
     [Fact]
     public void Csv_AFormulaLookingText_GetsALeadingApostrophe_AndANegativeAmountDoesNot()
     {
@@ -92,11 +91,9 @@ public class ReportTableTests
         Assert.Equal("'-2+3;'@SUM(A1);'\tcmd", lines[3]);
         Assert.Equal("plain;-4", lines[4]);
 
-        // A CR is a line break to a CSV reader: the cell is quoted, and the apostrophe is inside the quotes.
         Assert.Equal("\"'\rcr\"", CsvWriter.Text("\rcr"));
     }
 
-    /// <summary>The day is formatted with the date specifiers of <see cref="DateOnly"/> only (a time specifier throws): real values, the edges of the calendar too.</summary>
     [Theory]
     [InlineData(2026, 1, 9, "09/01/2026")]
     [InlineData(2026, 10, 31, "31/10/2026")]

@@ -83,7 +83,6 @@ public class LongRentLandlordDefaultsServiceTests
 
         var defaults = await Service(db).GetAsync(new HostScope(orgId), Caller);
 
-        // The org of the harness declares a fiscal code; nothing is known of the residence.
         Assert.Equal(new LandlordDefaultsDto("Anna", "Bianchi", "RSSMRA80A01H501U", null, "anna@example.com"), defaults);
     }
 
@@ -168,7 +167,6 @@ public class LongRentLandlordDefaultsServiceTests
         var (h, orgId) = await NewAsync();
         using var _ = h;
         await SeedCallerAsync(h);
-        // The property of the harness is owned by LeaseDraftHarness.OwnerId; another one is owned by somebody else.
         var other = await h.SeedPropertyAsync();
         await using (var db = h.SecondContext())
         {
@@ -187,9 +185,8 @@ public class LongRentLandlordDefaultsServiceTests
 
         Assert.Equal("Mario", owner.FirstName);
         Assert.Equal("Segreto", stranger.FirstName);
-        // Whoever reaches no lease gets the fallback, never the landlord of somebody else's.
         Assert.Equal("Anna", nobody.FirstName);
-        Assert.Equal("Segreto", wholeOrg.FirstName); // the most recent of the org
+        Assert.Equal("Segreto", wholeOrg.FirstName);
     }
 
     [Fact]

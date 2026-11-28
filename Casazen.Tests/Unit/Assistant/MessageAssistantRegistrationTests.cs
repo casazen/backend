@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T02, T03 and E05/F05/US02/T01: what <c>AddMessageAssistant</c> registers, and that the application calls it once. The exact list is photographed here: a service that a later task
-/// of the feature (the lessons, the auto-send gate) adds to <c>AddMessageAssistant</c> is added to this test.
-/// </summary>
 public class MessageAssistantRegistrationTests
 {
     [Fact]
@@ -40,11 +36,9 @@ public class MessageAssistantRegistrationTests
             var descriptor = Assert.Single(services, d => d.ServiceType == service);
             Assert.Equal(implementation, descriptor.ImplementationType);
 
-            // Scoped: they hold the database of the request (or of the job).
             Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
         }
 
-        // Of the types of the application, these and no other (the options of the section Assistant are the framework's).
         Assert.Equal(
             [
                 nameof(AssistantDraftJob), nameof(IAssistantDraftService), nameof(IAssistantKnowledgeService), nameof(IAssistantRulesService),
@@ -85,10 +79,6 @@ public class MessageAssistantRegistrationTests
         Assert.DoesNotContain("AssistantDraftService", shared, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The text of every file of the web host that registers services except the one of the area under test: the shared registration
-    /// (<c>AddCasazenServices</c>) is spread over one file for each area, so "the shared one" is all of them.
-    /// </summary>
     private static string ReadSharedRegistrations(string root) =>
         string.Join(
             '\n',

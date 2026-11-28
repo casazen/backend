@@ -9,10 +9,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// NF-05 (Q1-05 item 7): the erasure of a guest includes the per-channel marketing consents of the check-in. The marketing
-/// e-mail and the IP are personal data; the consent ends with them, and only time, text version and booking stay as proof.
-/// </summary>
 public class GuestDataEraserMarketingConsentTests
 {
     private static readonly DateTime Now = new(2026, 11, 20, 9, 0, 0, DateTimeKind.Utc);

@@ -32,8 +32,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
     private const string Landlord = "LongTermLandlord";
     private const string SupplierAccount = "acct_supplier_http";
 
-    // ─── The mode is decided at the take ───
-
     [Fact]
     public async Task Take_FlagOnAndAccountReady_IsOnline_InEveryResponseThatShowsTheRequest()
     {
@@ -76,8 +74,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         Assert.Equal("Manual", inbox.GetProperty("paymentMode").GetString());
     }
 
-    // ─── Complete: the payment and the link ───
-
     [Fact]
     public async Task Complete_OnlineRequest_CreatesThePaymentAndEmailsTheHostTheLink()
     {
@@ -98,7 +94,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         var email = Assert.Single(factory.Emails.RequestEmails(), e => ServicePaymentTestSupport.LinkOf(e.Content).PaymentId == payment.Id);
         Assert.Equal("owner@example.com", email.To);
         Assert.Contains("/service/pay/", email.Content.HtmlBody);
-        // Nothing reaches Stripe before the payer opens the session.
         Assert.DoesNotContain(factory.Gateway.Created, c => c.Metadata[ServiceCharges.PaymentMetadataKey] == payment.Id.ToString());
     }
 
@@ -148,8 +143,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         Assert.Equal(HttpStatusCode.UnprocessableEntity, nothing.StatusCode);
         Assert.Equal("service_request_no_confirmation_needed", (await Json(nothing)).GetProperty("code").GetString());
     }
-
-    // ─── The page and the session of the payer (anonymous, the token is the only check) ───
 
     [Fact]
     public async Task PublicPayment_Lookup_ShowsThePageAndNothingAboutTheCommission()
@@ -202,7 +195,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         var a = await Json(wrongToken);
         var b = await Json(wrongId);
         Assert.Equal("service_payment_link_invalid", a.GetProperty("code").GetString());
-        // Nothing tells a payment that exists from one that does not: same code, same text.
         Assert.Equal(a.GetProperty("code").GetString(), b.GetProperty("code").GetString());
         Assert.Equal(a.GetProperty("detail").GetString(), b.GetProperty("detail").GetString());
         Assert.Contains("link di pagamento", a.GetProperty("detail").GetString());
@@ -245,7 +237,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         Assert.Equal(6_000, created.AmountCents);
         var intent = factory.Gateway.Intents.Single(i => i.ClientSecret == body.GetProperty("clientSecret").GetString());
         Assert.Equal(600, intent.ApplicationFeeCents);
-        // The payment keeps the PaymentIntent; opening it again reuses it.
         var again = await anonymous.PostAsJsonAsync($"/api/public/service-payments/{paymentId}/payment-session", new { token });
         Assert.Equal(body.GetProperty("clientSecret").GetString(), (await Json(again)).GetProperty("clientSecret").GetString());
         Assert.Single(factory.Gateway.Created, c => c.Metadata[ServiceCharges.PaymentMetadataKey] == paymentId.ToString());
@@ -275,8 +266,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         Assert.Equal("Paid", (await Json(page)).GetProperty("state").GetString());
         Assert.DoesNotContain(factory.Gateway.Created, c => c.Metadata[ServiceCharges.PaymentMetadataKey] == paymentId.ToString());
     }
-
-    // ─── The host's own session ───
 
     [Fact]
     public async Task HostSession_TheHostThatPays_GetsASession_AnotherOrgAndAnonymousAndASupplierDoNot()
@@ -364,8 +353,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         Assert.Equal(ServiceRequestStatus.Completato, (await factory.LoadRequestAsync(id)).Status);
     }
 
-    // ─── The supplier asks again ───
-
     [Fact]
     public async Task PaymentRequest_AskedAgainTheSameDay_Is422WithTheHoursInTheMessage()
     {
@@ -397,7 +384,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         var body = await Json(response);
         Assert.Equal("Requested", body.GetProperty("status").GetString());
         Assert.Equal("Completato", body.GetProperty("requestStatus").GetString());
-        // The supplier sees its split: price gross, CasaZen commission, net.
         Assert.Equal(6_000, body.GetProperty("amountCents").GetInt32());
         Assert.Equal(10m, body.GetProperty("commissionPercent").GetDecimal());
         Assert.Equal(600, body.GetProperty("commissionCents").GetInt32());
@@ -429,14 +415,11 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
 
         Assert.Equal(HttpStatusCode.Unauthorized, noToken.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, asHost.StatusCode);
-        // A request of another supplier is forbidden (403), exactly like every other supplier action on it.
         Assert.Equal(HttpStatusCode.Forbidden, anotherSupplier.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, withoutLink.StatusCode);
         Assert.Equal(ServiceRequestStatus.Completato, (await factory.LoadRequestAsync(id)).Status);
         unlinked.Dispose();
     }
-
-    // ─── Paid outside CasaZen: the traced exception ───
 
     [Fact]
     public async Task Offline_ARequestPaidInsideCasaZen_NeedsTheReason_ThenIsRecordedWithoutCommission()
@@ -464,7 +447,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         var payments = await PaymentsOfAsync(id);
         Assert.Contains(payments, p => p is { Status: ServicePaymentStatus.Canceled });
         Assert.Single(payments, p => p.Status == ServicePaymentStatus.Paid);
-        // The host is told, with the reason.
         var notice = Assert.Single(factory.Emails.Snapshot(), e => e.Template == Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.ServicePaymentOfflineRecorded
             && e.Content.HtmlBody.Contains("Il cliente ha pagato in contanti", StringComparison.Ordinal));
         Assert.Equal("owner@example.com", notice.To);
@@ -473,7 +455,7 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
     [Fact]
     public async Task Offline_ARequestPaidByHand_NeedsNoBody()
     {
-        var world = await ReadyWorldAsync(ready: false); // the account is not ready: the request is manual
+        var world = await ReadyWorldAsync(ready: false);
         var id = await factory.CreateRequestAsync(world);
         using var supplier = factory.Supplier(world);
         await supplier.PostAsync($"/api/service-requests/{id}/take", content: null);
@@ -514,14 +496,11 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         var page = await anonymous.PostAsJsonAsync($"/api/public/service-payments/{payment.Id}", new { token });
 
         Assert.Equal(HttpStatusCode.OK, recorded.StatusCode);
-        // The PaymentIntent the payer had was canceled on Stripe, and the withdrawn payment cannot be paid.
         Assert.Contains(factory.Gateway.Canceled, c => c.AccountId == SupplierAccount);
         Assert.Equal(HttpStatusCode.Conflict, session.StatusCode);
         Assert.Equal("service_payment_not_payable", (await Json(session)).GetProperty("code").GetString());
         Assert.Equal("Unavailable", (await Json(page)).GetProperty("state").GetString());
     }
-
-    // ─── Helpers ───
 
     private async Task<ServiceRequestWorld> ReadyWorldAsync(bool ready = true)
     {
@@ -536,7 +515,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         return world;
     }
 
-    /// <summary>A request taken by a supplier that can be paid: paid inside CasaZen.</summary>
     private async Task<(ServiceRequestWorld World, Guid Id)> TakenOnlineAsync()
     {
         var world = await ReadyWorldAsync();
@@ -548,7 +526,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         return (world, id);
     }
 
-    /// <summary>A request completed at its agreed price: the payment exists and its link was sent.</summary>
     private async Task<(ServiceRequestWorld World, Guid Id)> CompletedAsync()
     {
         var (world, id) = await TakenOnlineAsync();
@@ -565,7 +542,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
         return (world, id, payment.Id, TokenOf(payment.Id));
     }
 
-    /// <summary>The raw token of the link the host was emailed for <paramref name="paymentId"/> (the last one).</summary>
     private string TokenOf(Guid paymentId) =>
         factory.Emails.PaymentEmails()
             .Where(e => e.Template is "service-payment-request" or "service-payment-reminder")
@@ -625,7 +601,6 @@ public class ServicePaymentsIntegrationTests(ServicePaymentsFactory factory) : I
     }
 }
 
-/// <summary>The integration host with the supplier flags on and the emails recorded (SP-15a): Stripe is the fake gateway.</summary>
 public sealed class ServicePaymentsFactory : CasazenWebApplicationFactory
 {
     internal RecordingEmailQueue Emails { get; } = new();
@@ -640,7 +615,6 @@ public sealed class ServicePaymentsFactory : CasazenWebApplicationFactory
             {
                 ["Features:SupplierOnlinePayments"] = "true",
 
-                // SP-15a/15b on the direct charge; the money CasaZen holds for a host (SP-15c-b) has its own tests.
                 ["SupplierPayments:HeldForHosts"] = "false",
             }));
         builder.ConfigureTestServices(services =>

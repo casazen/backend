@@ -52,22 +52,14 @@ public abstract class OpenAccessFactoryBase(string? enabled, string? tier) : Cas
     }
 }
 
-/// <summary>The default configuration of a deployment: nothing about the open access is set.</summary>
 public sealed class OpenAccessUnsetFactory() : OpenAccessFactoryBase(null, null);
 
-/// <summary>The switch on and no tier: every org is served as Scale at least.</summary>
 public sealed class OpenAccessOnFactory() : OpenAccessFactoryBase("true", null);
 
-/// <summary>A switch that is not a boolean: the host must refuse to start.</summary>
 public sealed class OpenAccessInvalidSwitchFactory() : OpenAccessFactoryBase("yes", null);
 
-/// <summary>A tier that is not a plan: the host must refuse to start.</summary>
 public sealed class OpenAccessInvalidTierFactory() : OpenAccessFactoryBase("true", "Enterprise");
 
-/// <summary>
-/// BL-01 over the real pipeline with the switch <b>off</b> (the default of a deployment): the org without a subscription is
-/// still Starter and the new field says the access is not open.
-/// </summary>
 public class OpenAccessOffIntegrationTests(OpenAccessUnsetFactory factory) : IClassFixture<OpenAccessUnsetFactory>
 {
     private static string NewOwner() => $"auth0|bl01-off-{Guid.NewGuid():N}";
@@ -105,10 +97,6 @@ public class OpenAccessOffIntegrationTests(OpenAccessUnsetFactory factory) : ICl
     }
 }
 
-/// <summary>
-/// BL-01 over the real pipeline with <c>Entitlement:OpenAccess:Enabled=true</c> (tier Scale by default): an org without a
-/// subscription is served as Scale, while the stored plan, the subscription and the plan change rules do not move.
-/// </summary>
 public class OpenAccessOnIntegrationTests(OpenAccessOnFactory factory) : IClassFixture<OpenAccessOnFactory>
 {
     private static string NewOwner() => $"auth0|bl01-on-{Guid.NewGuid():N}";
@@ -118,7 +106,7 @@ public class OpenAccessOnIntegrationTests(OpenAccessOnFactory factory) : IClassF
     {
         var owner = NewOwner();
         Guid orgId = default;
-        for (var i = 0; i < 4; i++) // one above the Starter limit
+        for (var i = 0; i < 4; i++)
             orgId = (await factory.SeedPropertyAsync(ownerId: owner)).OrgId;
         using var client = factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
 
@@ -133,7 +121,6 @@ public class OpenAccessOnIntegrationTests(OpenAccessOnFactory factory) : IClassF
         Assert.True(body.GetProperty("canAddProperty").GetBoolean());
         Assert.True(body.GetProperty("canUseCustomDomain").GetBoolean());
 
-        // Only the answer changes: the stored plan and the subscription are what they were.
         var stored = await OpenAccessHttp.GetOrgAsync(factory, orgId);
         Assert.Equal(PlanTier.Starter, stored.PlanTier);
         Assert.Equal(SubscriptionStatus.None, stored.SubscriptionStatus);
@@ -179,7 +166,6 @@ public class OpenAccessOnIntegrationTests(OpenAccessOnFactory factory) : IClassF
 
         var response = await client.PostAsJsonAsync("/api/properties", OpenAccessHttp.PropertyBody());
 
-        // Without the open access this is 403 plan_limit_reached (TenantBoundaryIntegrationTests).
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
@@ -192,7 +178,6 @@ public class OpenAccessOnIntegrationTests(OpenAccessOnFactory factory) : IClassF
 
         var response = await client.PutAsJsonAsync("/api/orgs/me/plan", new { planTier = "Pro" });
 
-        // The rules compare with the plan the org pays for: Scale-for-free must not let it store Pro-for-free.
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("subscription_required", body.GetProperty("code").GetString());
@@ -248,7 +233,6 @@ public class OpenAccessOnIntegrationTests(OpenAccessOnFactory factory) : IClassF
     }
 }
 
-/// <summary>BL-01: a setting that is not valid stops the host at startup, with the variable named.</summary>
 public class OpenAccessStartupIntegrationTests
 {
     [Fact]
@@ -276,7 +260,6 @@ internal static class OpenAccessHttp
 {
     private const string CinOfRoma = "IT058091C27G5FFZDZ";
 
-    /// <summary>A property that passes validation, with no comune (the free-text city), like the other property creation tests.</summary>
     public static object PropertyBody() => new
     {
         name = "Appartamento accesso aperto",

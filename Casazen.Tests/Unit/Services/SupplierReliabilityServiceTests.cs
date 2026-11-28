@@ -65,7 +65,6 @@ public class SupplierReliabilityServiceTests
 
         Assert.Empty(s.Db.ChangeTracker.Entries<SupplierReliabilityEvent>());
         Assert.Empty(await s.ReliabilityEventsAsync());
-        // The next save of the caller carries nothing of the lost event.
         await s.Db.SaveChangesAsync();
         Assert.Empty(await s.ReliabilityEventsAsync());
     }
@@ -79,7 +78,6 @@ public class SupplierReliabilityServiceTests
         var noDeadline = Guid.NewGuid();
         var reliability = s.Kit.Reliability;
 
-        // Exactly at the deadline is still in time.
         await reliability.RecordReplyAsync(s.SupplierOrgId, inTime, Now, dueAt: Now);
         await reliability.RecordReplyAsync(s.SupplierOrgId, late, Now.AddMinutes(1), dueAt: Now);
         await reliability.RecordReplyAsync(s.SupplierOrgId, noDeadline, Now, dueAt: null);
@@ -90,15 +88,12 @@ public class SupplierReliabilityServiceTests
         Assert.False(recorded.AsBackup);
     }
 
-    // ─── A missed deadline ───
-
     [Fact]
     public async Task RecordNoReplyAsync_ASupplierThatCouldHaveAnswered_LosesPoints_AndIsToldSo()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var request = Guid.NewGuid();
 
-        // The request waited from 10:00 to 12:00 in Rome on a Thursday, inside the morning hours.
         var told = await s.Kit.Reliability.RecordNoReplyAsync(s.SupplierOrgId, request, Now.AddHours(-2), Now);
 
         Assert.True(told);
@@ -136,9 +131,9 @@ public class SupplierReliabilityServiceTests
     }
 
     [Theory]
-    [InlineData("2026-10-11T08:00:00Z", "2026-10-11T10:00:00Z")] // Sunday 10:00-12:00 in Rome: the supplier does not work on Sundays
-    [InlineData("2026-10-08T18:00:00Z", "2026-10-08T20:00:00Z")] // Thursday 20:00-22:00 in Rome: after the evening hours
-    [InlineData("2026-10-08T04:00:00Z", "2026-10-08T05:30:00Z")] // Thursday 06:00-07:30 in Rome: before the morning hours
+    [InlineData("2026-10-11T08:00:00Z", "2026-10-11T10:00:00Z")]
+    [InlineData("2026-10-08T18:00:00Z", "2026-10-08T20:00:00Z")]
+    [InlineData("2026-10-08T04:00:00Z", "2026-10-08T05:30:00Z")]
     public async Task RecordNoReplyAsync_AWindowOutsideTheWorkingHours_IsExcused(string started, string due)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -155,7 +150,6 @@ public class SupplierReliabilityServiceTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        // Thursday 17:00-19:00 in Rome: the last hour is inside the afternoon band (14-18).
         var told = await s.Kit.Reliability.RecordNoReplyAsync(
             s.SupplierOrgId, Guid.NewGuid(), new DateTime(2026, 10, 8, 15, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 8, 17, 0, 0, DateTimeKind.Utc));
 
@@ -201,7 +195,6 @@ public class SupplierReliabilityServiceTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var noHours = await s.AddOtherSupplierAsync();
 
-        // A Sunday night: with hours it would be excused, but nothing says this supplier was away.
         var told = await s.Kit.Reliability.RecordNoReplyAsync(
             noHours, Guid.NewGuid(), new DateTime(2026, 10, 11, 21, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 11, 22, 0, 0, DateTimeKind.Utc));
 
@@ -223,12 +216,9 @@ public class SupplierReliabilityServiceTests
         var told = await off.RecordNoReplyAsync(s.SupplierOrgId, Guid.NewGuid(), Now.AddHours(-2), Now);
 
         Assert.False(told);
-        // The history is kept, so the weights can be turned on later and applied to what already happened.
         Assert.Single(await s.ReliabilityEventsAsync());
         Assert.Empty(await off.PointsAsync([s.SupplierOrgId]));
     }
-
-    // ─── The points ───
 
     [Fact]
     public async Task PointsAsync_AddsUpTheEventsOfTheWindowOfEachSupplierOnly()
@@ -246,7 +236,6 @@ public class SupplierReliabilityServiceTests
 
         Assert.Equal(1 + 1 + 2, points[s.SupplierOrgId]);
         Assert.Equal(-10, points[other]);
-        // Nobody else has a history: the supplier starts neutral (a missing entry reads as 0).
         Assert.Equal(2, points.Count);
     }
 
@@ -261,7 +250,6 @@ public class SupplierReliabilityServiceTests
 
         Assert.Equal(-10, (await reliability.PointsAsync([s.SupplierOrgId]))[s.SupplierOrgId]);
         s.Clock.Advance(TimeSpan.FromDays(2));
-        // Two days later the second one has left the window too: no event, no points, a neutral supplier.
         Assert.Empty(await reliability.PointsAsync([s.SupplierOrgId]));
     }
 

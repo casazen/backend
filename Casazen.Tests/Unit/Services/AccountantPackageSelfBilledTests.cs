@@ -50,12 +50,10 @@ public class AccountantPackageSelfBilledTests
         var documents = await SeedSelfBilledAsync(rig);
         var (result, files) = await BuildAsync(rig, AccountantPackageAccess.Full, November);
 
-        // Two TD17 issued in November (the third is of December): two more documents, each with its PDF and its XML.
         Assert.Equal(baseline.Documents + 2, result.Documents);
         var company = documents[0];
         Assert.Equal((135.00m, 29.70m, 0m, 164.70m), (company.TaxableBase, company.VatAmount, company.StampDuty, company.Total));
 
-        // The register of the company: one row, the amounts of the stored document, its supplier, the month it integrates (October).
         var register = Blocks(files[RegisterOf(CompanyVat)]);
         Assert.Contains("TEST Immobiliare Lago Srl", register[0][0][0], StringComparison.Ordinal);
         Assert.Contains("01/11/2026", register[0][0][0], StringComparison.Ordinal);
@@ -70,7 +68,6 @@ public class AccountantPackageSelfBilledTests
         Assert.Equal(new[] { "TD17-2026/1", "03/11/2026", "22,00", string.Empty, "135,00", "29,70", "EUR" }, Assert.Single(register[1].Skip(2)));
         Assert.Equal(new[] { "EUR", "22,00", string.Empty, "135,00", "29,70", "164,70", "1" }, Assert.Single(register[2].Skip(2)));
 
-        // The other holder issues on its own series and has its own register (its number is the first of its series too).
         var second = documents[1];
         var secondRow = Assert.Single(Blocks(files[RegisterOf(SecondCompanyVat)])[0].Skip(2));
         Assert.Equal(
@@ -78,7 +75,6 @@ public class AccountantPackageSelfBilledTests
             secondRow);
         Assert.Equal((second.TaxableBase, second.VatAmount, second.Total), (Money(secondRow[5]), Money(secondRow[6]), Money(secondRow[8])));
 
-        // The document files are the ones the screens download: the PDF of the layout of a TD17 and the XML as it was stored.
         var folder = AccountantPackageStructure.SelfBilledFolder;
         Assert.Equal("%PDF", Encoding.ASCII.GetString(files[$"{folder}/2026-11-03-TD17-2026-1.pdf"], 0, 4));
         Assert.Equal(company.FatturaPaXml, Text(files[$"{folder}/2026-11-03-TD17-2026-1.xml"]));
@@ -90,7 +86,6 @@ public class AccountantPackageSelfBilledTests
         Assert.Contains("2026-11;Autofatture TD17;22,00;;EUR;100,00;22,00;122,00;1", Text(files[$"iva/iva-it-{SecondCompanyVat}.csv"]), StringComparison.Ordinal);
         AssertTheIndex(files);
 
-        // A year holds the three, the December one included, added up for each rate of the company.
         var (_, year) = await BuildAsync(rig, AccountantPackageAccess.Full, Year2026);
         var yearRegister = Blocks(year[RegisterOf(CompanyVat)]);
         Assert.Equal(2, yearRegister[0].Count - 2);
@@ -100,11 +95,6 @@ public class AccountantPackageSelfBilledTests
         AssertTheIndex(year);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. The portal commissions of the accounts the agency holds (V2) are in the package, one row for each statement month, owner and channel: the amount is the one of the
-    /// owner ledger (a listing whose account the owner holds is not in it), it ties to the figure of the agency summary, the treatment says whether it is recharged to the owner or borne by the agency
-    /// (<c>RechargePortalCommissions</c>, decision 1 of 20/11/2026), and a reversal cancels the line it reverses out of the table.
-    /// </summary>
     [Fact]
     public async Task AccountantPackage_ContainsTheV2PortalCommission_Test()
     {
@@ -118,7 +108,6 @@ public class AccountantPackageSelfBilledTests
         Assert.Equal(new[] { "Booking.com", "CHF", "Riaddebitata al proprietario", "120,00" }, Assert.Single(blocks[1].Skip(2)));
         Assert.True(files.ContainsKey(PortalCommissionsPath.Replace(".csv", ".xlsx", StringComparison.Ordinal)));
 
-        // The amount is what the ledger says of the lake house (the 150.00 of the mountain house, whose account the owner holds, is not here) and the figure of the summary.
         var ledger = -await rig.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId == lake).SumAsync(e => e.Amount);
         var summary = await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October);
         Assert.Equal((120.00m, 120.00m), (ledger, Money(row[5])));
@@ -126,8 +115,6 @@ public class AccountantPackageSelfBilledTests
         Assert.DoesNotContain("150,00", Text(files[PortalCommissionsPath]), StringComparison.Ordinal);
         AssertTheIndex(files);
 
-        // The agency that does not recharge the commissions bears them (decision 1 of 20/11/2026): the same amount, said so. (The posting writes such a commission as a line the
-        // agency bears, AccountantPackage_V2NotRecharged_IsAgencyCost_OnceInTheMargin_Test; here the line of before is read with the setting of today.)
         var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.OrgId == rig.OrgId);
         profile.RechargePortalCommissions = false;
         await rig.Db.SaveChangesAsync();
@@ -135,7 +122,6 @@ public class AccountantPackageSelfBilledTests
         var (_, borne) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
         Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "A carico dell'agenzia" }, Assert.Single(Blocks(borne[PortalCommissionsPath])[0].Skip(2)));
 
-        // A reversal and the line it reverses cancel out: nothing is left to list, and the table is not written.
         var original = await rig.Db.OwnerLedgerEntries.AsNoTracking().SingleAsync(e => e.EntryType == OwnerLedgerEntryType.ChannelFee && e.PropertyId == lake);
         rig.Db.OwnerLedgerEntries.Add(Fee(rig, lake, stay, 10, 120.00m, reverses: original.Id));
         await rig.Db.SaveChangesAsync();
@@ -145,12 +131,6 @@ public class AccountantPackageSelfBilledTests
         Assert.Empty((await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October)).PortalCommissionsBorne);
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule (FIX/BE-V2-NO-RECHARGE, decision 1 of 20/11/2026). The organization stops recharging the commissions of the accounts it holds, so the posting of the month stops
-    /// charging the commission of the lake house to the owner: it reverses the channel fee posted before and posts the commission again as a line the agency bears (as
-    /// <c>PostPeriodAsync</c> does). The owner's balance has none of it; the package lists it once, «A carico dell'agenzia»; the agency summary counts it once as the cost of the margin (120.00,
-    /// not 240.00: the reversed line and its reversal cancel out), the very margin of before, when the owner was charged it and the agency recharged it.
-    /// </summary>
     [Fact]
     public async Task AccountantPackage_V2NotRecharged_IsAgencyCost_OnceInTheMargin_Test()
     {
@@ -168,19 +148,16 @@ public class AccountantPackageSelfBilledTests
         await rig.Db.SaveChangesAsync();
         rig.Db.ChangeTracker.Clear();
 
-        // The owner is charged nothing of it: what counts in its balance nets to zero, and the line the agency bears is for information only.
         var lines = await rig.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.PropertyId == lake && e.SourceId == stay).ToListAsync();
         Assert.Equal(0m, lines.Where(e => OwnerLedgerBalance.Counts(e.EntryType)).Sum(e => e.Amount));
         Assert.Equal(-120.00m, Assert.Single(lines, e => !OwnerLedgerBalance.Counts(e.EntryType)).Amount);
 
-        // The package: one row and one total, the commission borne by the agency.
         var (_, files) = await BuildAsync(rig, AccountantPackageAccess.Full, October);
         var blocks = Blocks(files[PortalCommissionsPath]);
         Assert.Equal(new[] { "2026-10", "TEST Proprietario", "Booking.com", "CHF", "1", "120,00", "A carico dell'agenzia" }, Assert.Single(blocks[0].Skip(2)));
         Assert.Equal(new[] { "Booking.com", "CHF", "A carico dell'agenzia", "120,00" }, Assert.Single(blocks[1].Skip(2)));
         AssertTheIndex(files);
 
-        // The agency summary: the commission is the cost of the margin once, and the margin is the one of before.
         var summary = await rig.Summaries.GetAsync(rig.Scope, AccountantPackageAccess.Full, October);
         Assert.Equal(new AgencyPortalCommissionBorneRow(BookingSource.BookingCom, "CHF", 120.00m), Assert.Single(summary.PortalCommissionsBorne));
         var margin = Assert.Single(summary.Margin);
@@ -203,7 +180,6 @@ public class AccountantPackageSelfBilledTests
         Assert.DoesNotContain("Autofatture", Text(Assert.Single(before, f => f.Key.StartsWith("iva/iva-", StringComparison.Ordinal) && f.Key.EndsWith(".csv", StringComparison.Ordinal)).Value), StringComparison.Ordinal);
         Assert.Contains("fatture-proprietari/registro.csv", before.Keys);
 
-        // November has a TD17 and a commission of the V2 listing: September, which has none, does not change.
         await SeedSelfBilledAsync(rig);
         rig.Db.OwnerLedgerEntries.Add(Fee(rig, lake, stay, 11, -80.00m));
         await rig.Db.SaveChangesAsync();
@@ -214,16 +190,11 @@ public class AccountantPackageSelfBilledTests
         foreach (var path in before.Keys.Where(k => k.EndsWith(".csv", StringComparison.Ordinal) && k != AccountantPackageStructure.IndexFile))
             Assert.Equal(before[path], after[path]);
 
-        // And the periods that do have them are not the same package.
         var (_, november) = await BuildAsync(rig, AccountantPackageAccess.Full, November);
         Assert.Contains(november.Keys, k => k.StartsWith(AccountantPackageStructure.SelfBilledFolder, StringComparison.Ordinal));
         Assert.Contains(PortalCommissionsPath, november.Keys);
     }
 
-    /// <summary>
-    /// PROOF TEST: tenant rule. The documents and the ledger lines of another organization are never in the package: its TD17 (with a number, a supplier and an issuer of its own) and a
-    /// commission line that points at the listing and the stay of this org change no file, in any file, name or number.
-    /// </summary>
     [Fact]
     public async Task AccountantPackage_NeverContainsAnotherOrgsDocuments_Test()
     {
@@ -281,10 +252,6 @@ public class AccountantPackageSelfBilledTests
         }
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A name that a spreadsheet would run as a formula is written as text in the register of the TD17: with a leading apostrophe in the CSV and as a string that is never
-    /// calculated in the Excel file (the rule of every file of the package, kept for the new register).
-    /// </summary>
     [Fact]
     public async Task AccountantPackage_SelfBilledRegister_NeverRunsAsAFormula_Test()
     {
@@ -328,7 +295,6 @@ public class AccountantPackageSelfBilledTests
         Assert.Contains("2026-11;Autofatture TD17;22,00;;EUR;100,00;22,00;122,00;1", fullText, StringComparison.Ordinal);
         Assert.DoesNotContain(NotIncludedTitle, fullText, StringComparison.Ordinal);
 
-        // The whole org without agency.statement.view: no TD17 figure, and the file says why with the reason the omitted folders give.
         var (_, without) = await BuildAsync(rig, AccountantPackageAccess.WithoutOwnerAccounting, November);
         var withoutText = Text(without[vat]);
         Assert.Contains("2026-11;Fatture ordinarie;22,00;;EUR;100,00;22,00;122,00;1", withoutText, StringComparison.Ordinal);
@@ -338,7 +304,6 @@ public class AccountantPackageSelfBilledTests
         var note = Assert.Single(withoutBlocks, b => b[0][0] == NotIncludedTitle);
         Assert.Equal("Servono il permesso di lettura dei rendiconti dei proprietari (agency.statement.view) e l'accesso a tutta l'organizzazione.", Assert.Single(note.Skip(2))[0]);
 
-        // A caller that reaches only some properties reads neither the invoices to the owners nor the TD17: the file says both.
         var texts = new PackageTexts(new ResxDocumentTexts(), PackageTexts.PackageLanguage);
         var issuer = new AgencyIssuer($"IT|{AgencyVat}|TEST Agenzia Srl", "TEST Agenzia Srl", "IT", AgencyVat, DocumentRegime.VatOrdinary);
         var restricted = AccountantPackageDocuments.Vat(issuer, [], [], texts, new VatCoverage(OwnerInvoices: false, PortalCommissions: false, SelfBilled: false));
@@ -369,14 +334,12 @@ public class AccountantPackageSelfBilledTests
 
         var (result, files) = await BuildAsync(rig, AccountantPackageAccess.Full, November);
 
-        // One document has files: the valid one (its PDF and its XML); the rejected ones have none, and only the valid one is a document of the package.
         var folder = AccountantPackageStructure.SelfBilledFolder;
         Assert.Equal(baseline.Documents + 1, result.Documents);
         Assert.Contains($"{folder}/2026-11-03-TD17-2026-1.pdf", files.Keys);
         Assert.Contains($"{folder}/2026-11-03-TD17-2026-1.xml", files.Keys);
         Assert.Equal(2, files.Keys.Count(k => k.StartsWith(folder + "/", StringComparison.Ordinal) && (k.EndsWith(".pdf", StringComparison.Ordinal) || k.EndsWith(".xml", StringComparison.Ordinal))));
 
-        // The register lists both with their state and their own amounts; the two tables of the rates hold the valid one only (the exact totals of the valid TD17).
         var register = Blocks(files[RegisterOf(CompanyVat)]);
         var rows = register[0].Skip(2).ToList();
         Assert.Equal(2, rows.Count);
@@ -419,8 +382,6 @@ public class AccountantPackageSelfBilledTests
         var (_, before) = await BuildAsync(rig, AccountantPackageAccess.Full, September);
         Assert.DoesNotContain(before.Keys, k => k.Contains(AccountantPackageStructure.UnusedNumbersFile, StringComparison.Ordinal));
 
-        // Three numbers closed: one of the company on the 20th of November (a formula as its note), one of the same company at 00:30 of the 1st of December in Rome (23:30 UTC of the 30th), one of another issuer on the
-        // 2nd of December (a user that is gone); a draft discarded without a closing; and a closing of another organization.
         var company = CompanyOf("TEST Immobiliare Lago Srl", CompanyVat);
         var other = Guid.NewGuid();
         var (rejectedA, closedA) = ClosedNumber(rig.OrgId, 1, new DateOnly(2026, 11, 3), new DateTime(2026, 11, 20, 10, 0, 0, DateTimeKind.Utc), company, SelfBillingCloseReasons.PortalCreditNote, "=SUM(1+1)", "auth0|agency");
@@ -438,7 +399,6 @@ public class AccountantPackageSelfBilledTests
             "Emittente", "Numero", "Data del documento scartato", "Chiusa il", "Motivo della chiusura", "Nota", "Esito SDI del documento originale", "Codice di scarto SDI", "Chiusa da",
         };
 
-        // November: the number closed on the 20th, with every column (the closing of the 1st of December in Rome is December's), the issuer told apart, the note as text, the outcome of the rejected original.
         var (_, november) = await BuildAsync(rig, AccountantPackageAccess.Full, November);
         var register = Blocks(november[unusedPath]);
         Assert.StartsWith("Numeri delle autofatture TD17 non utilizzati", register[0][0][0], StringComparison.Ordinal);
@@ -458,7 +418,6 @@ public class AccountantPackageSelfBilledTests
 
         AssertTheIndex(november);
 
-        // December: the number closed at 00:30 of the 1st (Rome) and the one of the other issuer, oldest closing first; a user that is gone is named by a fixed text, never by the id the closing recorded, and a closing without a note has an empty cell.
         var (_, december) = await BuildAsync(rig, AccountantPackageAccess.Full, AccountantPackagePeriod.OfMonth(2026, 12));
         var decemberRows = Blocks(december[unusedPath])[0].Skip(2).ToList();
         Assert.Equal(2, decemberRows.Count);
@@ -476,7 +435,6 @@ public class AccountantPackageSelfBilledTests
 
         AssertTheIndex(december);
 
-        // A year has all three, oldest closing first; none of another organization or of a draft discarded without a closing is in any file.
         var (_, year) = await BuildAsync(rig, AccountantPackageAccess.Full, Year2026);
         Assert.Equal(new[] { "TD17-2026/1", "TD17-2026/2", "TD17-2026/1" }, Blocks(year[unusedPath])[0].Skip(2).Select(r => r[1]));
         Assert.Equal(new[] { "20/11/2026", "01/12/2026", "02/12/2026" }, Blocks(year[unusedPath])[0].Skip(2).Select(r => r[3]));
@@ -487,11 +445,9 @@ public class AccountantPackageSelfBilledTests
                 Assert.False(text.Contains(foreign, StringComparison.Ordinal), $"{path} holds «{foreign}» of another organization");
         }
 
-        // The id of a user is nowhere in the files, a user that is gone included (the fixed text is written instead): not in a CSV, not in any part of an Excel file. The id stays in the column of the database.
         foreach (var files in new[] { november, december, year })
             AssertNoUserIds(files, "auth0|ghost", "auth0|agency");
 
-        // Owner accounting of the whole organization only: without the permission, or for a caller who reaches only some properties, there is no register (and none of its words in any file).
         var (_, withoutPermission) = await BuildAsync(rig, AccountantPackageAccess.WithoutOwnerAccounting, Year2026);
         var (_, restricted) = await BuildAsync(rig, AccountantPackageAccess.Full, Year2026, new HostScope(rig.OrgId, GrantedToUserId: "auth0|lago"));
         foreach (var files in new[] { withoutPermission, restricted })
@@ -505,14 +461,11 @@ public class AccountantPackageSelfBilledTests
             }
         }
 
-        // A period without a closing is the package it always was: September has the same files with the same content as before the closings existed (no file, not a byte of the CSV changed).
         var (_, after) = await BuildAsync(rig, AccountantPackageAccess.Full, September);
         Assert.Equal(before.Keys.Order(StringComparer.Ordinal), after.Keys.Order(StringComparer.Ordinal));
         foreach (var path in before.Keys.Where(k => k.EndsWith(".csv", StringComparison.Ordinal) && k != AccountantPackageStructure.IndexFile))
             Assert.Equal(before[path], after[path]);
     }
-
-    // ---------------------------------------------------------------- the data
 
     /// <summary>
     /// A number closed as «non più dovuta»: the TD17 the SDI rejected (issued on <paramref name="issued"/>, discarded by its correction, its sequence number given up, rejected with the code 00417) and the replacement draft
@@ -540,7 +493,6 @@ public class AccountantPackageSelfBilledTests
         return (original, closed);
     }
 
-    /// <summary>Three TD17 of two owner companies (V1 holders): the first and the second issued in November for October, the third in December for November; a series of its own for each company.</summary>
     private static async Task<IReadOnlyList<FiscalDocument>> SeedSelfBilledAsync(AccountantPackageRig rig)
     {
         var documents = new[]
@@ -643,7 +595,6 @@ public class AccountantPackageSelfBilledTests
         return document;
     }
 
-    /// <summary>The lake house of the rig (its Booking.com account is the agency's, V2) and the stay its commission of October was kept on.</summary>
     private static async Task<(Guid Property, Guid Stay)> V2ListingAsync(AccountantPackageRig rig)
     {
         var property = (await rig.Db.PropertyChannelAccountHolders.AsNoTracking().SingleAsync()).PropertyId;
@@ -654,7 +605,6 @@ public class AccountantPackageSelfBilledTests
         return (property, stay);
     }
 
-    /// <summary>A channel fee line of the owner ledger of <paramref name="month"/> 2026 on a stay of the listing (negative: a cost of the owner, a reversal is positive and names the line it reverses).</summary>
     private static OwnerLedgerEntry Fee(AccountantPackageRig rig, Guid propertyId, Guid stayId, int month, decimal amount, Guid? reverses = null, Guid? orgId = null) => new()
     {
         OrgId = orgId ?? rig.OrgId,
@@ -678,8 +628,6 @@ public class AccountantPackageSelfBilledTests
         PostedAt = new DateTime(2026, 11, 7, 8, 0, 0, DateTimeKind.Utc),
     };
 
-    // ---------------------------------------------------------------- the files
-
     private static async Task<(AccountantPackageResult Result, Dictionary<string, byte[]> Files)> BuildAsync(
         AccountantPackageRig rig, AccountantPackageAccess access, AccountantPackagePeriod period, HostScope? scope = null)
     {
@@ -688,7 +636,6 @@ public class AccountantPackageSelfBilledTests
         return (result, Unzip(output.ToArray()));
     }
 
-    /// <summary>The index lists every file of the ZIP and no other, with the SHA-256 of its bytes.</summary>
     private static void AssertTheIndex(Dictionary<string, byte[]> files)
     {
         var index = Blocks(files[AccountantPackageStructure.IndexFile])[0].Skip(2).ToList();
@@ -715,7 +662,6 @@ public class AccountantPackageSelfBilledTests
 
     private static string Text(byte[] bytes) => Encoding.UTF8.GetString(bytes).TrimStart((char)0xFEFF);
 
-    /// <summary>No CSV file, and no part of an Excel file, holds the id of a user: the package names who closed a number by name, or by a fixed text when the user is gone.</summary>
     private static void AssertNoUserIds(Dictionary<string, byte[]> files, params string[] ids)
     {
         foreach (var (path, content) in files.Where(f => f.Key.EndsWith(".csv", StringComparison.Ordinal) || f.Key.EndsWith(".xlsx", StringComparison.Ordinal)))
@@ -740,10 +686,8 @@ public class AccountantPackageSelfBilledTests
         }
     }
 
-    /// <summary>An amount as the CSV writes it (a decimal comma, no thousands separator).</summary>
     private static decimal Money(string cell) => decimal.Parse(cell, NumberStyles.Number, Italian);
 
-    /// <summary>The tables of a CSV, each as its rows (the title, the header, the data), the empty row between two tables left out; a cell is what the file holds, quotes undone.</summary>
     private static List<List<List<string>>> Blocks(byte[] bytes)
     {
         var text = Text(bytes);

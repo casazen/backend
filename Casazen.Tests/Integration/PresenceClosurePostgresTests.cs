@@ -62,7 +62,6 @@ public sealed class PresenceClosurePostgresTests : IAsyncLifetime
         var policy = Policy();
         var key = Guid.NewGuid().ToString();
 
-        // The challenge of the attempt, issued by the flow on its own connection.
         string token;
         await using (var issuing = NewContext())
         {
@@ -72,7 +71,6 @@ public sealed class PresenceClosurePostgresTests : IAsyncLifetime
             token = issued.ChallengeToken;
         }
 
-        // Two requests at the same moment, each with its own context and connection, as two copies of the page's request would be.
         await using var leftDb = NewContext();
         await using var rightDb = NewContext();
         var left = await LoadAsync(leftDb, sessionId);
@@ -89,12 +87,10 @@ public sealed class PresenceClosurePostgresTests : IAsyncLifetime
         var rows = await read.BiometricVerificationLogs.IgnoreQueryFilters().AsNoTracking().Where(row => row.BookingId == bookingId).ToListAsync();
         var row = Assert.Single(rows);
 
-        // The property keeps no document (Switzerland, no known canton): the coherence of the two sides cannot be told, so the policy would not approve either (shadow Escalate).
         Assert.Equal((key, IdentityDecisionMode.Observation, BiometricOutcome.Escalate, BiometricOutcome.Escalate), (row.IdempotencyKey, row.DecisionMode, row.Outcome, row.ShadowOutcome));
         var saved = await read.GuestCheckInSessions.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == sessionId);
         Assert.Equal((1, IdentityOutcomeCodes.Review, key), (saved.BiometricAttempts, saved.IdentityOutcomeCode, saved.IdentityLastAttemptKey));
 
-        // The last line: a second row with the same key for the booking is refused by the unique index, whatever writes it.
         await using var twin = NewContext();
         twin.BiometricVerificationLogs.Add(new BiometricVerificationLog
         {
@@ -231,7 +227,6 @@ public sealed class PresenceClosurePostgresTests : IAsyncLifetime
             decisionEngine: new IdentityDecisionEngine());
     }
 
-    /// <summary>The frames of the attempt (generated JPEGs of noise), with the picture of the document coming again: the property keeps no document.</summary>
     private static PresenceSubmission Submission(string key, string token) =>
         PresenceClosureKit.Submission(
             key,
@@ -239,10 +234,6 @@ public sealed class PresenceClosurePostgresTests : IAsyncLifetime
             documentPhoto: new MemoryStream(PresenceClosureKit.FrontPicture),
             documentPhotoBack: new MemoryStream(PresenceClosureKit.BackPicture));
 
-    /// <summary>
-    /// An org, its owner, a property in Switzerland that keeps no document, an adult guest and a confirmed booking, and a check-in session whose identity step is opened, with the
-    /// consent to the text served and the CIE read on both sides: written through the model.
-    /// </summary>
     private async Task<(Guid SessionId, Guid BookingId)> SeedReadyStayAsync()
     {
         await using var db = NewContext();

@@ -34,8 +34,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
 
     public ServiceRequestTransitionsPostgresTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
-    // ─── A4-19: concurrency ───
-
     [PostgresFact]
     public async Task TakeAndReject_InParallel_OneWinsTheOtherGets409AndOnlyTheWinnerNotifiesTheHost()
     {
@@ -64,12 +62,10 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         var takeWon = take.StatusCode == HttpStatusCode.OK;
         var stored = await ReadAsync(id);
         Assert.Equal(takeWon ? ServiceRequestStatus.PresoInCarico : ServiceRequestStatus.Rifiutato, stored.Status);
-        // Nothing of the losing transition was saved.
         Assert.Equal(takeWon, stored.TakenAt is not null);
         Assert.Equal(takeWon, stored.RejectionReason is null);
         Assert.Equal(takeWon ? "PresoInCarico" : "Rifiutato", (await ReadJsonAsync(takeWon ? take : reject)).GetProperty("status").GetString());
 
-        // One host email and one host push, for the winner's status (MO-04: a rejection is pushed too, A6-08).
         var hostEmail = Assert.Single(emails.Snapshot());
         Assert.Equal(w.HostContactEmail, hostEmail.To);
         Assert.Equal(EmailTemplates.Names.ServiceRequestStatusChanged, hostEmail.Template);
@@ -84,8 +80,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         var w = await SeedWorldAsync();
         var id = await CreateRequestAsync(w);
         var emails = new RecordingEmailQueue();
-        // No SaveRendezvous: Take always holds the supplier calendar lock through the save, so holding two saves
-        // under that lock deadlocks. The lock serializes the takes; the loser is 409 (xmin) or 422 (already taken).
         await using var app = _factory.WithWebHostBuilder(builder =>
             builder.ConfigureTestServices(services =>
             {
@@ -106,8 +100,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Assert.Equal(winner, (await ReadAsync(id)).TakenByUserId);
         Assert.Single(emails.Snapshot());
     }
-
-    // ─── A4-17 / state machine: typed errors ───
 
     [PostgresTheory]
     [InlineData("take", Supplier)]
@@ -155,7 +147,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
     [InlineData(ServiceRequestStatus.Pagato, "reject")]
     [InlineData(ServiceRequestStatus.Pagato, "complete")]
     [InlineData(ServiceRequestStatus.Pagato, "mark-paid")]
-    // SP-04: a cancelled request is final.
     [InlineData(ServiceRequestStatus.Annullato, "take")]
     [InlineData(ServiceRequestStatus.Annullato, "complete")]
     [InlineData(ServiceRequestStatus.Annullato, "reject")]
@@ -238,8 +229,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Assert.Equal(ServiceRequestStatus.PresoInCarico, stored.Status);
         Assert.Null(stored.RejectionReason);
     }
-
-    // ─── A4-18: validation of the bodies ───
 
     [PostgresFact]
     public async Task Create_NotesOf1500Characters_Returns400AndCreatesNothing()
@@ -430,11 +419,9 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         await AssertProblemAsync(responses.Single(r => r.StatusCode == HttpStatusCode.Conflict), HttpStatusCode.Conflict, ServiceRequestErrorCodes.StateChanged);
         var stored = await ReadAsync(id);
         Assert.Equal(startWon ? ServiceRequestStatus.InCorso : ServiceRequestStatus.Annullato, stored.Status);
-        // Nothing of the losing transition was saved.
         Assert.Equal(startWon, stored.StartedAt is not null);
         Assert.Equal(!startWon, stored.CancelledAt is not null);
         Assert.Equal(!startWon, stored.CancellationReason is not null);
-        // One email, for the winner: the host hears of the start, the supplier of the cancellation.
         var email = Assert.Single(emails.Snapshot());
         Assert.Equal(
             startWon ? EmailTemplates.Names.ServiceRequestStatusChanged : EmailTemplates.Names.ServiceRequestCancelledToSupplier,
@@ -507,7 +494,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Assert.Equal(completeWon ? 5000 : null, stored.FinalAmountCents);
         Assert.Equal(!completeWon, stored.CancelledAt is not null);
 
-        // Whoever lost, a completed request cannot be cancelled afterwards.
         if (completeWon)
         {
             var late = await host.PostAsJsonAsync($"/api/service-requests/{id}/cancel", new { reason = "Troppo tardi" });
@@ -553,12 +539,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         Assert.NotNull((await ReadAsync(id)).LastRemindedAt);
     }
 
-    // ─── helpers ───
-
-    /// <summary>
-    /// The app with every save of a request held until two of them arrived (<see cref="SaveRendezvous"/>: ONE rendezvous for the
-    /// host, shared by the requests of every scope), the email queue recording what is sent and, when given, the push service too.
-    /// </summary>
     private Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> AppHoldingParallelSaves(
         RecordingEmailQueue emails,
         RecordingPushNotifications? pushes = null) =>
@@ -574,7 +554,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
             }
         }));
 
-    /// <summary>A request the supplier took, through the API (its emails go to the queue of the factory, not to the test's).</summary>
     private async Task<Guid> CreateTakenRequestAsync(World w)
     {
         var id = await CreateRequestAsync(w);
@@ -637,7 +616,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
         return body;
     }
 
-    /// <summary>400 <c>validation_error</c> (FD-05); returns the field errors.</summary>
     private static async Task<JsonElement> AssertValidationErrorAsync(HttpResponseMessage response)
     {
         var text = await response.Content.ReadAsStringAsync();
@@ -673,10 +651,6 @@ public class ServiceRequestTransitionsPostgresTests : IClassFixture<CasazenWebAp
             .ExecuteUpdateAsync(u => u.SetProperty(r => r.Status, status));
     }
 
-    /// <summary>
-    /// A host org with one property in comune H501 and one confirmed stay on it, and an active supplier (its own org)
-    /// with two members, operating in H501 for cleaning.
-    /// </summary>
     private async Task<World> SeedWorldAsync()
     {
         const string comune = "H501";

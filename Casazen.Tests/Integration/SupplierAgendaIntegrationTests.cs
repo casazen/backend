@@ -25,13 +25,7 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
 
     private static DateOnly Today => TimeProvider.System.TodayInRomeAsDateOnly();
 
-    /// <summary>
-    /// How far apart the same instant can be before and after a trip through PostgreSQL: a <c>timestamp</c> keeps microseconds,
-    /// the clock of the service (and of .NET) 100 ns, and what a write answers with is the value in memory, not the one stored.
-    /// </summary>
     private static readonly TimeSpan DatabaseTimestampPrecision = TimeSpan.FromTicks(TimeSpan.TicksPerMillisecond / 1000);
-
-    // ─── Who may call it ─────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("GET", "/api/supplier/availability/hours")]
@@ -94,8 +88,8 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
     }
 
     [Theory]
-    [InlineData(false)] // a supplier-only account: User.SupplierOrgId, no User.OrgId (PL-05)
-    [InlineData(true)] // the legacy shape: the supplier org also in User.OrgId
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task Agenda_BothSupplierLinkShapes_ReachTheSuppliersOwnAgenda(bool legacyOrgIdLink)
     {
         var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(factory, legacyOrgIdLink);
@@ -107,8 +101,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         Assert.Equal(1, (await SupplierAgendaTestData.CountsAsync(factory, orgId)).Settings);
         Assert.Equal(4, (await ReadAsync(await client.GetAsync($"{Base}/rules"))).GetProperty("maxJobsPerDay").GetInt32());
     }
-
-    // ─── Weekly hours ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetHours_ANewSupplier_IsSevenRestDaysMondayFirst_WithNothingConfigured()
@@ -125,7 +117,7 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
             body.GetProperty("days").EnumerateArray().Select(day => day.GetProperty("weekday").GetString()!));
         Assert.All(body.GetProperty("days").EnumerateArray(), day => Assert.Equal(0, day.GetProperty("bands").GetArrayLength()));
         Assert.Equal(JsonValueKind.Null, body.GetProperty("configuredAt").ValueKind);
-        Assert.Equal(0, (await SupplierAgendaTestData.CountsAsync(factory, orgId)).Settings); // a read writes nothing
+        Assert.Equal(0, (await SupplierAgendaTestData.CountsAsync(factory, orgId)).Settings);
     }
 
     [Fact]
@@ -144,8 +136,8 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         Assert.Equal(2, monday.GetProperty("bands").GetArrayLength());
         Assert.Equal(480, monday.GetProperty("bands")[0].GetProperty("startMinute").GetInt32());
         Assert.Equal(780, monday.GetProperty("bands")[0].GetProperty("endMinute").GetInt32());
-        Assert.Equal(1, saved.GetProperty("days")[5].GetProperty("bands").GetArrayLength()); // Saturday
-        Assert.Equal(0, saved.GetProperty("days")[6].GetProperty("bands").GetArrayLength()); // Sunday: a rest day
+        Assert.Equal(1, saved.GetProperty("days")[5].GetProperty("bands").GetArrayLength());
+        Assert.Equal(0, saved.GetProperty("days")[6].GetProperty("bands").GetArrayLength());
 
         var read = await ReadAsync(await client.GetAsync($"{Base}/hours"));
         Assert.Equal(saved.GetProperty("days").ToString(), read.GetProperty("days").ToString());
@@ -198,9 +190,8 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         var problem = await ReadAsync(response);
         Assert.Equal("supplier_hours_invalid", problem.GetProperty("code").GetString());
         Assert.Contains(field, Strings(problem.GetProperty("fields")));
-        // The week saved before is intact.
         var read = await ReadAsync(await client.GetAsync($"{Base}/hours"));
-        Assert.Equal(1, read.GetProperty("days")[4].GetProperty("bands").GetArrayLength()); // Friday
+        Assert.Equal(1, read.GetProperty("days")[4].GetProperty("bands").GetArrayLength());
         Assert.Equal(1, (await SupplierAgendaTestData.CountsAsync(factory, orgId)).Hours);
     }
 
@@ -245,13 +236,11 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         var bRead = await ReadAsync(await b.GetAsync($"{Base}/hours"));
         var aRead = await ReadAsync(await a.GetAsync($"{Base}/hours"));
 
-        Assert.Equal(0, bRead.GetProperty("days")[0].GetProperty("bands").GetArrayLength()); // no Monday for B
+        Assert.Equal(0, bRead.GetProperty("days")[0].GetProperty("bands").GetArrayLength());
         Assert.Equal(1, bRead.GetProperty("days")[6].GetProperty("bands").GetArrayLength());
         Assert.Equal(2, aRead.GetProperty("days")[0].GetProperty("bands").GetArrayLength());
         Assert.Equal(0, aRead.GetProperty("days")[6].GetProperty("bands").GetArrayLength());
     }
-
-    // ─── Time off ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TimeOff_AddListAndDelete_RoundTrip()
@@ -354,11 +343,9 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
 
         Assert.Equal(1, bList.GetProperty("total").GetInt32());
         Assert.NotEqual(aEntry.GetProperty("id").GetGuid(), bList.GetProperty("items")[0].GetProperty("id").GetGuid());
-        Assert.Equal(HttpStatusCode.NotFound, steal.StatusCode); // never 403: it does not exist for B
+        Assert.Equal(HttpStatusCode.NotFound, steal.StatusCode);
         Assert.Equal(1, (await ReadAsync(await a.GetAsync($"{Base}/time-off"))).GetProperty("total").GetInt32());
     }
-
-    // ─── Blocks and extra openings ───────────────────────────────────────────────
 
     [Fact]
     public async Task Blocks_AddListAndDelete_RoundTrip()
@@ -470,8 +457,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         Assert.Equal(1, (await ReadAsync(await a.GetAsync($"{Base}/blocks"))).GetProperty("total").GetInt32());
     }
 
-    // ─── Rules ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetRules_ANewSupplier_GetsTheDefaults_AndNothingIsWritten()
     {
@@ -487,7 +472,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         Assert.Equal(24, rules.GetProperty("minNoticeHours").GetInt32());
         Assert.Equal(35, rules.GetProperty("horizonDays").GetInt32());
         Assert.Equal(60, rules.GetProperty("slotStepMinutes").GetInt32());
-        // The capacity is not part of the console: decision D10.
         Assert.False(rules.TryGetProperty("parallelJobs", out _));
         Assert.Equal(0, (await SupplierAgendaTestData.CountsAsync(factory, orgId)).Settings);
     }
@@ -569,11 +553,9 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         var bRules = await ReadAsync(await b.GetAsync($"{Base}/rules"));
         await b.PutAsJsonAsync($"{Base}/rules", Rules(maxJobsPerDay: 2));
 
-        Assert.Equal(3, bRules.GetProperty("maxJobsPerDay").GetInt32()); // B still has the defaults
+        Assert.Equal(3, bRules.GetProperty("maxJobsPerDay").GetInt32());
         Assert.Equal(7, (await ReadAsync(await a.GetAsync($"{Base}/rules"))).GetProperty("maxJobsPerDay").GetInt32());
     }
-
-    // ─── Calendar ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetCalendar_WithoutARange_IsTodayAndTheNextThirtyDays_InTheTimeZoneOfRome()
@@ -607,7 +589,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         await SupplierAgendaTestData.SeedDayAsync(factory, orgId, Today.AddDays(2), available: false);
         await SupplierAgendaTestData.SeedDayAsync(factory, orgId, Today.AddDays(3), available: true);
         var (requestId, address, guestName) = await SupplierAgendaTestData.SeedRequestAsync(factory, orgId, day, ServiceRequestStatus.Richiesto);
-        // Everything of another supplier, in the same days.
         var other = new OtherSupplierSeed(factory, otherOrgId);
         await other.SeedAsync(day, start);
 
@@ -638,7 +619,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         Assert.Equal("Richiesto", item.GetProperty("status").GetString());
         Assert.Equal("cleaning", item.GetProperty("category").GetString());
 
-        // A request is a whole-day tile: nothing about the property, the host or the guest reaches the calendar.
         Assert.DoesNotContain(address, text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(guestName, text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Casa Riservata", text, StringComparison.OrdinalIgnoreCase);
@@ -707,8 +687,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         Assert.Equal(Today.AddDays(40).ToString("yyyy-MM-dd"), calendar.GetProperty("to").GetString());
     }
 
-    // ─── What did not change ─────────────────────────────────────────────────────
-
     [Fact]
     public async Task TheEndpointsThatAlreadyExisted_AnswerAsBefore_AlongsideTheNewOnes()
     {
@@ -716,10 +694,8 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         using var client = SupplierClient(userId);
         var day = Today.AddDays(3).ToString("yyyy-MM-dd");
 
-        // The per-day override.
         var put = await client.PutAsJsonAsync("/api/supplier/availability", new { dates = new[] { new { date = day, available = false } } });
         var get = await client.GetAsync($"/api/supplier/availability?from={day}&to={day}");
-        // The calendar sync status shares the first segment with the new calendar endpoint.
         var status = await client.GetAsync("/api/supplier/calendar/status");
 
         Assert.Equal(HttpStatusCode.OK, put.StatusCode);
@@ -731,12 +707,9 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
         Assert.True((await ReadAsync(status)).TryGetProperty("lastSyncStatus", out _));
 
-        // And the day closed by hand is on the new calendar.
         var calendar = await ReadAsync(await client.GetAsync($"/api/supplier/calendar?from={day}&to={day}"));
         Assert.Equal(day, calendar.GetProperty("closedDays")[0].GetProperty("date").GetString());
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 
@@ -751,7 +724,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
     private static object Day(string weekday, params (int Start, int End)[] bands) =>
         new { weekday, bands = bands.Select(b => new { startMinute = b.Start, endMinute = b.End }).ToArray() };
 
-    /// <summary>Monday to Friday 08:00-13:00 and 14:00-18:00, Saturday 08:00-14:00, Sunday a rest day.</summary>
     private static object DemoWeek() => new
     {
         days = new[]
@@ -781,7 +753,6 @@ public class SupplierAgendaIntegrationTests(CasazenWebApplicationFactory factory
     private static string[] Strings(JsonElement array) => array.EnumerateArray().Select(e => e.GetString()!).ToArray();
 }
 
-/// <summary>Seeds, for one supplier, a time off, a day closed, a window and a request in the same days (the "another supplier" of the calendar tests).</summary>
 internal sealed class OtherSupplierSeed(CasazenWebApplicationFactory factory, Guid orgId)
 {
     public async Task SeedAsync(DateOnly day, DateTime windowStartUtc)

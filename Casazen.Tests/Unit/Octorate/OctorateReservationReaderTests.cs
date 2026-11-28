@@ -58,7 +58,6 @@ public class OctorateReservationReaderTests
         Assert.Equal(50.00m, reservation.Commission);
         Assert.Equal(4, reservation.PriceBreakdown.Count);
 
-        // The flags of the guests are not contact values; the private notes of the host are never read.
         Assert.Null(reservation.GuestEmail);
         Assert.Null(reservation.GuestPhone);
         Assert.Null(reservation.Notes);
@@ -81,8 +80,6 @@ public class OctorateReservationReaderTests
         Assert.Null(reservation.TotalGuests);
     }
 
-    // ApiReservationRespDTO.currency is an object with a currencyCode (OpenAPI 2026-11-04); a plain code is read too. Anything else is no currency,
-    // and the amounts of a reservation with none are not imported as if they were in the currency of the property.
     [Theory]
     [InlineData("""{ "id": "1", "currency": "eur" }""", "EUR")]
     [InlineData("""{ "id": "1", "currency": { "currencyCode": "chf", "numericCode": 756, "displayName": "Swiss Franc" } }""", "CHF")]
@@ -111,9 +108,6 @@ public class OctorateReservationReaderTests
         Assert.Equal(expected, OctorateReservationReader.Read(document.RootElement)!.Status);
     }
 
-    // E06/F02/US01/T04: the customer record of the address book that holds the invoice is the invoiceHolderId of the reservation and nothing else. A
-    // guestId, or the id of a guest of the stay, is another table (the record it picks could be another customer's); zero, a sign, a fraction or a word
-    // is no id at all.
     [Theory]
     [InlineData("""{ "id": "1", "invoiceHolderId": 77001 }""", "77001")]
     [InlineData("""{ "id": "1", "invoiceHolderId": "77001" }""", "77001")]
@@ -180,7 +174,6 @@ public class OctorateReservationReaderTests
 
         var page = OctorateReservationReader.ReadPage(document.RootElement)!;
 
-        // Four items, one reservation that can be read: the end of a list is decided on the items the page held, never on the ones that were read.
         Assert.Equal(["7004"], page.Reservations.Select(r => r.Id));
         Assert.Equal(4, page.ItemCount);
         Assert.Equal(3, page.Unreadable);

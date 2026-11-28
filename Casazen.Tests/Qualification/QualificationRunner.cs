@@ -24,40 +24,26 @@ namespace Casazen.Tests.Qualification;
 // into memory and zeroed when it has been used; a value read on a document and its true value meet in IdentityStatistics.FieldExactness and only the names of the fields and the counts
 // come out; the only exception the runner makes is the TYPE of an exception, never its message; the output holds the ids of the manifest (anonymous), codes, counts, scores and times.
 
-/// <summary>How a run goes: how many impostor trials derived from the sequences it makes at most, and where it says how far it is (ids and counts only).</summary>
 public sealed record QualificationRunOptions
 {
-    /// <summary>
-    /// The most impostor trials a run derives from the sequences and the documents of the other persons of the split. With more pairs than this a deterministic sample is taken (the
-    /// output says how many there were and how many were run). A limit of the cost of a run, not a decision: about 30,000 independent trials are needed to show an upper bound of 0.01%.
-    /// </summary>
     public int MaxImpostorTrials { get; init; } = 50_000;
 
-    /// <summary>Told where the run is (<c>case 3/120: capture-id</c>): the ids of the manifest and counts, never a value.</summary>
     public Action<string>? Progress { get; init; }
 }
 
-/// <summary>The codes the document part of a run adds to the guidance codes of the application (<see cref="IdentityGuidanceCodes"/>): what a dataset can lack or break.</summary>
 public static class QualificationDocumentCodes
 {
-    /// <summary>The format has a side the capture has no picture for.</summary>
     public const string SideMissing = "side_missing";
 
-    /// <summary>A model or a reader failed on the picture of the side: the document is not complete.</summary>
     public const string ProcessingError = "processing_error";
 }
 
-/// <summary>
-/// The offline evaluation runner of the qualification (E74): runs the REAL pipeline of the self-hosted identity verification, in this process, on a split of a dataset described by a
-/// manifest, and writes <c>results.json</c> to the output folder. See the comments at the top of the file for what it does and what it never writes.
-/// </summary>
 public sealed class QualificationRunner(QualificationPipeline pipeline, QualificationTargets targets, QualificationRunOptions? options = null)
 {
     // The segment the decision of a run is taken with: qualified for the policy and the weights in force, the automatic approval allowed, so that «the policy would approve» is the
     // outcome and a qualification can count the approvals it gives (a false one on an attack is a critical case). It exists in no database: it is the test segment of the run.
     private static readonly SegmentResolution QualifiedSegment = new(null, IdentitySegmentMode.Automatic, true, true, IdentityAssuranceLevels.Consistency, null);
 
-    // The fields the MRZ gives (the ones of the coherence checker that have a value in it), and so the ones whose value read in the MRZ is measured on its own.
     private static readonly string[] MrzFields =
     [
         ZonedFieldNames.Surname, ZonedFieldNames.GivenNames, ZonedFieldNames.BirthDate, ZonedFieldNames.Sex, ZonedFieldNames.Nationality, ZonedFieldNames.DocumentNumber,
@@ -66,11 +52,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
 
     private readonly QualificationRunOptions _options = options ?? new QualificationRunOptions();
 
-    /// <summary>
-    /// Runs the real pipeline on the captures of <paramref name="split"/> of the dataset of <paramref name="manifestPath"/> and writes <c>results.json</c> to
-    /// <paramref name="outDir"/>. A manifest that does not pass its checks, a split with no capture, a ground-truth file that is not one, models or a policy that cannot be used stop
-    /// the run with a <see cref="QualificationRunException"/> and its code before the first capture; a capture that breaks is a case with its error, and the run goes on.
-    /// </summary>
     public async Task<QualificationResults> RunAsync(string manifestPath, string split, string outDir, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
@@ -79,7 +60,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         if (!QualificationSplits.All.Contains(split, StringComparer.Ordinal))
             throw new QualificationRunException(QualificationRunCodes.SplitUnknown);
 
-        // Where the results go is checked before anything of the dataset is read: not the folder of the committed policies, not a folder of the checkout (a run takes hours).
         pipeline.EnsureOutputAllowed(outDir);
 
         var preflight = Preflight(manifestPath, split);
@@ -91,7 +71,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         var plans = Plan(manifest, split, folder);
         var day = pipeline.Clock.TodayInRomeAsDateOnly();
 
-        // The documents of the split an impostor can present, and the sequences that are tried with them.
         var pool = plans
             .Where(plan => plan.Capture.Document is { Altered: false, Foreign: false, OwnerPerson: not null, Front: not null })
             .Select(plan => new PoolDocument(plan.Id, plan.Capture.Document!.OwnerPerson!, Resolve(folder, plan.Capture.Document.Front!)))
@@ -163,10 +142,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return results;
     }
 
-    /// <summary>
-    /// Whether the pair of the sequence of one capture and the document of another is one of the sample: every pair when there are few enough (<paramref name="share"/> is 1), else the
-    /// pairs whose SHA-256 (of the two ids) falls in the first <paramref name="share"/> of the range, so the same dataset gives the same sample whatever the order and the machine.
-    /// </summary>
     public static bool IsSampled(string sequenceCaseId, string documentCaseId, double share)
     {
         ArgumentNullException.ThrowIfNull(sequenceCaseId);
@@ -178,16 +153,10 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return BinaryPrimitives.ReadUInt64BigEndian(hash) / 18446744073709551616.0 < share;
     }
 
-    // ───── the plan: the manifest, the captures of the split and their ground truth ─────
-
     private sealed record CapturePlan(QualificationCapture Capture, string Id, string Person, string Kind, IReadOnlyDictionary<string, string> Truth);
 
     private sealed record PoolDocument(string CaptureId, string Owner, string FrontPath);
 
-    /// <summary>
-    /// What a run of one split checks before it reads a picture: the manifest (read, with the canonical SHA-256 of its file), the folder its paths start from, its validation (it passed) and the
-    /// counts of the split (it has persons and captures). Nothing of the captures is opened.
-    /// </summary>
     public sealed record QualificationPreflight(QualificationDatasetManifest Manifest, string ManifestHash, string Folder, QualificationManifestReport Validation, QualificationSplitCounts Counts);
 
     /// <summary>
@@ -217,7 +186,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return new QualificationPreflight(manifest, manifestHash, folder, validation, counts);
     }
 
-    /// <summary>The manifest of a dataset and the canonical SHA-256 of its file (the same for every line ending and indentation); <see cref="QualificationRunCodes.ManifestUnreadable"/> when it cannot be read.</summary>
     internal static (QualificationDatasetManifest Manifest, string Hash) ReadManifest(string path)
     {
         byte[] bytes;
@@ -237,7 +205,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         }
         catch (QualificationManifestFormatException ex)
         {
-            // The message names the place of the failure by the members the manifest knows, never a word the author typed.
             throw new QualificationRunException(QualificationRunCodes.ManifestUnreadable, ex.Message);
         }
 
@@ -257,7 +224,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
                     ? QualificationCaseKinds.ImpostorPair
                     : QualificationCaseKinds.Genuine;
 
-            // The ground truth is read before the first capture is run: a file that is not one stops the run at once and not after hours.
             var truth = capture.Document is { } document
                 ? ReadGroundTruth(Resolve(folder, document.GroundTruthFile!), capture.Id!)
                 : new Dictionary<string, string>(StringComparer.Ordinal);
@@ -270,10 +236,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return plans;
     }
 
-    /// <summary>
-    /// The true values of the fields of a document: a JSON object whose members are fields of <see cref="ZonedFieldNames"/> (dates as <c>yyyy-MM-dd</c>) with text values. The values are
-    /// held in memory for the run and are never printed; a file that is anything else is a <see cref="QualificationRunCodes.GroundTruthInvalid"/> that names the capture, not the file or its content.
-    /// </summary>
     private static Dictionary<string, string> ReadGroundTruth(string path, string captureId)
     {
         var truth = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -318,9 +280,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             Count(plans.Select(plan => plan.Capture.Channel)));
     }
 
-    // ───── one capture ─────
-
-    /// <summary>The frames of a sequence that passed its validation and gave frames to compare, kept for the impostor trials of its person; zeroed with the run.</summary>
     private sealed record RetainedSequence(FrameSequence Sequence, IReadOnlyList<int> MatchIndices);
 
     private sealed class CaptureRun(QualificationCaseResult result, FrameSequence? sequence, IReadOnlyList<int> matchIndices) : IDisposable
@@ -362,7 +321,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         }
         catch (Exception ex)
         {
-            // The type of the exception only: its message could carry what was being read.
             error = ex.GetType().Name;
         }
 
@@ -386,7 +344,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             error,
             plan.Kind == QualificationCaseKinds.ImpostorPair && capture.Document?.OwnerPerson is { } owner ? QualificationMetrics.CoupleKey(plan.Person, owner) : null);
 
-        // The sequence stays in memory only for a genuine capture whose frames were chosen: it is what the impostor trials of its person are made with.
         var keep = plan.Kind == QualificationCaseKinds.Genuine && presence is { Sequence: not null, MatchIndices.Count: > 0 };
         if (!keep)
         {
@@ -429,8 +386,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             decision.Guidance);
     }
 
-    // ───── the document part ─────
-
     private sealed record DocumentStage(QualificationDocumentResult Result, DocumentFormat? Format, bool Complete, IdentityDocumentCoherence Coherence)
     {
         public static DocumentStage Failed(string? format)
@@ -443,7 +398,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         }
     }
 
-    /// <summary>What one side gave: its result, the fields read on it, the reading of its MRZ, the fingerprint of the picture, and whether the picture was clean (no guidance code).</summary>
     private sealed record SideOutcome(QualificationSideResult Result, IReadOnlyList<ZonedField> Fields, MrzReading Mrz, DocumentPictureFingerprint? Fingerprint, bool Clean, bool PortraitInZone);
 
     private async Task<DocumentStage> RunDocumentAsync(
@@ -452,7 +406,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         var format = pipeline.Formats.Get(document.Format);
         if (format is null)
         {
-            // A format the registry does not hold is a document a person decides, never approved.
             return new DocumentStage(
                 new QualificationDocumentResult(null, false, QualificationDecisionCodes.CoherenceUnknown, null, [IdentityGuidanceCodes.DocumentFormatUnsupported], [], []),
                 null,
@@ -503,7 +456,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             Add(stages, QualificationStages.DocumentCoherence, started);
         }
 
-        // Complete as the flow means it: every side of the format passed its checks, the portrait is where the layout puts it, and the MRZ was read on a side.
         var complete = allClean && portraitFound && machine is not null;
         var result = new QualificationDocumentResult(
             format.Id,
@@ -532,7 +484,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             var started = Stopwatch.GetTimestamp();
             bytes = await File.ReadAllBytesAsync(path, ct);
 
-            // The quality of the capture, as the agent assesses it before the MRZ is read.
             IReadOnlyList<string> assessment;
             RasterImage? decoded = null;
             try
@@ -583,7 +534,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
                 var fingerprint = new DocumentPictureFingerprint(Convert.ToHexString(SHA256.HashData(bytes)), picture.DHash(), shown);
                 var pair = pipeline.Sides.CheckPair(side, fingerprint, other, policy.Document.PerceptualDuplicateMaxDistance);
 
-                // The codes of the flow, in its order: the repeated or wrong side, the geometry of the card, the quality of the capture.
                 var codes = new List<string>();
                 if (pair is not null)
                     codes.Add(pair);
@@ -593,7 +543,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
                 var distinct = codes.Distinct(StringComparer.Ordinal).ToList();
                 Add(stages, QualificationStages.DocumentGeometry, started);
 
-                // The zones are read only on a picture the flow would accept: one with a guidance code is asked for again.
                 IReadOnlyList<ZonedField> fields = [];
                 if (distinct.Count == 0)
                 {
@@ -614,7 +563,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // A model or a reader that fails never approves: the side is not clean, and the type of the failure is all that is kept.
             return Unreadable(sideCode, [QualificationDocumentCodes.ProcessingError]);
         }
         finally
@@ -628,7 +576,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return new SideOutcome(new QualificationSideResult(sideCode, null, false, null, 0, codes), [], new MrzReading(null, []), null, false, false);
     }
 
-    /// <summary>The coherence as the decision reads it (the rule of the flow): an identifying conflict, an invalid MRZ, an expired document, then a pass only when every check the format requires passed.</summary>
     private static IdentityDocumentCoherence CoherenceOf(DocumentCoherenceReport report, DocumentFormat format)
     {
         if (report.IdentifyingConflict == true)
@@ -652,7 +599,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         _ => QualificationDecisionCodes.CoherenceUnknown,
     };
 
-    /// <summary>Whether the format the registry detects from the MRZ is the declared one; null when no MRZ was read.</summary>
     private bool? FormatAgrees(DocumentFormat declared, MrzReading? machine)
     {
         if (machine?.Result is not { } read)
@@ -661,10 +607,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         return string.Equals(pipeline.Formats.DetectFromMrz(read.DocumentCode, read.IssuingState, read.MrzType)?.Id, declared.Id, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// What the guest would have typed, from the ground truth: the check of the document against the booking compares the document with the names, the birth date, the number and
-    /// the citizenship of the guest, and a guest of the dataset types what is true. The values live in memory for the check and are never printed.
-    /// </summary>
     private static CheckInIdentity DeclaredIdentity(IReadOnlyDictionary<string, string> truth)
     {
         DateOnly? birth = truth.TryGetValue(ZonedFieldNames.BirthDate, out var text)
@@ -679,12 +621,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             truth.GetValueOrDefault(ZonedFieldNames.Nationality));
     }
 
-    /// <summary>
-    /// How many of the values read were exact, per field of the ground truth, through <see cref="IdentityStatistics.FieldExactness"/> (the very comparison the dashboard makes). The value read
-    /// in the visual zone is measured as <c>surname</c>, the one of the MRZ as <c>surname.mrz</c>; a field is measured only where it was read for: the side of the layout that has it (visual
-    /// zone) or the side of the MRZ, and only on a side whose picture was clean (the zones of a picture that is asked for again are not read). A value that is not read is a miss. Only the
-    /// names of the fields and the counts come out of this method.
-    /// </summary>
     private static List<QualificationFieldResult> ExactnessOf(
         IReadOnlyDictionary<string, string> truth, DocumentFormat format, HashSet<string> cleanSides, IReadOnlyList<ZonedField> read)
     {
@@ -714,8 +650,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
 
         return [.. QualificationMetrics.ExactnessRates(pairs).Select(rate => new QualificationFieldResult(rate.Name, (int)rate.Rate.Count, (int)rate.Rate.Total))];
     }
-
-    // ───── the presence part ─────
 
     private sealed class PresenceStage(QualificationPresenceResult result) : IDisposable
     {
@@ -748,7 +682,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         Dictionary<string, double> stages,
         CancellationToken ct)
     {
-        // The frames: the JPEG files of the folder in the order of their names, with the timestamps the file gives; read through the intake of the application, with its limits.
         var started = Stopwatch.GetTimestamp();
         var directory = Resolve(folder, sequencePart.Dir!);
         var files = Directory.EnumerateFiles(directory)
@@ -817,7 +750,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
                 liveness = await pipeline.Liveness.EvaluateAsync(sequence, chosen.LivenessIndices, policy, ct);
                 Add(stages, QualificationStages.PresenceLiveness, started);
 
-                // The comparison is made whether or not the liveness passed (the decision does not use it then): the score of a genuine capture is what the false non-match rate is measured on.
                 if (document?.Front is { } front)
                 {
                     (match, pairedMatch) = await MatchAsync(plan.Id, Resolve(folder, front), sequence, chosen.MatchIndices, policy, stages, ct);
@@ -827,7 +759,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
                     pairedLiveness = await PairedLivenessAsync(plan.Id, sequence, chosen.LivenessIndices, ct);
             }
 
-            // What the pipeline of the closure would hand the engine: a comparison with the document is made only for frames that are live.
             var evidence = new PresenceEvidence(validation, selection?.Failure, liveness, liveness is { Passed: true } ? match : null, selection?.Frames);
             var accepted = validation.Passed && selection is { IsSelected: true } && liveness is { Passed: true };
             var failures = validation.Failures.Select(found => found.Code ?? found.Check).ToList();
@@ -881,10 +812,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         }
     }
 
-    /// <summary>
-    /// The comparison of the front of the document with the chosen frames by the matcher of the application, and, when a candidate of the recognition model is loaded, the paired
-    /// scores of the reference and the candidate on the same pictures. A picture that cannot be decoded is a comparison that could not be made, never a match.
-    /// </summary>
     private async Task<(MatchReport Match, QualificationPairedScores? Paired)> MatchAsync(
         string caseId,
         string frontPath,
@@ -921,8 +848,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         }
     }
 
-    // ───── the impostor trials derived from the sequences ─────
-
     private async Task<QualificationImpostorTrial?> RunImpostorTrialAsync(
         string sequenceCaseId, string sequencePerson, PoolDocument document, RetainedSequence retained, IdentityDecisionPolicy policy, CancellationToken ct)
     {
@@ -944,7 +869,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             var match = await pipeline.Matcher.MatchAsync(front, retained.Sequence, retained.MatchIndices, policy, ct);
             var elapsed = Since(started);
 
-            // A document with no face in it (or a comparison that could not be made) compares nothing: it is no trial.
             if (match.State != MatchState.Ok)
                 return null;
 
@@ -959,8 +883,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
             front?.Dispose();
         }
     }
-
-    // ───── the candidate models, on the same cases ─────
 
     private async Task<QualificationPairedScores?> PairedMatchAsync(string caseId, RasterImage front, FrameSequence sequence, IReadOnlyList<int> matchIndices, CancellationToken ct)
     {
@@ -985,7 +907,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         string? code = null;
         foreach (var result in results)
         {
-            // A frame the reference did not score cannot be paired with anything.
             if (!result.Reference.Ran || result.Reference.Scores.Count == 0)
                 return null;
 
@@ -999,8 +920,6 @@ public sealed class QualificationRunner(QualificationPipeline pipeline, Qualific
         var complete = candidate.Count == reference.Count;
         return new QualificationPairedScores(reference, complete ? candidate : null, complete ? null : code);
     }
-
-    // ───── time ─────
 
     private static double Since(long started) => Stopwatch.GetElapsedTime(started).TotalMilliseconds;
 

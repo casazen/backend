@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>The prompt of the AI help of the supplier showcase editor: the rules it states, the facts it carries, and the key of its cache.</summary>
 public class ShowcaseTextPromptTests
 {
     private static readonly ShowcaseTextFacts Facts = new(

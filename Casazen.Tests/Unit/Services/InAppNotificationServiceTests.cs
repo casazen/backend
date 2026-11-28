@@ -32,8 +32,6 @@ public class InAppNotificationServiceTests : IDisposable
         _kit.Db.ChangeTracker.Clear();
     }
 
-    // ─── List ───
-
     [Fact]
     public async Task ListAsync_NewestFirst_AndAnIdBreaksATie()
     {
@@ -138,8 +136,6 @@ public class InAppNotificationServiceTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(() => Service().ListAsync(" ", false, 1, 20));
     }
 
-    // ─── Whose rows ───
-
     [Fact]
     public async Task ListAndCount_NeverShowTheRowsOfAnotherUser_EvenOfTheSameOrg()
     {
@@ -176,7 +172,6 @@ public class InAppNotificationServiceTests : IDisposable
         await AddAsync(Row(World.ManagerId, world.OrgId, At(2)), Row(World.ManagerId, world.OrgId, At(1)));
         Assert.Equal(2, await Service().CountUnreadAsync(World.ManagerId));
 
-        // Removed from the org (AM-02): User.OrgId is cleared; the rows stay until the retention, unreachable.
         var manager = await _kit.Db.Users.SingleAsync(u => u.Id == World.ManagerId);
         manager.OrgId = null;
         await _kit.Db.SaveChangesAsync();
@@ -188,7 +183,6 @@ public class InAppNotificationServiceTests : IDisposable
     [Fact]
     public async Task ListAndCount_ASupplierOnlyAccount_ReadsTheRowsOfItsSupplierOrg()
     {
-        // A supplier-only account has no host org: the tenant filter would match nothing for it.
         var world = await _kit.SeedWorldAsync();
         var supplierOnly = NewUser("auth0|supplier-only", orgId: null, UserRole.Supplier, supplierOrgId: world.SupplierOrgId);
         _kit.Db.Users.Add(supplierOnly);
@@ -237,8 +231,6 @@ public class InAppNotificationServiceTests : IDisposable
         Assert.Equal(0, await Service().CountUnreadAsync("auth0|ghost"));
     }
 
-    // ─── Count ───
-
     [Fact]
     public async Task CountUnreadAsync_CountsOnlyTheUnreadOnesOfTheUser()
     {
@@ -259,8 +251,6 @@ public class InAppNotificationServiceTests : IDisposable
     {
         await Assert.ThrowsAsync<ArgumentException>(() => Service().CountUnreadAsync(""));
     }
-
-    // ─── The limits ───
 
     [Fact]
     public void Limits_AreTheOnesOfTheTask()

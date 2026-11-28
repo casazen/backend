@@ -13,7 +13,6 @@ public class LeaseProgressTests
 {
     private static readonly DateOnly Today = new(2026, 10, 9);
 
-    /// <summary>A registered 4+4 lease that started on 2022-11-01 and was renewed into 2030: in its fourth year of eight.</summary>
     private static readonly LeaseFlowInput Running = new()
     {
         Today = Today,
@@ -29,7 +28,6 @@ public class LeaseProgressTests
     {
         var cases = new (string Case, LeaseFlowInput Input, LeaseProgress Expected)[]
         {
-            // 1439 of 2922 days gone: 49 %.
             ("running, fourth year of eight", Running, new LeaseProgress(LeaseProgressKind.Term, LeaseProgressUnit.Years, 4, 8, 49)),
             (
                 "transitory of ten months, sixth month (162 of 304 days)",

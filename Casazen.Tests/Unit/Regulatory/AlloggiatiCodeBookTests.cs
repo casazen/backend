@@ -47,7 +47,7 @@ public class AlloggiatiCodeBookTests
         Assert.Empty(codes.CodesToComplete);
         Assert.Equal("92", codes.Type.Code);
         Assert.Equal("900000001", codes.BirthComune.Code);
-        Assert.Equal("900000100", codes.BirthCountry.Code); // "ITALIA" in the stati table
+        Assert.Equal("900000100", codes.BirthCountry.Code);
         Assert.Equal("900000100", codes.Citizenship.Code);
         Assert.Equal(("TSTID", "Documento di prova"), (codes.DocumentType.Code, codes.DocumentType.Description));
         Assert.Equal("900000001", codes.DocumentIssuePlace.Code);

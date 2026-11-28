@@ -67,7 +67,6 @@ public class BookingAttributionGdprTests
         await using (var db = CrmTestWorld.Open(store))
             export = await Service(db).ExportGuestDataAsync(orgId, guestId, new HostScope(orgId), false, "auth0|host", Ct);
 
-        // The stays come oldest first: the link of the agency, the booking engine of the agency, the booking site with no link.
         Assert.Equal(3, export.Bookings.Count);
         Assert.Equal(
             ("agency-site", "link", "estate-2026", "www.agenzia-test.example.com"),
@@ -77,7 +76,6 @@ public class BookingAttributionGdprTests
             ValuesOf(export.Bookings[1]));
         Assert.Equal(((string?)null, (string?)null, (string?)null, (string?)null), ValuesOf(export.Bookings[2]));
 
-        // The file names no supplier and holds nothing of another guest.
         var json = JsonSerializer.Serialize(export);
         Assert.DoesNotContain("octorate", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("campagna-anna", json, StringComparison.Ordinal);
@@ -139,7 +137,6 @@ public class BookingAttributionGdprTests
         stay.AttributionReferrerHost = referrerHost;
     }
 
-    /// <summary>A confirmed stay of the booking site with nothing but its attribution to clear: no special request, no arrival time.</summary>
     private static Booking StayOf(Guest guest, string source, string? medium = null, string? campaign = null, string? referrerHost = null)
     {
         var stay = new Booking
@@ -161,7 +158,6 @@ public class BookingAttributionGdprTests
 
     private static GdprService Service(AppDbContext db)
     {
-        // No stay is open: the erasure is not refused (art. 17.3.b).
         var repository = new Mock<IGuestRepository>();
         repository
             .Setup(r => r.GetUsageAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))

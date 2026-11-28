@@ -4,14 +4,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The prompt of «Descrivi di cosa hai bisogno» (WIZ-AI-REQUEST, FD-21): the rules say what the model chooses among and in which form it answers,
-/// and the only thing about the job that reaches the provider is the host's own words, with contact data and street addresses taken out.
-/// </summary>
 public class ServiceRequestAssistPromptTests
 {
-    // ─── The rules ───────────────────────────────────────────────────────────────
-
     [Fact]
     public void EveryCategoryOfThePlatform_HasAHintTheModelChoosesBy()
     {
@@ -57,8 +51,6 @@ public class ServiceRequestAssistPromptTests
         Assert.Equal(expected, ServiceRequestAssistPrompt.LanguageName(language));
         Assert.Contains($"in {expected}, che spiega", ServiceRequestAssistPrompt.SystemPrompt(language));
     }
-
-    // ─── What goes to the provider ───────────────────────────────────────────────
 
     [Fact]
     public void CleanText_TakesOutEmailsPhonesFiscalCodesAndStreetAddresses_AndKeepsTheJob()
@@ -149,8 +141,6 @@ public class ServiceRequestAssistPromptTests
         Assert.Empty(request.Images);
         Assert.Equal(0.1, request.Temperature);
     }
-
-    // ─── The key of the answer ───────────────────────────────────────────────────
 
     [Fact]
     public void CacheKey_IsTheSameForTheSameWordsAndLanguage_AndHoldsNoneOfTheWords()

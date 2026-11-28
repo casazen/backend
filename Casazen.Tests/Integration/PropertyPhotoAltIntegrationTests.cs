@@ -23,7 +23,6 @@ public class PropertyPhotoAltIntegrationTests : IClassFixture<CasazenWebApplicat
 {
     private const string HostRole = "PropertyOwner";
 
-    // A real PNG of 1 x 1 pixel.
     private static readonly byte[] PngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
 
@@ -50,7 +49,6 @@ public class PropertyPhotoAltIntegrationTests : IClassFixture<CasazenWebApplicat
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
         var url = $"/api/properties/{property.Id}/site-profile/photos";
 
-        // The text of the first photo; the second is not listed, so it has none.
         var saved = await host.PutAsJsonAsync(url, new
         {
             photos = new[] { new { url = first, alt = new { it = "  Il soggiorno con il camino ", en = "The living room" } } },
@@ -63,7 +61,6 @@ public class PropertyPhotoAltIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(1067, photos[0].GetProperty("height").GetInt32());
         Assert.Equal(JsonValueKind.Null, photos[1].GetProperty("alt").ValueKind);
 
-        // A text for a photo that is not in the gallery, and an English text with no Italian one: refused, nothing changes.
         var stranger = await host.PutAsJsonAsync(url, new { photos = new[] { new { url = "https://cdn.example.test/other.jpg", alt = new { it = "Altro" } } } });
         Assert.Equal(HttpStatusCode.NotFound, stranger.StatusCode);
         Assert.Equal("property_photo_not_found", (await stranger.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
@@ -73,7 +70,6 @@ public class PropertyPhotoAltIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Equal("property_site_profile_italian_required", problem.GetProperty("code").GetString());
         Assert.Equal("photos", problem.GetProperty("field").GetString());
 
-        // The public page: the photos with their texts and sizes, next to the same addresses in photoUrls.
         using var anonymous = _factory.CreateClient();
         var page = await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{org.Slug}/properties/{property.Id}");
         Assert.Equal([first, second], page.GetProperty("photoUrls").EnumerateArray().Select(u => u.GetString()));
@@ -83,7 +79,6 @@ public class PropertyPhotoAltIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(JsonValueKind.Null, listed[1].GetProperty("alt").ValueKind);
         Assert.DoesNotContain("photoAltJson", page.GetRawText(), StringComparison.OrdinalIgnoreCase);
 
-        // Sending none clears the texts and leaves the sizes.
         Assert.Equal(HttpStatusCode.OK, (await host.PutAsJsonAsync(url, new { photos = Array.Empty<object>() })).StatusCode);
         var cleared = (await host.GetFromJsonAsync<JsonElement>(url)).EnumerateArray().ToList();
         Assert.Equal(JsonValueKind.Null, cleared[0].GetProperty("alt").ValueKind);
@@ -107,7 +102,6 @@ public class PropertyPhotoAltIntegrationTests : IClassFixture<CasazenWebApplicat
         var gallery = (await uploaded.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("photoUrls").EnumerateArray().Select(u => u.GetString()!).ToList();
         var photo = Assert.Single(gallery);
 
-        // The size is read from the PNG header; a text is added to the same photo.
         var withSize = (await host.GetFromJsonAsync<JsonElement>(site)).EnumerateArray().Single();
         Assert.Equal((1, 1), (withSize.GetProperty("width").GetInt32(), withSize.GetProperty("height").GetInt32()));
         Assert.Equal(

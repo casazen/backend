@@ -28,7 +28,6 @@ public class MeControllerTests
 
         var objectResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
-        // Same stable code as InactiveAccountMiddleware (PL-03), so the web app opens the "account disabled" page.
         var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
         Assert.Equal(ProblemCodes.AccountInactive, problem.Extensions["code"]);
     }
@@ -67,7 +66,6 @@ public class MeControllerTests
     [Fact]
     public async Task GetContexts_AccountContext_IsListedFirst()
     {
-        // AM-01: the account context is a context like the others, listed by key (the clients that have no area for it leave it out).
         var userService = new Mock<IUserService>();
         var contextService = new Mock<IContextAuthorizationService>();
         userService.Setup(x => x.GetCurrentUserAsync("auth0|owner", It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))

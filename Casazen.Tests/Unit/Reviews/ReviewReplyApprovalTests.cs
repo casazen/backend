@@ -58,8 +58,6 @@ public class ReviewReplyApprovalTests
             c => c.SendHostReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             times);
 
-    // ─── The action ───
-
     [Fact]
     public async Task Approve_AReplyToAReviewOfAChannel_SendsTheFinalTextOnce_WithTheKeyOfTheItem_AndAnotherApprovalSendsNothing()
     {
@@ -132,7 +130,6 @@ public class ReviewReplyApprovalTests
         Assert.False(notAllowed.Succeeded);
         Assert.Equal(OtaReviewErrorCodes.ActionNotAllowed, notAllowed.ErrorCode);
 
-        // A review that is not there for the org of the item: nothing is asked of the channel.
         var gone = ItemOf(review.OrgId, Guid.NewGuid(), MessageThreadKey.ForOtaReview(review.Id).ToString());
         var mismatch = await ExecuteAsync(h, gone, Text);
         Assert.False(mismatch.Succeeded);
@@ -198,7 +195,6 @@ public class ReviewReplyApprovalTests
         Assert.False(gone.Succeeded);
         Assert.Equal(OtaReviewErrorCodes.NotFound, gone.ErrorCode);
 
-        // Nothing of a review of the booking site is ever asked of the channel manager.
         channel.VerifyNoOtherCalls();
     }
 
@@ -216,13 +212,6 @@ public class ReviewReplyApprovalTests
         Assert.Equal(ApprovalOriginActions.SendReviewReply, action.OriginAction);
     }
 
-    // ─── The queue, the real one ───
-
-    /// <summary>
-    /// PROOF TEST: data rule (AC-NF69-4). The draft of a reply is an item of the approval queue and nothing else: while it waits, and when it is rejected, nothing reaches the channel manager; the
-    /// approval sends the text the host approved (its edit when it edited it), once, however many times it is approved; a refusal keeps the item pending with the code, so the host edits and
-    /// tries again. Nothing is ever sent without the approval of a person.
-    /// </summary>
     [Fact]
     public async Task ReviewReply_NeverSentWithoutApproval_Test()
     {
@@ -234,7 +223,6 @@ public class ReviewReplyApprovalTests
             .ReturnsAsync(new OtaReviewActionResult(null!, OtaReviewActionState.Sent, false, null));
         var service = rig.Service(new ApprovalOriginActionRegistry(() => [ActionOf(channel.Object)]));
 
-        // The assistant's draft waits: the queue has it, the channel manager has heard nothing.
         var reviewId = Guid.NewGuid();
         var item = await service.SubmitForApprovalAsync(
             rig.OrgId,
@@ -249,7 +237,6 @@ public class ReviewReplyApprovalTests
         Assert.Equal(ApprovalOriginActions.SendReviewReply, item.OriginAction);
         channel.Verify(s => s.ReplyAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // A person edits it and approves it: the edit is what is sent, with the key of the item and the text, once.
         await service.EditAsync(rig.OrgWide, item.Id, "Grazie di cuore, a presto!", ApprovalQueueRig.Owner);
         var decision = await service.ApproveAsync(rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
         await service.ApproveAsync(rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
@@ -259,7 +246,6 @@ public class ReviewReplyApprovalTests
             Times.Once);
         channel.Verify(s => s.ReplyAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        // A draft that is rejected does nothing.
         var otherReview = Guid.NewGuid();
         var rejected = await service.SubmitForApprovalAsync(
             rig.OrgId,
@@ -274,7 +260,6 @@ public class ReviewReplyApprovalTests
         Assert.Equal(ApprovalStatus.Rejected, result.Status);
         channel.Verify(s => s.ReplyAsync(otherReview, It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // A refusal keeps the item pending with the code of the failure: the host edits and tries again.
         var refusing = new Mock<IOtaReviewService>();
         refusing
             .Setup(s => s.ReplyAsync(It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
@@ -319,14 +304,12 @@ public class ReviewReplyApprovalTests
             threadKey: MessageThreadKey.ForReview(id).ToString());
         Assert.Equal(MessageThreadKey.ForReview(id).ToString(), item.ThreadKey);
 
-        // The key of nothing, of a conversation, of another review, or of none: the reply would not know what it answers.
         foreach (var key in new string?[] { null, "review:nope", MessageThreadKey.ForOta(id).ToString(), MessageThreadKey.ForOtaReview(Guid.NewGuid()).ToString() })
         {
             await Assert.ThrowsAsync<ArgumentException>(() => service.SubmitForApprovalAsync(
                 rig.OrgId, ApprovalItemTypes.ReviewReply, id, "Un altro testo", isAiGenerated: true, originAction: ApprovalOriginActions.SendReviewReply, threadKey: key));
         }
 
-        // A draft of a message never belongs to a review.
         await Assert.ThrowsAsync<ArgumentException>(() => service.SubmitForApprovalAsync(
             rig.OrgId, ApprovalItemTypes.MessageDraft, id, "Ciao", isAiGenerated: true, threadKey: MessageThreadKey.ForReview(id).ToString()));
     }

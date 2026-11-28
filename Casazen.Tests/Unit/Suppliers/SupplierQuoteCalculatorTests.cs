@@ -7,17 +7,9 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-09: the price estimate of a published service (<see cref="SupplierQuoteCalculator"/>), a pure function. The supplements
-/// of every unit (<c>flat</c>, <c>bathroom</c>, <c>sqm30</c>, <c>set</c>, <c>hour</c>), their <c>max</c>, the two roundings (whole
-/// hours, started 30 m² blocks), integer cents with no other rounding, the answers without a total (on quote, outside the
-/// zones, over a limit) that are answers and not errors, and the values that do not fit the service (422 with the fields).
-/// </summary>
 public class SupplierQuoteCalculatorTests
 {
     private const int FromPrice = 4500;
-
-    // ─── The base price ──────────────────────────────────────────────────────────
 
     [Fact]
     public void Calculate_APricePerJob_IsTheFromPriceOnce_AsAnEstimate()
@@ -64,10 +56,10 @@ public class SupplierQuoteCalculatorTests
     }
 
     [Theory]
-    [InlineData(1, 1)] // a minute is an hour started
+    [InlineData(1, 1)]
     [InlineData(59, 1)]
     [InlineData(60, 1)]
-    [InlineData(61, 2)] // rounded UP to whole hours
+    [InlineData(61, 2)]
     [InlineData(120, 2)]
     [InlineData(121, 3)]
     [InlineData(150, 3)]
@@ -84,7 +76,7 @@ public class SupplierQuoteCalculatorTests
     [InlineData(null, 1)]
     [InlineData(0, 1)]
     [InlineData(120, 2)]
-    [InlineData(100_000, 1000)] // never past the most units one estimate takes
+    [InlineData(100_000, 1000)]
     public void DefaultHours_TheTable(int? durationMinutes, int expected)
     {
         Assert.Equal(expected, SupplierQuoteCalculator.DefaultHours(durationMinutes));
@@ -139,7 +131,6 @@ public class SupplierQuoteCalculatorTests
     {
         var service = Service(unit: SupplierServicePriceUnit.PerSquareMeter, price: 350);
 
-        // A 1,200 m2 villa is an estimate (or "on quote"), not a refusal.
         Assert.Equal(1200, SupplierQuoteCalculator.Validate(service, Request(quantity: 1200)).Quantity);
         Assert.Equal(10_000, SupplierQuoteCalculator.Validate(service, Request(quantity: 10_000)).Quantity);
         Assert.Equal(420_000, Quote(service, Request(quantity: 1200)).TotalCents);
@@ -159,8 +150,6 @@ public class SupplierQuoteCalculatorTests
         Assert.Equal(SupplierQuoteReason.AmountOverLimit, quote.Reason);
     }
 
-    // ─── The supplements, one unit at a time ─────────────────────────────────────
-
     [Fact]
     public void Calculate_AFlatSupplement_IsAddedOnce()
     {
@@ -173,7 +162,7 @@ public class SupplierQuoteCalculatorTests
     }
 
     [Theory]
-    [InlineData(null)] // the maximum of a flat supplement is the one unit it is, whatever the supplier wrote
+    [InlineData(null)]
     [InlineData(5)]
     public void Validate_AFlatSupplement_IsPickedOrNot_NeverTwice(int? max)
     {
@@ -226,12 +215,10 @@ public class SupplierQuoteCalculatorTests
         Assert.Equal(1, pick.Quantity);
     }
 
-    // ─── sqm30: it follows the surface ───────────────────────────────────────────
-
     [Theory]
     [InlineData(1, 0)]
-    [InlineData(60, 0)] // the base price covers up to 60 m²
-    [InlineData(61, 1)] // a started block of 30 m² counts whole: rounded UP
+    [InlineData(60, 0)]
+    [InlineData(61, 1)]
     [InlineData(90, 1)]
     [InlineData(91, 2)]
     [InlineData(120, 2)]
@@ -271,8 +258,8 @@ public class SupplierQuoteCalculatorTests
     }
 
     [Theory]
-    [InlineData(120, SupplierQuoteOutcome.Estimate)] // two blocks, the most
-    [InlineData(121, SupplierQuoteOutcome.OnQuote)] // three: the supplier prices a bigger home
+    [InlineData(120, SupplierQuoteOutcome.Estimate)]
+    [InlineData(121, SupplierQuoteOutcome.OnQuote)]
     public void Calculate_ASqm30Supplement_OverItsMax_IsOnQuote_NotAnError(int surface, SupplierQuoteOutcome outcome)
     {
         var service = ServiceWith(Supplement("mq", "Oltre 60 m²", 1000, Sqm30, max: 2));
@@ -309,8 +296,6 @@ public class SupplierQuoteCalculatorTests
         Assert.Equal(new[] { "surfaceSqm" }, ex.Fields);
     }
 
-    // ─── Several supplements together ────────────────────────────────────────────
-
     [Fact]
     public void Calculate_EveryUnitTogether_AddsUpLineByLine_InTheOrderTheSupplierWroteThem()
     {
@@ -326,7 +311,6 @@ public class SupplierQuoteCalculatorTests
                 Supplement("ora", "Ora in più", 2000, Hour),
             ]);
 
-        // Asked in another order than the supplier's, and one supplement not picked.
         var quote = Quote(service, Request(quantity: 3, surface: 100, options: [Pick("ora", 1), Pick("lenzuola", 2), Pick("bagno", 2), Pick("ferro")]));
 
         Assert.Equal(
@@ -395,12 +379,10 @@ public class SupplierQuoteCalculatorTests
         Assert.Equal(new[] { "quantity", "surfaceSqm", "options[0].quantity", "options[1].code", "comune", "postalCode" }, ex.Fields);
     }
 
-    // ─── The place ───────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("H501", null, "H501")]
     [InlineData("  Roma  ", null, "Roma")]
-    [InlineData("058091", "058091", null)] // six digits are an ISTAT code
+    [InlineData("058091", "058091", null)]
     public void Validate_TheComune_IsTrimmed_ASixDigitCodeIsAnIstatCode(string comune, string? istat, string? name)
     {
         var place = SupplierQuoteCalculator.Validate(Service(), Request(comune: comune)).Place;
@@ -442,15 +424,13 @@ public class SupplierQuoteCalculatorTests
     [InlineData("2012")]
     [InlineData("201211")]
     [InlineData("2012a")]
-    [InlineData("٢٠١٢١")] // Arabic-Indic digits are not the five digits of a CAP
+    [InlineData("٢٠١٢١")]
     public void Validate_APostalCodeThatIsNotFiveDigits_IsRefused(string postalCode)
     {
         var ex = Assert.Throws<SupplierQuoteRuleException>(() => SupplierQuoteCalculator.Validate(Service(), Request(postalCode: postalCode)));
 
         Assert.Equal(new[] { "postalCode" }, ex.Fields);
     }
-
-    // ─── Answers without a total ─────────────────────────────────────────────────
 
     [Fact]
     public void Calculate_AServiceOnQuote_IsOnQuote_WithNoTotalAndNoLine()
@@ -545,7 +525,6 @@ public class SupplierQuoteCalculatorTests
         var outside = SupplierQuoteCalculator.Calculate(service, SupplierQuoteCalculator.Validate(service, Request()), insideArea: false);
 
         Assert.All(new[] { estimate, onQuote, outside }, quote => Assert.Equal(includesVat, quote.PricesIncludeVat));
-        // Nothing is added: the total is the sum of the prices as the supplier wrote them.
         Assert.Equal(4500, estimate.TotalCents);
     }
 
@@ -560,12 +539,9 @@ public class SupplierQuoteCalculatorTests
 
         var quote = Quote(service, Request(surface: 77, options: [Pick("bagno", 3)]));
 
-        // 95 minutes -> 2 hours; 77 m² -> 1 block.
         Assert.Equal(new[] { 3998, 333, 2331 }, quote.Lines.Select(l => l.AmountCents));
         Assert.Equal(6662, quote.TotalCents);
     }
-
-    // ─── Messages ────────────────────────────────────────────────────────────────
 
     [Fact]
     public void TheErrorKeys_ExistInItalianAndEnglish_WithDifferentText()
@@ -580,8 +556,6 @@ public class SupplierQuoteCalculatorTests
             Assert.NotEqual(italian, english);
         }
     }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
 
     private const string Flat = SupplierServiceSupplementUnits.Flat;
     private const string Bathroom = SupplierServiceSupplementUnits.Bathroom;

@@ -28,10 +28,8 @@ public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
 {
     private readonly RecordingEmailQueue _emails = new();
 
-    /// <summary>What the host queued so far: recipient, content and template name.</summary>
     public IReadOnlyList<(string? To, EmailContent Content, string Template)> SentEmails() => _emails.Snapshot();
 
-    /// <summary>The team needs no comuni, and two hosts starting together on the shared in-memory store would both import them.</summary>
     protected override bool SeedComuneSample => false;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -43,8 +41,6 @@ public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
             services.RemoveAll<IEmailQueue>();
             services.AddSingleton<IEmailQueue>(_emails);
 
-            // The in-memory fallback of the host is one store for every test host of the process, and other suites write
-            // roles and organisations into it: this host gets a store of its own, where the seed of the tests is all there is.
             if (!UsesPostgreSql)
             {
                 RemoveAllOf<DbContextOptions<AppDbContext>>(services);
@@ -66,7 +62,6 @@ public sealed class OrgInvitationsFactory : CasazenWebApplicationFactory
 /// </summary>
 public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) : IClassFixture<OrgInvitationsFactory>
 {
-    /// <summary>The versions of the legal documents of the test host (<c>Legal:Documents:*:Version</c>).</summary>
     private const string ConsentVersion = "2026-06-v1";
 
     private static object InvitationBody(string email, string role = "Collaborator", string name = "Anna Leone") =>
@@ -92,7 +87,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
 
     private static string NewUserId(string name) => $"auth0|am02-{name}-{Guid.NewGuid():N}";
 
-    /// <summary>An owner as the onboarding leaves it, in an org on the given plan.</summary>
     private async Task<(string OwnerId, Guid OrgId)> OwnerOnPlanAsync(PlanTier tier, SubscriptionStatus status)
     {
         await EnsureSeedsAsync();
@@ -159,7 +153,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         return OrgInvitationTestKit.TokenInEmail(mail);
     }
 
-    /// <summary>The owner invites <paramref name="email"/> and the token of the link in the email comes back with the invitation id.</summary>
     private async Task<(Guid InvitationId, string Token)> InviteAsync(HttpClient owner, string email, string role = "Collaborator")
     {
         var response = await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(email, role));
@@ -167,8 +160,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         return (body.GetProperty("invitation").GetProperty("id").GetGuid(), LinkTokenSentTo(email, EmailTemplates.Names.OrgInvitation));
     }
-
-    // ─── The whole journey ──────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Journey_InviteLookupAcceptThenDeactivateAndReactivate()
@@ -192,14 +183,12 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         var listed = await (await owner.GetAsync("/api/orgs/me/invitations")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(invitation.GetProperty("id").GetGuid(), Assert.Single(listed.EnumerateArray()).GetProperty("id").GetGuid());
 
-        // Anyone with the link sees what it is for, before signing in.
         using var anonymous = factory.CreateClient();
         var lookup = await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token });
         Assert.Equal(HttpStatusCode.OK, lookup.StatusCode);
         var preview = await lookup.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal((annaEmail, "Collaborator"), (preview.GetProperty("email").GetString(), preview.GetProperty("role").GetString()));
 
-        // Anna signs in (a new account, verified email) and accepts; sending it twice finds it done.
         using var anna = InviteeClient(annaId, annaEmail);
         var accepted = await anna.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(token));
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
@@ -208,13 +197,11 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal(("Collaborator", false), (acceptedBody.GetProperty("role").GetString(), acceptedBody.GetProperty("leftEmptyOrg").GetBoolean()));
         Assert.Equal(HttpStatusCode.OK, (await anna.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(token))).StatusCode);
 
-        // The link is spent for everybody, and she works in the area she was invited to, nowhere else.
         await OrgTeamHttp.AssertProblemAsync(await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token }), HttpStatusCode.Gone, "invitation_invalid");
         Assert.Equal(HttpStatusCode.OK, (await anna.GetAsync("/api/users/me")).StatusCode);
         Assert.Equal(["short-rent"], await OrgTeamHttp.ContextKeysAsync(anna));
         Assert.Empty(await (await owner.GetAsync("/api/orgs/me/invitations")).Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
 
-        // The owner sees her among the people, and the plan's seats follow.
         var members = await (await owner.GetAsync("/api/orgs/me/members")).Content.ReadFromJsonAsync<JsonElement>();
         var annaRow = members.GetProperty("items").EnumerateArray().Single(m => m.GetProperty("userId").GetString() == annaId);
         Assert.Equal(("Collaborator", "Active", annaEmail), (
@@ -230,7 +217,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             entitlement.GetProperty("usage").GetProperty("seats").GetInt32(),
             entitlement.GetProperty("canInviteMember").GetBoolean()));
 
-        // Deactivated, she is refused on the very next request; reactivated, she is back.
         var memberId = annaRow.GetProperty("id").GetGuid();
         var deactivated = await owner.PostAsync($"/api/orgs/me/members/{memberId}/deactivate", null);
         Assert.Equal(HttpStatusCode.OK, deactivated.StatusCode);
@@ -263,8 +249,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/orgs/me/members/{memberId}")).StatusCode);
         await OrgTeamHttp.AssertProblemAsync(await owner.PostAsync($"/api/orgs/me/members/{memberId}/deactivate", null), HttpStatusCode.NotFound, "org_member_not_found");
     }
-
-    // ─── Who may do what ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Team_AMemberWhoIsNotAManager_IsRefusedOnEveryEndpointOfThePeople()
@@ -328,8 +312,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         await OrgTeamHttp.AssertProblemAsync(await owner.PostAsJsonAsync("/api/orgs/me/invitations", InvitationBody(second)), HttpStatusCode.Conflict, "org_invitation_already_pending");
     }
 
-    // ─── What the invited person can get wrong ──────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Accept_EveryRefusal_HasItsStatusAndCode_AndTheInvitationStaysUsable()
     {
@@ -353,7 +335,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         await OrgTeamHttp.AssertProblemAsync(await anna.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(new string('0', 64))), HttpStatusCode.Gone, "invitation_invalid");
         await OrgTeamHttp.AssertProblemAsync(await anna.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody("not a token")), HttpStatusCode.Gone, "invitation_invalid");
 
-        // None of those used the invitation: Anna accepts, and then the link is used for everybody else.
         Assert.Equal(HttpStatusCode.OK, (await anna.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(token))).StatusCode);
         using var bruno = InviteeClient(NewUserId("bruno"), NewEmail("bruno"));
         await OrgTeamHttp.AssertProblemAsync(await bruno.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(token)), HttpStatusCode.Gone, "invitation_used");
@@ -375,8 +356,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var expiredRow = await db.OrgInvitations.IgnoreQueryFilters().SingleAsync(i => i.Id == expiredId);
             expiredRow.ExpiresAt = DateTime.UtcNow.AddMinutes(-1);
-            // An invitation expires a week after its last email: the test forces the expiry, so its last send is old too (AM-02c:
-            // «reinvia» waits an hour after the last one).
             expiredRow.LastSentAt = DateTime.UtcNow.AddDays(-8);
             expiredRow.SendLog = [];
             await db.SaveChangesAsync();
@@ -388,19 +367,15 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
 
         await OrgTeamHttp.AssertProblemAsync(await revoked.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(revokedToken)), HttpStatusCode.Gone, "invitation_revoked");
         await OrgTeamHttp.AssertProblemAsync(await expired.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(expiredToken)), HttpStatusCode.Gone, "invitation_expired");
-        // The lookup of the same links says nothing more than "invalid".
         await OrgTeamHttp.AssertProblemAsync(await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token = revokedToken }), HttpStatusCode.Gone, "invitation_invalid");
         await OrgTeamHttp.AssertProblemAsync(await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token = expiredToken }), HttpStatusCode.Gone, "invitation_invalid");
 
-        // The expired one comes back with the owner's "send again", with a new link.
         var resent = await owner.PostAsync($"/api/orgs/me/invitations/{expiredId}/resend", null);
         Assert.Equal(HttpStatusCode.OK, resent.StatusCode);
         var newToken = LinkTokenSentTo(expiredEmail, EmailTemplates.Names.OrgInvitation);
         Assert.NotEqual(expiredToken, newToken);
         Assert.Equal(HttpStatusCode.OK, (await expired.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(newToken))).StatusCode);
     }
-
-    // ─── A person who already has an org ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Accept_APersonWhoLeavesAnEmptyOrgOfItsOwn_JoinsTheOtherOne_AndTheOwnersTokenOpensNoBilling()
@@ -452,8 +427,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.False(await db.OrgMembers.IgnoreQueryFilters().AnyAsync(m => m.UserId == eveId));
     }
 
-    // ─── The lookup tells a stranger nothing ────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Lookup_EveryLinkThatDoesNotWork_GetsExactlyTheSameAnswer()
     {
@@ -489,8 +462,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Single(answers.Distinct());
         Assert.Equal((410, "invitation_invalid"), (answers[0].Status, answers[0].Code));
     }
-
-    // ─── The completions of AM-02c ──────────────────────────────────────────────────────────────────────
 
     private async Task<Guid> MemberRowIdAsync(HttpClient owner, string userId)
     {
@@ -531,13 +502,10 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var roles = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("roles").EnumerateArray().ToList();
         Assert.Equal(["Owner", "Admin", "PropertyManager", "Collaborator", "Accountant"], roles.Select(r => r.GetProperty("role").GetString()));
-        // The owner gives every role but its own; only the collaborator can be limited to some properties.
         Assert.Equal([false, true, true, true, true], roles.Select(r => r.GetProperty("assignable").GetBoolean()));
         Assert.Equal(["Collaborator"], roles.Where(r => r.GetProperty("scopeSupported").GetBoolean()).Select(r => r.GetProperty("role").GetString()));
         Assert.All(roles, r => Assert.Equal(13, r.GetProperty("capabilities").GetArrayLength()));
 
-        // The levels are read from the permissions of the seeded roles: the collaborator reads the prices, handles the guests and has
-        // no account; the property manager holds the restricted membership of the account.
         var collaborator = roles.Single(r => r.GetProperty("role").GetString() == "Collaborator");
         var levels = collaborator.GetProperty("capabilities").EnumerateArray()
             .ToDictionary(c => c.GetProperty("id").GetString()!, c => c.GetProperty("level").GetString());
@@ -548,7 +516,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         var manager = roles.Single(r => r.GetProperty("role").GetString() == "PropertyManager");
         Assert.Equal("org_manager", manager.GetProperty("permissionsByContext").GetProperty("account").GetProperty("roleKey").GetString());
 
-        // A member who is no manager reads the same matrix, and can give nothing.
         var memberUserId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
         using var member = factory.CreateAuthenticatedClient(memberUserId);
         var seen = (await (await member.GetAsync("/api/orgs/me/roles")).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("roles").EnumerateArray();
@@ -589,12 +556,10 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal(["long-rent", "short-rent"], row.GetProperty("areas").EnumerateArray().Select(a => a.GetString()).Order());
         Assert.Equal(["long-rent", "short-rent"], (await OrgTeamHttp.ContextKeysAsync(member)).Order());
 
-        // The same set again writes nothing; taking an area away is as direct.
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync(path, new { areas = new[] { "long-rent", "short-rent" } })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync(path, new { areas = new[] { "long-rent" } })).StatusCode);
         Assert.Equal(["long-rent"], await OrgTeamHttp.ContextKeysAsync(member));
 
-        // Two lines in the log, not three: who changed whose areas, from what to what.
         var log = await (await owner.GetAsync("/api/orgs/me/activity?type=MemberAreasChanged")).Content.ReadFromJsonAsync<JsonElement>();
         var lines = log.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(2, lines.Count);
@@ -606,7 +571,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             (lines[0].GetProperty("details").GetProperty("fromAreas").GetString(), lines[0].GetProperty("details").GetProperty("toAreas").GetString()));
         Assert.All(lines, l => Assert.Equal(ownerId, l.GetProperty("actorUserId").GetString()));
 
-        // What the request can get wrong, with its own code; none of it touched the member.
         await OrgTeamHttp.AssertProblemAsync(
             await owner.PutAsJsonAsync(path, new { areas = Array.Empty<string>() }), HttpStatusCode.UnprocessableEntity, "org_member_area_required");
         await OrgTeamHttp.AssertProblemAsync(
@@ -690,7 +654,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         var listed = Assert.Single((await (await owner.GetAsync("/api/orgs/me/invitations")).Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
         Assert.Equal(new[] { first, second }.Order(), listed.GetProperty("propertyIds").EnumerateArray().Select(p => p.GetGuid()).Order());
 
-        // She accepts and reaches the two properties she was invited with, and not the third: no second step for the owner.
         var token = LinkTokenSentTo(annaEmail, EmailTemplates.Names.OrgInvitation);
         using var anna = InviteeClient(annaId, annaEmail);
         Assert.Equal(HttpStatusCode.OK, (await anna.PostAsJsonAsync("/api/org-invitations/accept", AcceptBody(token))).StatusCode);
@@ -714,7 +677,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         object Body(string role, string scope, params Guid[] ids) =>
             new { email = NewEmail("x"), name = "Anna Leone", role, areas = new[] { "short-rent" }, propertyScope = scope, propertyIds = ids };
 
-        // A property that is not the org's (unknown, of another org) is refused; so is one given to a role or a scope that cannot have it.
         await OrgTeamHttp.AssertProblemAsync(
             await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "Selected", Guid.NewGuid())),
             HttpStatusCode.UnprocessableEntity,
@@ -735,7 +697,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
             HttpStatusCode.BadRequest,
             (await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "Selected", Enumerable.Range(0, 501).Select(_ => Guid.NewGuid()).ToArray()))).StatusCode);
 
-        // None of them wrote an invitation or sent an email.
         Assert.Empty(await (await owner.GetAsync("/api/orgs/me/invitations")).Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
         Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/orgs/me/invitations", Body("Collaborator", "Selected", mine))).StatusCode);
     }
@@ -746,8 +707,6 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         var (ownerId, _) = await OwnerOnPlanAsync(PlanTier.Pro, SubscriptionStatus.Active);
         using var owner = OwnerClient(ownerId);
 
-        // Ten emails in the day (the default of OrgTeam:InvitationDailyLimit). Each invitation is revoked at once: that frees its seat
-        // and gives back no email.
         for (var i = 0; i < 10; i++)
         {
             var (invitationId, _) = await InviteAsync(owner, NewEmail($"giorno{i}"));
@@ -771,9 +730,7 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
         Assert.Equal(HttpStatusCode.TooManyRequests, tooSoon.StatusCode);
         var problem = await tooSoon.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("invitation_resend_too_soon", problem.GetProperty("code").GetString());
-        // The message says how many minutes are left.
         Assert.Matches("\\d", problem.GetProperty("detail").GetString()!);
-        // Nothing went out, and the link of the first email still works.
         Assert.Single(factory.SentEmails(), e => e.Template == EmailTemplates.Names.OrgInvitation && string.Equals(e.To, email, StringComparison.OrdinalIgnoreCase));
         using var anonymous = factory.CreateClient();
         Assert.Equal(HttpStatusCode.OK, (await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token = firstToken })).StatusCode);
@@ -790,19 +747,13 @@ public class OrgInvitationsHttpIntegrationTests(OrgInvitationsFactory factory) :
 
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
         Assert.Equal(2, factory.SentEmails().Count(e => e.Template == EmailTemplates.Names.OrgInvitation && string.Equals(e.To, email, StringComparison.OrdinalIgnoreCase)));
-        // The first link stopped working with the new one.
         await OrgTeamHttp.AssertProblemAsync(
             await anonymous.PostAsJsonAsync("/api/org-invitations/lookup", new { token = firstToken }), HttpStatusCode.Gone, "invitation_invalid");
     }
 
-    /// <summary>A context on the host's database, for the data a test writes directly (the scope lives as long as the test).</summary>
     private AppDbContext NewHostContext() => factory.Services.CreateScope().ServiceProvider.GetRequiredService<AppDbContext>();
 }
 
-/// <summary>
-/// The lookup of an invitation is anonymous and answers every link that does not work the same way, so it is limited per
-/// client: three calls here, the fourth is refused with 429 (the default is 20 a minute, <c>RateLimiting__PublicInvitationLookup__PermitLimit</c>).
-/// </summary>
 public class OrgInvitationsLookupRateLimitIntegrationTests(OrgInvitationsLookupRateLimitIntegrationTests.Factory factory)
     : IClassFixture<OrgInvitationsLookupRateLimitIntegrationTests.Factory>
 {

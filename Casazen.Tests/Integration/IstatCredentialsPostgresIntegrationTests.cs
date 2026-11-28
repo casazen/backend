@@ -71,7 +71,6 @@ public class IstatCredentialsPostgresIntegrationTests(OctorateOnboardingOpenFact
             Assert.InRange(configuredAt, DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(1));
         }
 
-        // Encrypted at rest; the one reader is the controlled opening of the support vault, through EF.
         var row = await RawRowAsync(property.Id);
         Assert.DoesNotContain(Username, row);
         Assert.DoesNotContain(Password, row);
@@ -102,11 +101,9 @@ public class IstatCredentialsPostgresIntegrationTests(OctorateOnboardingOpenFact
             var stored = await db.PropertyIstatCredentials.IgnoreQueryFilters().AsNoTracking()
                 .Where(c => c.PropertyId == property.Id).ToListAsync();
             var only = Assert.Single(stored);
-            // User name and code trimmed, password kept exactly as typed.
             Assert.Equal((Username, Password, StructureCode), (only.Username, only.Password, only.StructureCode));
         }
 
-        // A portal that asks for no code: the code is left out and none is kept.
         Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync(Url(property.Id), new { username = Username, password = Password })).StatusCode);
         using (var scope = factory.Services.CreateScope())
         {
@@ -163,7 +160,6 @@ public class IstatCredentialsPostgresIntegrationTests(OctorateOnboardingOpenFact
         Assert.Equal(HttpStatusCode.NotFound, (await client.PutAsJsonAsync(Url(property.Id), new { username = "X", password = "Y", structureCode = "Z" })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.DeleteAsync(Url(property.Id))).StatusCode);
 
-        // Nothing of the owner's was touched: still configured, with its own values.
         using var status = await ReadJsonAsync(await ownerClient.GetAsync(Url(property.Id)));
         Assert.True(status.RootElement.GetProperty("configured").GetBoolean());
         using var scope = factory.Services.CreateScope();
@@ -221,7 +217,6 @@ public class IstatCredentialsPostgresIntegrationTests(OctorateOnboardingOpenFact
         return status.RootElement.GetProperty("configuredAt").GetDateTime();
     }
 
-    /// <summary>The row as the database stores it (context without converters).</summary>
     private async Task<string> RawRowAsync(Guid propertyId)
     {
         using var scope = factory.Services.CreateScope();

@@ -42,7 +42,6 @@ public class SupplierReliabilityTenancyTests
         var foreignKey = Assert.Single(entity.GetForeignKeys());
         Assert.Equal(typeof(SupplierProfile), foreignKey.PrincipalEntityType.ClrType);
         Assert.Equal(DeleteBehavior.Cascade, foreignKey.DeleteBehavior);
-        // One event of a kind for each supplier and request: the writers are jobs and webhooks that may run twice.
         Assert.Contains(entity.GetIndexes(), i => i.IsUnique
             && i.Properties.Select(p => p.Name).SequenceEqual(
                 [nameof(SupplierReliabilityEvent.SupplierOrgId), nameof(SupplierReliabilityEvent.RequestId), nameof(SupplierReliabilityEvent.Kind)]));

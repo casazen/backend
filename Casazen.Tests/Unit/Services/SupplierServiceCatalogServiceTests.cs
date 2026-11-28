@@ -64,8 +64,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    // ─── Create ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task CreateAsync_ValidInput_CreatesADraftWithSlugPositionAndTimestamps()
     {
@@ -176,17 +174,13 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         Assert.Equal(SupplierServiceCatalogErrors.LimitReached, ex.Code);
         Assert.Equal(SupplierServiceCatalogLimits.MaxServicesPerSupplier, Assert.Single(ex.MessageArgs));
 
-        // Another supplier has its own count.
         await Service().CreateAsync(OrgB, Input("Il mio primo"));
 
-        // A deleted service does not count.
         var list = await Service().ListAsync(OrgA);
         await Service().DeleteAsync(OrgA, list[0].Id);
         var created = await Service().CreateAsync(OrgA, Input("Ora c'è posto"));
         Assert.Equal("ora-c-e-posto", created.Slug);
     }
-
-    // ─── Read ────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ListAsync_ReturnsOnlyTheSuppliersNotDeletedServicesByPositionThenCreation()
@@ -216,8 +210,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         await AssertNotFoundAsync(Service().GetAsync(OrgA, gone.Id));
         await AssertNotFoundAsync(Service().GetAsync(OrgA, Guid.NewGuid()));
     }
-
-    // ─── Update ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task UpdateAsync_ReplacesTheContentAndKeepsStatusPhotosPositionAndCreationDate()
@@ -300,7 +292,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         var renamed = await Service().UpdateAsync(OrgA, draft.Id, draft.Version, Input("Pulizia profonda"));
         Assert.Equal("pulizia-profonda", renamed.Slug);
 
-        // The same name again: the slug does not move.
         var again = await Service().UpdateAsync(OrgA, draft.Id, renamed.Version, Input("Pulizia profonda", summary: "Altro"));
         Assert.Equal("pulizia-profonda", again.Slug);
 
@@ -351,7 +342,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         Assert.Equal(SupplierServiceListingStatus.Paused, pausedEmptied.Status);
         Assert.Null(pausedEmptied.PriceFromCents);
 
-        // ...but cannot be published again like that.
         var ex = await Assert.ThrowsAsync<SupplierServiceRuleException>(() => Service().PublishAsync(OrgA, created.Id));
         Assert.Equal(new[] { "durationMinutes", "priceFromCents" }, ex.Fields);
     }
@@ -377,8 +367,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         var moved = await Service().UpdateAsync(OrgA, created.Id, kept.Version, Input("Pulizia", sortOrder: 2));
         Assert.Equal(2, moved.SortOrder);
     }
-
-    // ─── Update: the photo list ──────────────────────────────────────────────────
 
     [Fact]
     public async Task UpdateAsync_PhotoUrls_AreTheOnesToKeepInTheNewOrder_AndTheOthersAreRemovedFromTheStorage()
@@ -452,8 +440,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         Assert.Equal("[]", (await ReloadAsync(mine.Id)).PhotoUrlsJson);
     }
 
-    // ─── Delete ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task DeleteAsync_IsSoft_HidesTheServiceAndFreesItsSlug()
     {
@@ -496,8 +482,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         Assert.True(await ObjectExistsAsync(url));
         Assert.Equal(withPhoto.PhotoUrlsJson, (await ReloadAsync(created.Id)).PhotoUrlsJson);
     }
-
-    // ─── Publish and pause ───────────────────────────────────────────────────────
 
     [Fact]
     public async Task PublishAsync_ACompleteDraft_BecomesActive()
@@ -587,8 +571,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         await AssertNotFoundAsync(Service().PauseAsync(OrgB, created.Id));
         Assert.Equal(SupplierServiceListingStatus.Active, (await ReloadAsync(created.Id)).Status);
     }
-
-    // ─── Duplicate ───────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task DuplicateAsync_CopiesTheContentAsADraftWithANewSlugTheCopySuffixAndTheLastPosition()
@@ -690,16 +672,12 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         var copy = await Service().DuplicateAsync(OrgA, source.Id, " (copia)");
         Assert.Equal(withPhoto.PhotoUrlsJson, copy.PhotoUrlsJson);
 
-        // The copy drops the photo: the original still lists it, so the object stays.
         await Service().UpdateAsync(OrgA, copy.Id, copy.Version, Input("Pulizia (copia)") with { PhotoUrls = [] });
         Assert.True(await ObjectExistsAsync(url));
 
-        // The original drops it too: nobody lists it any more, the object goes.
         await Service().UpdateAsync(OrgA, source.Id, withPhoto.Version, Input("Pulizia") with { PhotoUrls = [] });
         Assert.False(await ObjectExistsAsync(url));
     }
-
-    // ─── Photos ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AddPhotosAsync_ValidImages_AreStoredInTheSuppliersFolderAndAppendedInOrder()
@@ -767,7 +745,7 @@ public class SupplierServiceCatalogServiceTests : IDisposable
     [Theory]
     [InlineData("foto.gif", "image/gif")]
     [InlineData("foto.pdf", "application/pdf")]
-    [InlineData("foto.jpg", "image/png")] // the declared type and the extension must agree with the content
+    [InlineData("foto.jpg", "image/png")]
     [InlineData("foto.png", "image/jpeg")]
     public async Task AddPhotosAsync_UnsupportedOrInconsistentType_ThrowsInvalidType(string fileName, string contentType)
     {
@@ -866,8 +844,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
     [Fact]
     public async Task UpdateAsync_AnEntryThatIsNotAnObjectOfTheSuppliersOwnFolder_IsNeverDeletedFromTheStorage()
     {
-        // The list can hold such an entry only through a row written by hand (a legacy path, an external address, an
-        // object of another supplier): taking it off the list must not delete anything that is not the supplier's own.
         var created = await Service().CreateAsync(OrgA, Input("Pulizia"));
         var theirs = await Service().CreateAsync(OrgB, Input("Loro"));
         var theirPhoto = await Service().AddPhotosAsync(OrgB, theirs.Id, [Image("a.jpg", "image/jpeg", JpegBytes)]);
@@ -887,12 +863,9 @@ public class SupplierServiceCatalogServiceTests : IDisposable
         Assert.Single(StoredObjects());
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────
-
     private AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
 
-    /// <summary>A service on its own context, as every request gets its own.</summary>
     private SupplierServiceCatalogService Service() =>
         new(CreateDb(), _hookedStorage, _images, NullLogger<SupplierServiceCatalogService>.Instance, _clock);
 
@@ -960,7 +933,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
             ContentType = contentType,
         };
 
-    /// <summary>A file that claims to be <paramref name="length"/> bytes long without allocating them.</summary>
     private static IFormFile FakeSized(string fileName, string contentType, long length) =>
         new FormFile(new MemoryStream(JpegBytes), 0, length, "photos", fileName)
         {
@@ -968,7 +940,6 @@ public class SupplierServiceCatalogServiceTests : IDisposable
             ContentType = contentType,
         };
 
-    /// <summary>The filesystem storage with a hook that runs before each upload (and can make it fail).</summary>
     private sealed class HookedStorage(IFileStorage inner) : IFileStorage
     {
         public Action? BeforePut { get; set; }

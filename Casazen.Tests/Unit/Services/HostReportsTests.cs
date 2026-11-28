@@ -50,8 +50,6 @@ public class HostReportsTests
         db.Properties.AddRange(trullo, casaBianca, paused, foreign);
         db.Guests.AddRange(guest, foreignGuest);
 
-        // Trullo: A 3 nights, 300; C 30 October to 3 November, 400 for 4 nights (2 of them in October: 200); D cancelled, nothing.
-        // Casa Bianca: B 3 nights, 300. The paused villa still has its money: E 3 nights, 150. Another org's stay is nobody's here.
         db.Bookings.AddRange(
             Stay(trullo, guest.Id, BookingStatus.Confirmed, BookingSource.Direct, Day(10, 10), Day(10, 13), 300m),
             Stay(trullo, guest.Id, BookingStatus.Confirmed, BookingSource.Airbnb, Day(10, 30), Day(11, 3), 400m),
@@ -71,7 +69,6 @@ public class HostReportsTests
         var channels = await service.GetBookingsByChannelAsync(scope, query);
         var occupancy = await service.GetOccupancyByPropertyAsync(scope, query);
 
-        // The revenue: the Home's, and the Home's for each property.
         Assert.Equal(950m, home.Revenue);
         Assert.Equal(home.Revenue, revenue.Amount);
         Assert.Equal(home.RevenueStayCount, revenue.StayCount);
@@ -84,12 +81,10 @@ public class HostReportsTests
             Assert.Equal(ofProperty.Revenue, row.Amount);
         }
 
-        // The channels cut the same stays: the same revenue, and the Home's direct stays are the Direct row.
         Assert.Equal(home.Revenue, channels.Revenue);
         Assert.Equal(home.RevenueStayCount, channels.BookingCount);
         Assert.Equal(home.DirectShare.DirectStays, channels.Rows.Single(r => r.Source == BookingSource.Direct).BookingCount);
 
-        // The nights: the Home's occupancy is the sum of the rows, over the same (active) properties.
         Assert.Equal(home.Occupancy, occupancy.Total);
         Assert.Equal(new[] { "Casa Bianca", "Trullo" }, occupancy.Rows.Select(r => r.PropertyName).ToArray());
     }

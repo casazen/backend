@@ -132,8 +132,6 @@ public class HostOverviewServiceTests
     private static HostOverviewQuery October(bool money = true, Guid? propertyId = null) =>
         new(HostDashboardPeriodKind.Month, new DateOnly(2026, 10, 1), PropertyId: propertyId, IncludeMoney: money);
 
-    // --- The figures, compared with the period before --------------------------------------------------------
-
     [Fact]
     public async Task October_TheFiguresOfTheKpis_AndTheOnesOfTheThirtyOneNightsBefore()
     {
@@ -143,20 +141,15 @@ public class HostOverviewServiceTests
 
         Assert.Equal((HostDashboardPeriodKind.Month, Day(10, 1), Day(11, 1), 31), (overview.Period.Kind, overview.Period.From, overview.Period.To, overview.Period.Nights));
         Assert.Equal(Day(10, 9), overview.TodayInRome);
-        // Two short-rent properties; the one in long-term mode is out. A 3 nights + B 3 + the two requests that hold their dates
-        // (R 3, W 2) of 62.
         Assert.Equal(2, overview.PropertyCount);
         Assert.Equal(new HostDashboardOccupancy(11, 62, 0), overview.Occupancy.Occupancy);
-        // The request is not revenue: A 300 + B 300 (the pending ones and the cancelled stay count for nothing).
         Assert.Equal(new HostOverviewRevenue(600m, 2, 20.0m), overview.Revenue);
         Assert.Equal(new HostDashboardDirectShare(1, 2), overview.DirectShare);
 
-        // The period before: 31 nights from 31 August; F (5 nights) on the Trullo.
         Assert.Equal((Day(8, 31), Day(10, 1), 31), (overview.Previous.Period.From, overview.Previous.Period.To, overview.Previous.Period.Nights));
         Assert.Equal(new HostDashboardOccupancy(5, 62, 0), overview.Previous.Occupancy.Occupancy);
         Assert.Equal(new HostOverviewRevenue(500m, 1, null), overview.Previous.Revenue);
         Assert.Equal(new HostDashboardDirectShare(1, 1), overview.Previous.DirectShare);
-        // 11/62 against 5/62 of the nights: 9.7 points more; 600 against 500: 20 % more. Worked out here, not by the client.
         Assert.Equal(9.7m, overview.Occupancy.DeltaPoints);
         Assert.Null(overview.Previous.Occupancy.DeltaPoints);
     }
@@ -191,7 +184,6 @@ public class HostOverviewServiceTests
 
         var overview = await Dashboard(world.Db).GetOverviewAsync(world.OrgWide, October());
 
-        // A 300 and B 200 - 50 refunded came in during October; F's 500 came in on 30 September.
         Assert.Equal(new HostDashboardCollected(450m, 2), overview.Collected);
         Assert.Equal(new HostDashboardCollected(500m, 1), overview.Previous.Collected);
     }
@@ -208,15 +200,12 @@ public class HostOverviewServiceTests
         Assert.Null(overview.Series);
         Assert.Null(overview.Previous.Revenue);
         Assert.Null(overview.Previous.Collected);
-        // What is not money is there: the occupancy and its difference, the stays that arrive, the share of the booking site.
         Assert.Equal(new HostDashboardOccupancy(11, 62, 0), overview.Occupancy.Occupancy);
         Assert.Equal(9.7m, overview.Occupancy.DeltaPoints);
         Assert.Equal(3, overview.Upcoming.Count);
         Assert.Equal(new HostDashboardDirectShare(1, 2), overview.DirectShare);
         Assert.Equal(3, overview.NextArrivals.Count);
     }
-
-    // --- The stays that arrive -----------------------------------------------------------------------------
 
     [Fact]
     public async Task Upcoming_TheStaysThatArriveInThePeriod_TheRequestsWaitingForTheHostAmongThem()
@@ -225,8 +214,6 @@ public class HostOverviewServiceTests
 
         var overview = await Dashboard(world.Db).GetOverviewAsync(world.OrgWide, October());
 
-        // A (the 10th), B (the 8th: it arrived already, it still arrived in October) and the request (the 20th); not the cancelled
-        // stay, not the request whose guest has not confirmed the email, not C (November).
         Assert.Equal(new HostOverviewUpcoming(Count: 3, PreviousCount: 1, PendingApproval: 1), overview.Upcoming);
     }
 
@@ -234,7 +221,6 @@ public class HostOverviewServiceTests
     public async Task Upcoming_ARequestPastItsTerm_IsNotCounted()
     {
         var world = await SeedAsync();
-        // A day later the request of the 20th expired by itself (its term was the 10th at 08:00Z).
         var later = new Casazen.Tests.Unit.FixedTimeProvider(new DateTimeOffset(2026, 10, 11, 10, 0, 0, TimeSpan.Zero));
 
         var overview = await Dashboard(world.Db, later).GetOverviewAsync(world.OrgWide, October());
@@ -247,7 +233,6 @@ public class HostOverviewServiceTests
     {
         var world = await SeedAsync();
 
-        // The period asked for is October of last year: the next arrivals do not depend on it.
         var overview = await Dashboard(world.Db).GetOverviewAsync(
             world.OrgWide, new HostOverviewQuery(HostDashboardPeriodKind.Custom, From: new DateOnly(2025, 10, 1), To: new DateOnly(2025, 10, 31)));
 
@@ -266,12 +251,9 @@ public class HostOverviewServiceTests
 
         var overview = await Dashboard(world.Db).GetOverviewAsync(world.OrgWide, October());
 
-        // B arrived on the 8th, D is cancelled, X is another org's (10 to 20 October, a Confirmed stay).
         Assert.DoesNotContain(overview.NextArrivals, s => s.PropertyName is "Casa Bianca" or "Villa Altrove");
         Assert.Equal([world.A.Id], overview.NextArrivals.Take(1).Select(s => s.BookingId));
     }
-
-    // --- The chart --------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Series_ByWeek_AddsUpToTheRevenue_AndToThePreviousRevenue()
@@ -285,13 +267,10 @@ public class HostOverviewServiceTests
         Assert.Equal(
             [("2026-W40", Day(10, 1), Day(10, 5)), ("2026-W41", Day(10, 5), Day(10, 12)), ("2026-W42", Day(10, 12), Day(10, 19)), ("2026-W43", Day(10, 19), Day(10, 26)), ("2026-W44", Day(10, 26), Day(11, 1))],
             series.Buckets.Select(b => (b.Label, b.From, b.To)));
-        // B's three nights and A's first two in the week from the 5th; A's third night in the next. The request is not revenue.
         Assert.Equal([0m, 500m, 100m, 0m, 0m], series.Buckets.Select(b => b.Amount));
         Assert.Equal(overview.Revenue!.Amount, series.Buckets.Sum(b => b.Amount));
-        // F's five nights of September (the 20th to the 24th) fall in the bar of the 19th to the 25th, 31 days earlier.
         Assert.Equal([0m, 0m, 0m, 500m, 0m], series.Buckets.Select(b => b.PreviousAmount));
         Assert.Equal(overview.Previous.Revenue!.Amount, series.Buckets.Sum(b => b.PreviousAmount));
-        // Today is the 9th: the bars from the 12th are forecasts of stays already confirmed.
         Assert.Equal([false, false, true, true, true], series.Buckets.Select(b => b.IsFuture));
     }
 
@@ -307,7 +286,6 @@ public class HostOverviewServiceTests
         var series = overview.Series!;
         Assert.Equal(HostOverviewSeriesUnit.Month, series.Unit);
         Assert.Equal(12, series.Buckets.Count);
-        // F in September (500), A and B in October (600), C in November (400): 1,500 over the year.
         Assert.Equal(1500m, overview.Revenue!.Amount);
         Assert.Equal(overview.Revenue.Amount, series.Buckets.Sum(b => b.Amount));
         Assert.Equal(500m, series.Buckets.Single(b => b.Label == "2026-09").Amount);
@@ -321,7 +299,6 @@ public class HostOverviewServiceTests
     public async Task Series_TheCentsAddUp_WhateverTheRounding()
     {
         var world = await SeedAsync();
-        // Three nights of 100 euros on the Trullo from Sunday the 4th: Sunday alone in the first week, Monday and Tuesday in the next.
         world.Db.Bookings.Add(Stay(world.Trullo, await world.Db.Guests.FirstAsync(g => g.OrgId == world.OrgId), BookingStatus.Confirmed, BookingSource.Direct, Day(10, 4), Day(10, 7), 100m));
         await world.Db.SaveChangesAsync();
 
@@ -329,12 +306,9 @@ public class HostOverviewServiceTests
 
         Assert.Equal(700m, overview.Revenue!.Amount);
         Assert.Equal(overview.Revenue.Amount, overview.Series!.Buckets.Sum(b => b.Amount));
-        // 33.33 on the 4th (W40), 66.67 on the 5th and 6th (W41) = 100: no cent lost to the rounding.
         Assert.Equal(33.33m, overview.Series.Buckets[0].Amount);
         Assert.Equal(566.67m, overview.Series.Buckets[1].Amount);
     }
-
-    // --- A free period ----------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Custom_ThePeriodIsTheDaysAsked_AndTheOneBeforeHasTheSameNights()
@@ -347,11 +321,9 @@ public class HostOverviewServiceTests
 
         Assert.Equal((HostDashboardPeriodKind.Custom, Day(10, 5), Day(10, 12), 7), (overview.Period.Kind, overview.Period.From, overview.Period.To, overview.Period.Nights));
         Assert.Equal((Day(9, 28), Day(10, 5), 7), (overview.Previous.Period.From, overview.Previous.Period.To, overview.Previous.Period.Nights));
-        // B all three nights, A's first two: 300 + 200. A's third night is the 12th.
         Assert.Equal(500m, overview.Revenue!.Amount);
         var week = Assert.Single(overview.Series!.Buckets);
         Assert.Equal(500m, week.Amount);
-        // 7 nights x 2 properties.
         Assert.Equal(new HostDashboardOccupancy(5, 14, 0), overview.Occupancy.Occupancy);
     }
 
@@ -381,11 +353,8 @@ public class HostOverviewServiceTests
         Assert.Equal((Day(9, 10), Day(10, 10)), (last.Period.From, last.Period.To));
         Assert.Equal(next.Revenue!.Amount, next.Series!.Buckets.Sum(b => b.Amount));
         Assert.Equal(last.Revenue!.Amount, last.Series!.Buckets.Sum(b => b.Amount));
-        // Every bar of the last 30 days is in the past or holds today: none is a forecast.
         Assert.DoesNotContain(last.Series.Buckets, b => b.IsFuture);
     }
-
-    // --- One property, and the scope -------------------------------------------------------------------------
 
     [Fact]
     public async Task PropertyFilter_NarrowsEveryNumberToTheProperty_AndNotFoundWhenItIsNotTheCallers()
@@ -396,7 +365,6 @@ public class HostOverviewServiceTests
         var overview = await service.GetOverviewAsync(world.OrgWide, October(propertyId: world.Trullo.Id));
 
         Assert.Equal(1, overview.PropertyCount);
-        // A 3 nights, the request 3 and the other 2 that hold their dates, of 31.
         Assert.Equal(new HostDashboardOccupancy(8, 31, 0), overview.Occupancy.Occupancy);
         Assert.Equal(300m, overview.Revenue!.Amount);
         Assert.Equal(2, overview.Upcoming.Count);
@@ -419,11 +387,9 @@ public class HostOverviewServiceTests
         Assert.Equal(1, overview.PropertyCount);
         Assert.Equal(new HostDashboardOccupancy(8, 31, 0), overview.Occupancy.Occupancy);
         Assert.Equal(300m, overview.Revenue!.Amount);
-        // A and the request; B (Casa Bianca) is not the collaborator's.
         Assert.Equal(2, overview.Upcoming.Count);
         Assert.All(overview.NextArrivals, s => Assert.Equal(world.Trullo.Id, s.PropertyId));
         Assert.Equal(overview.Revenue.Amount, overview.Series!.Buckets.Sum(b => b.Amount));
-        // The period before: F on the Trullo.
         Assert.Equal(500m, overview.Previous.Revenue!.Amount);
         Assert.Equal(new HostDashboardCollected(300m, 1), overview.Collected);
     }

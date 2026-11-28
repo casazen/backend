@@ -48,11 +48,9 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
         var documents = await client.GetAsync($"/api/properties/{property.Id}/documents");
         Assert.Equal(HttpStatusCode.OK, documents.StatusCode);
         var ape = Assert.Single((await ReadJsonAsync(documents)).EnumerateArray());
-        // The lease form decides "APE on file" from this field: it must be in the list (A7-06).
         Assert.Equal("Ape", ape.GetProperty("documentType").GetString());
         Assert.False(ape.TryGetProperty("storageUrl", out _));
 
-        // Private bucket (FD-07): the file comes back only through the authenticated endpoint.
         var download = await client.GetAsync($"/api/properties/{property.Id}/documents/{documentId}/download");
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
         Assert.StartsWith("%PDF", Encoding.ASCII.GetString(await download.Content.ReadAsByteArrayAsync())[..4]);
@@ -65,7 +63,6 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
         await _factory.SeedOrgForOwnerAsync(landlord);
         using var client = _factory.CreateAuthenticatedClient(landlord, LongTermLandlord);
 
-        // A long-term property has no nightly rate nor short-stay guests.
         var create = await client.PostAsJsonAsync("/api/properties", PropertyBody("Bilocale Monza"));
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var id = (await ReadJsonAsync(create)).GetProperty("id").GetGuid();
@@ -80,8 +77,6 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
         Assert.Equal("Bilocale Monza centro", saved.Name);
         Assert.Equal(0m, saved.NightlyRate);
         Assert.Equal(Casazen.Core.Entities.Enums.PropertyComplianceStatus.Pending, saved.ComplianceStatus);
-        // PM-01: the long-rent form sends no mode, no guests and no rate; the compatibility rule makes it a long-term
-        // property and the update that follows (no mode in the body) keeps it so.
         Assert.Equal(Casazen.Core.Entities.Enums.RentalMode.Long, saved.RentalMode);
     }
 
@@ -124,7 +119,6 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
         await AddUserToOrgAsync(owner, manager);
         using var client = _factory.CreateAuthenticatedClient(manager, $"{LongTermLandlord},PropertyManager");
 
-        // The manager sees the org's properties (to pick one in the lease form) and their documents.
         Assert.Contains(property.Id, await ReadIdsAsync(await client.GetAsync("/api/properties")));
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/properties/{property.Id}/documents")).StatusCode);
 
@@ -243,7 +237,6 @@ public class LongRentPropertyAccessIntegrationTests : IClassFixture<CasazenWebAp
             IsActive = true,
         };
         db.Users.Add(user);
-        // A colleague who completed the onboarding for the org (PL-02): the checks are about ownership.
         await HostOnboardingSeed.MarkOnboardedAsync(db, user, org.Id, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }

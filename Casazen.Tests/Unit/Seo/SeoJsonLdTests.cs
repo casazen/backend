@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Seo;
 
-/// <summary>schema.org structured data of the public pages (BK-15): real data only, nothing invented, nothing empty.</summary>
 public class SeoJsonLdTests
 {
     private static SeoJsonLd.VacationRentalData Rental(
@@ -52,7 +51,6 @@ public class SeoJsonLdTests
         Assert.Equal("MTK", given["containsPlace"]!["floorSize"]!["unitCode"]!.GetValue<string>());
         Assert.Equal("15:30", given["checkinTime"]!.GetValue<string>());
         Assert.Equal("10:00", given["checkoutTime"]!.GetValue<string>());
-        // The host said «No pets»: an explicit false, not silence.
         Assert.False(given["petsAllowed"]!.GetValue<bool>());
 
         var silent = SeoJsonLd.VacationRental(Rental());
@@ -119,10 +117,8 @@ public class SeoJsonLdTests
     {
         var node = SeoJsonLd.VacationRental(Rental());
 
-        // No review system, no check-in/out times, no availability: left out, not written as a guess.
         foreach (var key in new[] { "aggregateRating", "review", "checkinTime", "checkoutTime", "availability" })
             Assert.False(node.ContainsKey(key), key);
-        // An absent PetFriendly amenity is not a "no pets" rule.
         Assert.False(node.ContainsKey("petsAllowed"));
     }
 
@@ -135,7 +131,6 @@ public class SeoJsonLdTests
     [Fact]
     public void VacationRental_UnsetPosition_WritesNoCoordinates()
     {
-        // 0,0 is the default of a position the host never set, not a place.
         var node = SeoJsonLd.VacationRental(Rental(latitude: 0m, longitude: 0m));
 
         Assert.False(node.ContainsKey("geo"));
@@ -144,7 +139,6 @@ public class SeoJsonLdTests
     [Fact]
     public void VacationRental_ExactPosition_IsPublishedRoundedToAboutOneKilometre()
     {
-        // DB-03: the host types 6 decimals (about 10 cm); the page for the crawlers carries two (about 1 km).
         var json = SeoJsonLd.Serialize(SeoJsonLd.VacationRental(Rental(latitude: 45.464211m, longitude: 9.191383m)));
 
         var geo = JsonNode.Parse(json)!["geo"]!;
@@ -156,8 +150,8 @@ public class SeoJsonLdTests
     }
 
     [Theory]
-    [InlineData(41.9028, 12.4964, 41.90, 12.50)] // Roma: half away from zero
-    [InlineData(-33.865143, 151.209900, -33.87, 151.21)] // the rule is symmetric around zero
+    [InlineData(41.9028, 12.4964, 41.90, 12.50)]
+    [InlineData(-33.865143, 151.209900, -33.87, 151.21)]
     [InlineData(45.005, 9.995, 45.01, 10.00)]
     public void VacationRental_PositionRounding_IsHalfAwayFromZero(double latitude, double longitude, double expectedLatitude, double expectedLongitude)
     {
@@ -190,7 +184,6 @@ public class SeoJsonLdTests
         Assert.Equal(1, items[0]!["position"]!.GetValue<int>());
         Assert.Equal("ListItem", items[0]!["@type"]!.GetValue<string>());
         Assert.Equal("https://public.example.test/book/rossi/property/villa", items[1]!["item"]!.GetValue<string>());
-        // Nested items carry no @context of their own.
         Assert.False(items[0]!.AsObject().ContainsKey("@context"));
     }
 
@@ -257,7 +250,6 @@ public class SeoJsonLdTests
         Assert.Equal("Answer", questions[0]!["acceptedAnswer"]!["@type"]!.GetValue<string>());
         Assert.Equal("3,00 € a persona per notte.", questions[0]!["acceptedAnswer"]!["text"]!.GetValue<string>());
         Assert.Equal("Chi è esente?", questions[1]!["name"]!.GetValue<string>());
-        // Nested objects carry no @context of their own.
         Assert.False(questions[0]!.AsObject().ContainsKey("@context"));
     }
 }

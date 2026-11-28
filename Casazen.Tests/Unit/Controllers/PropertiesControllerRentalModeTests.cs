@@ -25,11 +25,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// PM-01 on the property endpoints: <c>GET /api/properties?mode=short|long</c> (without the parameter nothing changes),
-/// the rental mode in the records the host reads, the compatibility rule of the creation, and the update that accepts
-/// <c>rentalMode</c> without ever changing the stored one.
-/// </summary>
 public class PropertiesControllerRentalModeTests
 {
     private static readonly Guid OrgId = Guid.Parse("00000000-0000-0000-0000-0000000000bb");
@@ -82,8 +77,6 @@ public class PropertiesControllerRentalModeTests
             Mock.Of<ILogger<PropertiesController>>());
         SetUser("auth0|host");
     }
-
-    // ─── GET /api/properties?mode= ──────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("short", RentalMode.Short)]
@@ -150,7 +143,6 @@ public class PropertiesControllerRentalModeTests
     [Fact]
     public async Task GetAll_ModeFilter_KeepsTheScopeOfTheCaller()
     {
-        // An org-wide role lists the whole org (no owner filter); the mode only narrows it.
         SetUser("auth0|manager", "PropertyManager");
         _service
             .Setup(x => x.GetPropertiesAsync(It.IsAny<HostScope>(), RentalMode.Long))
@@ -160,8 +152,6 @@ public class PropertiesControllerRentalModeTests
 
         _service.Verify(x => x.GetPropertiesAsync(new HostScope(OrgId, null), RentalMode.Long), Times.Once);
     }
-
-    // ─── Create: the compatibility rule ─────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(0, 0, null, RentalMode.Long)]
@@ -210,8 +200,6 @@ public class PropertiesControllerRentalModeTests
         Assert.Null(withoutMode.RentalMode);
     }
 
-    // ─── Update: accepted, never changed ────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(RentalMode.Short, RentalMode.Long)]
     [InlineData(RentalMode.Long, RentalMode.Short)]
@@ -237,7 +225,6 @@ public class PropertiesControllerRentalModeTests
     [InlineData(RentalMode.Long)]
     public async Task Update_RentalModeEqualToTheStoredOne_SavesTheOtherFieldsAndKeepsTheMode(RentalMode stored)
     {
-        // A form that sends the whole record back (it got rentalMode from the GET) keeps working.
         var property = StoredProperty(stored);
         _service.Setup(x => x.GetPropertyRecordAsync(property.Id)).ReturnsAsync(property);
         _service.Setup(x => x.UpdatePropertyAsync(It.IsAny<Property>())).ReturnsAsync(property);
@@ -277,8 +264,6 @@ public class PropertiesControllerRentalModeTests
         Assert.Equal("Altra", property.Name);
         Assert.Equal(RentalMode.Short, property.RentalMode);
     }
-
-    // ─── The records the host reads ─────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(RentalMode.Short, "Short")]

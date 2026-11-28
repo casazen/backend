@@ -26,7 +26,6 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IClassFixture<OrgInvitationsFactory>
 {
-    /// <summary>The versions of the legal documents of the test host (<c>Legal:Documents:*:Version</c>).</summary>
     private const string ConsentVersion = "2026-06-v1";
 
     private static string NewUserId(string name) => $"auth0|am02b-{name}-{Guid.NewGuid():N}";
@@ -35,7 +34,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
 
     private HttpClient Owner(string ownerId) => factory.CreateAuthenticatedClient(ownerId, roles: "PropertyOwner");
 
-    /// <summary>A person of the database only: no role in the token, its rights are its membership rows.</summary>
     private HttpClient Member(string userId, string? language = null)
     {
         var client = factory.CreateAuthenticatedClient(userId);
@@ -88,7 +86,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         },
     };
 
-    /// <summary>The owner invites <paramref name="email"/>, the person accepts with its own account; returns the account and the member row.</summary>
     private async Task<(string UserId, Guid MemberId, Guid InvitationId)> InviteAndAcceptAsync(
         HttpClient owner, string email, string name, string role = "Collaborator")
     {
@@ -108,8 +105,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         return (userId, member.GetProperty("id").GetGuid(), invitationId);
     }
 
-    // ─── The whole journey ──────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Journey_EveryStepOfTheTeam_IsInTheLog_WithIdsOnly_AndTheCsvIsTheSameList()
     {
@@ -122,7 +117,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         await JsonAsync(await owner.PostAsync($"/api/orgs/me/members/{annaMemberId}/deactivate", null));
         await JsonAsync(await owner.PostAsync($"/api/orgs/me/members/{annaMemberId}/reactivate", null));
 
-        // A collaborator limited to one of two properties: who gave what to whom.
         var brunoId = await OrgTeamHttp.AddMemberAsync(factory, orgId, OrgRole.Collaborator, ["short-rent"]);
         Guid brunoMemberId;
         Guid propertyId;
@@ -144,11 +138,9 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
             Types(page).AsEnumerable().Reverse());
         Assert.Equal((7, 1, 50), (page.GetProperty("totalCount").GetInt32(), page.GetProperty("page").GetInt32(), page.GetProperty("pageSize").GetInt32()));
 
-        // Newest first.
         var instants = Items(page).Select(i => i.GetProperty("when").GetDateTime()).ToList();
         Assert.Equal(instants.OrderByDescending(t => t), instants);
 
-        // The ids are the ones the client already has: the owner's account, the invitation, Anna's account, Bruno's account.
         var byType = Items(page).ToDictionary(i => i.GetProperty("type").GetString()!);
         Assert.Equal(
             (ownerId, "Invitation", invitationId.ToString(), "account"),
@@ -164,14 +156,12 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.Equal("1", byType["MemberPropertyAccessChanged"].GetProperty("details").GetProperty("granted").GetString());
         Assert.Equal("Accountant", byType["MemberRemoved"].GetProperty("details").GetProperty("role").GetString());
 
-        // No name, no email, nothing of the org.
         var raw = page.GetRawText();
         Assert.DoesNotContain("@", raw, StringComparison.Ordinal);
         Assert.DoesNotContain("Anna", raw, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Leone", raw, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("example.com", raw, StringComparison.Ordinal);
 
-        // The CSV is the same list, with the same ids and the same header, and nothing else.
         var csv = await owner.GetAsync("/api/orgs/me/activity.csv");
         Assert.Equal(HttpStatusCode.OK, csv.StatusCode);
         Assert.Equal("text/csv", csv.Content.Headers.ContentType?.MediaType);
@@ -197,7 +187,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         await JsonAsync(await owner.PutAsJsonAsync(
             "/api/orgs/me/settings",
             new { name = "Villa Mare Segreta", slug = $"villa-segreta-{Guid.NewGuid():N}"[..30], contactEmail = "segreto@example.com", contactEmailPublic = false }));
-        // Only the contact email: nothing for the log.
         var current = await JsonAsync(await owner.GetAsync("/api/orgs/me/settings"));
         await JsonAsync(await owner.PutAsJsonAsync(
             "/api/orgs/me/settings",
@@ -221,8 +210,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.DoesNotContain("example.com", raw, StringComparison.Ordinal);
     }
 
-    // ─── Filters, paging, the CSV with filters ──────────────────────────────────────────────────────────
-
     [Fact]
     public async Task List_Filters_Paging_AndTheCsvWithTheSameFilters()
     {
@@ -235,7 +222,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         var from = DateTime.UtcNow.AddMinutes(-5).ToString("O");
         var to = DateTime.UtcNow.AddMinutes(5).ToString("O");
 
-        // One event, several events (repeated or separated by commas), the area, the person.
         Assert.Equal(["MemberRoleChanged"], Types(await ActivityAsync(owner, "?type=MemberRoleChanged")));
         Assert.Equal(
             ["MemberReactivated", "MemberDeactivated"],
@@ -245,14 +231,12 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
             Types(await ActivityAsync(owner, "?type=memberdeactivated,MEMBERREACTIVATED")));
         Assert.Equal(5, (await ActivityAsync(owner, "?area=account")).GetProperty("totalCount").GetInt32());
         Assert.Equal(0, (await ActivityAsync(owner, "?area=short-rent")).GetProperty("totalCount").GetInt32());
-        // The owner invited, changed the role, deactivated and reactivated; Anna accepted.
         Assert.Equal(4, (await ActivityAsync(owner, $"?actor={Uri.EscapeDataString(ownerId)}")).GetProperty("totalCount").GetInt32());
         Assert.Equal(["InvitationAccepted"], Types(await ActivityAsync(owner, $"?actor={Uri.EscapeDataString(annaId)}")));
         Assert.Equal(0, (await ActivityAsync(owner, "?actor=system")).GetProperty("totalCount").GetInt32());
         Assert.Equal(5, (await ActivityAsync(owner, $"?from={Uri.EscapeDataString(from)}&to={Uri.EscapeDataString(to)}")).GetProperty("totalCount").GetInt32());
         Assert.Equal(0, (await ActivityAsync(owner, $"?to={Uri.EscapeDataString(DateTime.UtcNow.AddDays(-1).ToString("O"))}")).GetProperty("totalCount").GetInt32());
 
-        // Paging: two per page, three pages, no line twice.
         var seen = new List<string>();
         for (var pageNumber = 1; pageNumber <= 3; pageNumber++)
         {
@@ -263,7 +247,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
 
         Assert.Equal(5, seen.Distinct().Count());
 
-        // The CSV with a filter has only the lines of the filter; with a filter that matches nothing it is the header alone.
         var filtered = await (await owner.GetAsync("/api/orgs/me/activity.csv?type=MemberRoleChanged")).Content.ReadAsStringAsync();
         Assert.Equal(2, filtered.Split("\r\n", StringSplitOptions.RemoveEmptyEntries).Length);
         var empty = await (await owner.GetAsync("/api/orgs/me/activity.csv?actor=auth0%7Cnobody")).Content.ReadAsStringAsync();
@@ -306,8 +289,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.Equal("Area non riconosciuta.", it.GetProperty("detail").GetString());
         Assert.Equal("Unknown area.", en.GetProperty("detail").GetString());
     }
-
-    // ─── Who reads it ───────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(OrgRole.Admin, HttpStatusCode.OK)]
@@ -361,8 +342,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.DoesNotContain(ownerB, csvA, StringComparison.Ordinal);
     }
 
-    // ─── The export of the org (GDPR) ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task OrgExport_CarriesTheLogForWhoMayReadIt_AndACollaboratorDoesNotReachTheExportAtAll()
     {
@@ -372,7 +351,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         using var collaborator = Member(collaboratorId);
         var (annaId, _, invitationId) = await InviteAndAcceptAsync(owner, NewEmail("anna"), "Anna Leone");
 
-        // The owner: the org's data and the log, the same lines and the same ids as the endpoint of the log.
         var export = await JsonAsync(await owner.GetAsync("/api/gdpr/org/export"));
         var activity = export.GetProperty("activity").EnumerateArray().ToList();
         Assert.Equal(["InvitationAccepted", "MemberInvited"], activity.Select(a => a.GetProperty("type").GetString()));
@@ -383,8 +361,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.DoesNotContain("example.com", export.GetProperty("activity").GetRawText(), StringComparison.Ordinal);
         Assert.True(export.TryGetProperty("members", out _));
 
-        // A collaborator no longer reaches this export (AM-03b: it is the holder's, the policy of the org): 403, nothing of the org's
-        // data and nothing of the log, which it cannot read from the log's own endpoints either.
         var response = await collaborator.GetAsync("/api/gdpr/org/export");
         await OrgTeamHttp.AssertProblemAsync(response, HttpStatusCode.Forbidden, "forbidden");
         var body = await response.Content.ReadAsStringAsync();
@@ -393,9 +369,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.Equal(HttpStatusCode.Forbidden, (await collaborator.GetAsync("/api/orgs/me/activity")).StatusCode);
     }
 
-    // ─── Requests for access ────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>An org with its owner, an administrator, a property manager, a collaborator and an accountant.</summary>
     private async Task<(string OwnerId, Guid OrgId, string AdminId, string CollaboratorId, string OwnerEmail, string AdminEmail)> OrgWithATeamAsync()
     {
         var (ownerId, orgId) = await NewOrgAsync();
@@ -435,7 +408,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
             Assert.Contains("/app/account/people", mail.Content.HtmlBody, StringComparison.Ordinal);
         });
 
-        // The owner reads it in the log: who, in which org, for what. The note is not there.
         var page = await ActivityAsync(owner, "?type=AccessRequested");
         var line = Assert.Single(Items(page));
         Assert.Equal(
@@ -525,7 +497,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/orgs/me/access-requests", new { area = "billing" })).StatusCode);
         await OrgTeamHttp.AssertProblemAsync(
             await deactivated.PostAsJsonAsync("/api/orgs/me/access-requests", new { area = "billing" }), HttpStatusCode.Forbidden, "member_inactive");
-        // A signed-in account with no org has nobody to ask.
         Assert.Equal(HttpStatusCode.NotFound, (await stranger.PostAsJsonAsync("/api/orgs/me/access-requests", new { area = "billing" })).StatusCode);
         Assert.Empty(RequestEmailsTo(ownerEmail));
     }
@@ -543,11 +514,6 @@ public class OrgActivityHttpIntegrationTests(OrgInvitationsFactory factory) : IC
     }
 }
 
-/// <summary>
-/// A request for access is rate limited per person: with two permits, the third request of the same person within the window is
-/// refused with 429 (the default is five in ten minutes, <c>RateLimiting__OrgAccessRequest__PermitLimit</c>), and another person
-/// from the same address is not held back by it.
-/// </summary>
 public class OrgAccessRequestRateLimitIntegrationTests(OrgAccessRequestRateLimitIntegrationTests.Factory factory)
     : IClassFixture<OrgAccessRequestRateLimitIntegrationTests.Factory>
 {
@@ -566,7 +532,6 @@ public class OrgAccessRequestRateLimitIntegrationTests(OrgAccessRequestRateLimit
                 }));
             builder.ConfigureTestServices(services =>
             {
-                // Like the other hosts of the team: on the in-memory fallback a store of its own, where the seed is all there is.
                 if (!UsesPostgreSql)
                 {
                     RemoveAllOf<DbContextOptions<AppDbContext>>(services);
@@ -591,7 +556,6 @@ public class OrgAccessRequestRateLimitIntegrationTests(OrgAccessRequestRateLimit
         using var first = factory.CreateAuthenticatedClient(firstId);
         using var second = factory.CreateAuthenticatedClient(secondId);
 
-        // Two permits: two answers, then 429 (the daily limit of three is not reached).
         Assert.Equal(HttpStatusCode.Accepted, (await first.PostAsJsonAsync("/api/orgs/me/access-requests", new { area = "billing" })).StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, (await first.PostAsJsonAsync("/api/orgs/me/access-requests", new { area = "reports" })).StatusCode);
 
@@ -601,7 +565,6 @@ public class OrgAccessRequestRateLimitIntegrationTests(OrgAccessRequestRateLimit
         var problem = await refused.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
 
-        // The other person is counted on its own, from the same address.
         Assert.Equal(HttpStatusCode.Accepted, (await second.PostAsJsonAsync("/api/orgs/me/access-requests", new { area = "billing" })).StatusCode);
     }
 }

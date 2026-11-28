@@ -49,8 +49,6 @@ public class OrgAccessRequestServiceTests
 
     private IReadOnlyList<(string? To, EmailContent Content, string Template)> Sent() => _kit.Emails.Snapshot();
 
-    // ─── Who is told ───────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Request_TellsTheOwnerAndTheAdministrators_AndNobodyElse()
     {
@@ -110,8 +108,6 @@ public class OrgAccessRequestServiceTests
     [Fact]
     public void Request_TheRecipients_AreExactlyTheRolesThatHoldMembersManage()
     {
-        // The service tells owner and administrators; the permission org.members.manage is what the roles of the catalog say.
-        // If the catalog ever gives it to another role (or takes it from one), this fails and the recipients are decided again.
         var holders = Enum.GetValues<OrgRole>()
             .Where(role => OrgRoleCatalog.AccountRoleKey(role) is { } key
                            && OrgRoleCatalog.SeededRoles.Any(r =>
@@ -126,7 +122,6 @@ public class OrgAccessRequestServiceTests
     [Fact]
     public async Task Request_NobodyToTell_IsStillRecorded_AndSaysZero()
     {
-        // The owner is the only administrator and it is the one asking.
         var (org, _) = await _kit.SeedOwnerOrgAsync();
 
         var result = await RequestAsync(org.Id, userId: OwnerId);
@@ -147,8 +142,6 @@ public class OrgAccessRequestServiceTests
         Assert.Equal(0, result.Notified);
         Assert.Single(await _kit.ReadActivityAsync(orgId));
     }
-
-    // ─── What the email says ───────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Request_Italian_NamesTheRequesterItsRoleTheAreaAndTheNote_AndLinksThePeoplePage()
@@ -234,8 +227,6 @@ public class OrgAccessRequestServiceTests
         Assert.Equal("{\"requestedArea\":\"billing\"}", line.DetailsJson);
     }
 
-    // ─── What is kept ──────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Request_WritesOneLine_WithTheRequesterTheOrgAndTheAreaAsACode_NeverTheNote()
     {
@@ -267,8 +258,6 @@ public class OrgAccessRequestServiceTests
         Assert.Empty(await _kit.ReadActivityAsync(orgId));
         Assert.Empty(Sent());
     }
-
-    // ─── Who may ask, and what may be asked ────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("")]
@@ -329,8 +318,6 @@ public class OrgAccessRequestServiceTests
         Assert.NotEqual(orgId, other.Id);
     }
 
-    // ─── The daily limit ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Request_ThreeADay_TheFourthIsRefused_AndTheNextDayItWorksAgain()
     {
@@ -348,7 +335,6 @@ public class OrgAccessRequestServiceTests
         Assert.Equal(sentBefore, Sent().Count);
         Assert.Equal(3, (await _kit.ReadActivityAsync(orgId)).Count);
 
-        // 24 hours after the first request it no longer counts: one place is free.
         _kit.Clock.Advance(TimeSpan.FromHours(24) - TimeSpan.FromMinutes(30) + TimeSpan.FromSeconds(1));
         await RequestAsync(orgId, area: "reports");
         Assert.Equal(4, (await _kit.ReadActivityAsync(orgId)).Count);
@@ -361,7 +347,6 @@ public class OrgAccessRequestServiceTests
         for (var i = 0; i < 3; i++)
             await RequestAsync(orgId, area: "billing");
 
-        // Other people of the same org are not held back by what one person sent.
         await RequestAsync(orgId, userId: "auth0|accountant");
         await RequestAsync(orgId, userId: "auth0|manager");
 
@@ -395,8 +380,6 @@ public class OrgAccessRequestServiceTests
 
         await Assert.ThrowsAsync<DomainConflictException>(() => RequestAsync(orgId));
     }
-
-    // ─── Configuration ─────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Request_WithNoPublicUrl_IsAConfigurationError_AndNothingIsSaved()

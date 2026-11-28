@@ -109,8 +109,6 @@ public class ShowcaseMediaContentReferenceTests
         Assert.Empty(usedByTheOtherSupplier);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────────────────────
-
     private static JsonObject Patch(string json) => (JsonObject)JsonNode.Parse(json)!;
 
     private static string CoverJson(string url) => "{\"cover\":{\"url\":\"" + url + "\"}}";
@@ -122,7 +120,6 @@ public class ShowcaseMediaContentReferenceTests
     private AppDbContext CreateDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_databaseName).Options);
 
-    /// <summary>The row the upload leaves for an image (the content service reads the keys of these rows), and the address of the file.</summary>
     private async Task<(Guid Id, string Url)> StoreAsync(Guid orgId, string kind)
     {
         var key = $"suppliers/{orgId}/showcase/{kind}-{Guid.NewGuid():N}.jpg";
@@ -141,7 +138,6 @@ public class ShowcaseMediaContentReferenceTests
         return (row.Id, PublicBase + key);
     }
 
-    /// <summary>The content service on its own context, as every request gets its own; no service of the catalog is active.</summary>
     private SupplierShowcaseContentService Service()
     {
         var catalog = new Mock<ISupplierServiceCatalogService>();

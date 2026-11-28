@@ -40,7 +40,6 @@ public class LeaseHandoverTests : IDisposable
         return new LeaseOperationsService(db, catalog, new MigraDocPdfDocumentRenderer(), NullLogger<LeaseOperationsService>.Instance, _h.Clock);
     }
 
-    /// <summary>A registered lease that began on 1 November 2025 and ends on 31 October 2029, changed by <paramref name="change"/>.</summary>
     private async Task<LeaseContract> SeedAsync(Action<LeaseContract>? change = null)
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
@@ -76,7 +75,7 @@ public class LeaseHandoverTests : IDisposable
         {
             var handover = (await service.GetAsync(lease.Id)).Handover;
             Assert.True(handover.Available);
-            Assert.Equal(new DateOnly(2029, 10, 31), handover.SuggestedOn); // the last day of the lease
+            Assert.Equal(new DateOnly(2029, 10, 31), handover.SuggestedOn);
             Assert.Equal(new DateOnly(2025, 11, 1), handover.MinOn);
             Assert.NotEmpty((await service.BuildRiconsegnaAsync(lease.Id, null)).Pdf);
         }
@@ -98,20 +97,18 @@ public class LeaseHandoverTests : IDisposable
         {
             Assert.Contains("Energia elettrica:", text, StringComparison.Ordinal);
             Assert.Contains("Chiavi", text, StringComparison.Ordinal);
-            Assert.Contains("BOZZA", text, StringComparison.Ordinal); // a draft until the product owner approves the text
+            Assert.Contains("BOZZA", text, StringComparison.Ordinal);
         }
 
-        // Before the lease began, or more than a year after it ended, is not a handover of this lease.
         foreach (var day in new[] { new DateOnly(2025, 10, 31), new DateOnly(2030, 11, 1) })
         {
             var refused = await Assert.ThrowsAsync<DomainRuleException>(() => service.BuildRiconsegnaAsync(lease.Id, day));
             Assert.Equal("lease_letter_effect_date_invalid", refused.Code);
         }
 
-        Assert.Empty(await db.LeaseEvents.ToListAsync()); // preparing the minutes writes nothing
+        Assert.Empty(await db.LeaseEvents.ToListAsync());
     }
 
-    /// <summary>The words of the body of the PDF in reading order: the rotated watermark is not interleaved with the sentences it crosses.</summary>
     private static string BodyText(byte[] pdf) => string.Join(' ', PdfTestReader.BodyWords(pdf));
 
     private static string LettersDirectory()

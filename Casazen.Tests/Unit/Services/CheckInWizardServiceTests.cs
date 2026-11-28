@@ -15,17 +15,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The proofs of the host wizard "Guest check-in" and of the no-show (E03/F01/US01/T04, NF-40, NF-45): a statistical field is asked only where
-/// the region requires it, another org's booking is not found by any operation, and a stay whose police communication went cannot be marked
-/// as a no-show.
-/// </summary>
 public class CheckInWizardServiceTests
 {
     private static readonly Guid OrgA = Guid.Parse("6a1f0c2e-3b4d-4e5f-8a9b-0c1d2e3f4a51");
     private static readonly Guid OrgB = Guid.Parse("8c3e2a4b-5d6f-4a7b-9c8d-1e2f3a4b5c62");
 
-    /// <summary>The check-in day of the stays below, at 19:00 in Rome.</summary>
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 20, 18, 0, 0, TimeSpan.Zero));
 
     private static readonly DateTime CheckIn = new(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc);
@@ -37,7 +31,6 @@ public class CheckInWizardServiceTests
         Assert.Null(guest.TourismType);
         Assert.Null(guest.TravelWay);
 
-        // No region requires a statistical field: an empty one is never an issue (data minimization).
         Assert.DoesNotContain(Issues(guest, []), i => i.Code == CheckInIssueCodes.GuestFieldRequired);
 
         // The region requires the kind of tourism: the empty field is a warning (the ISTAT statistic never holds the guests back from the police
@@ -49,7 +42,6 @@ public class CheckInWizardServiceTests
         Assert.False(issue.Blocking);
         Assert.DoesNotContain(required, i => i.Field == "travelWay");
 
-        // Filled in, it is no issue any more.
         guest.TourismType = "holiday";
         Assert.DoesNotContain(Issues(guest, [IstatGuestFieldLists.TourismTypeField]), i => i.Code == CheckInIssueCodes.GuestFieldRequired);
 
@@ -79,7 +71,6 @@ public class CheckInWizardServiceTests
         row.RequiredGuestFields = IstatGuestFieldLists.TourismTypeField;
         await db.SaveChangesAsync();
 
-        // A complete record of the one guest, without the kind of tourism the region asks.
         var guest = CompleteGuest();
         guest.BookingId = booking.Id;
         guest.OrgId = OrgA;
@@ -98,11 +89,6 @@ public class CheckInWizardServiceTests
         Assert.Contains(confirmation.State.Issues, i => i is { Code: CheckInIssueCodes.GuestFieldRequired, Blocking: false });
     }
 
-    /// <summary>
-    /// The one rule of the stays that may go to the channel manager: only a blocking issue holds them back, and never a statistical field of the region, even
-    /// if one were built as blocking; the suggested step of the wizard follows the same rule, so a missing statistical field alone does not send the host back
-    /// to the guests.
-    /// </summary>
     [Fact]
     public void CheckInReadiness_SendBlockers_NeverCountTheStatisticalFieldOfARegion_Test()
     {
@@ -136,10 +122,8 @@ public class CheckInWizardServiceTests
         property.ComuneIstatCode = "013075";
         await db.SaveChangesAsync();
 
-        // The seeded table verifies nothing: no field is asked.
         Assert.Empty((await Wizard(db).GetStateAsync(booking.Id, CancellationToken.None)).RequiredGuestFields);
 
-        // The staff says Lombardia requires the kind of tourism: that field and no other; a property with no comune of the list is asked none.
         var row = await db.IstatRegionRules.SingleAsync(r => r.RegionIstatCode == "03");
         row.RequiredGuestFields = IstatGuestFieldLists.TourismTypeField;
         await db.SaveChangesAsync();
@@ -158,7 +142,6 @@ public class CheckInWizardServiceTests
         await using (var seed = NewDb(databaseName, null))
             bookingId = (await SeedStayAsync(seed, OrgA)).Id;
 
-        // Org B: the state, the guests, the confirmation and the no-show of org A's booking are all not found (404).
         await using (var dbB = NewDb(databaseName, new FixedTenant(OrgB)))
         {
             var wizard = Wizard(dbB);
@@ -172,7 +155,6 @@ public class CheckInWizardServiceTests
         await using (var check = NewDb(databaseName, null))
             Assert.Null((await check.Bookings.SingleAsync(b => b.Id == bookingId)).NoShowAt);
 
-        // Org A, the control: the same calls find the booking.
         await using var dbA = NewDb(databaseName, new FixedTenant(OrgA));
         var state = await Wizard(dbA).GetStateAsync(bookingId, CancellationToken.None);
         Assert.Equal(bookingId, state.Booking.BookingId);
@@ -184,7 +166,6 @@ public class CheckInWizardServiceTests
     [Fact]
     public async Task StayLifecycle_NoShowRefusedAfterAlloggiatiSent_Test()
     {
-        // The communication sent with a receipt, declared sent by the host, or an attempt sending or accepted: refused, nothing changes.
         var sentCases = new Func<Booking, object>[]
         {
             b => Report(b, AlloggiatiWebStatus.Inviato),
@@ -206,7 +187,6 @@ public class CheckInWizardServiceTests
             Assert.Null((await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).NoShowAt);
         }
 
-        // A communication still to send (or refused): the no-show is marked, once.
         await using var open = NewDb($"no-show-{Guid.NewGuid():N}", null);
         var stay = await SeedStayAsync(open, OrgA);
         open.Add(Report(stay, AlloggiatiWebStatus.DaInviareManualmente));
@@ -230,12 +210,10 @@ public class CheckInWizardServiceTests
         AlloggiatiStatusInfo Status(AlloggiatiWebStatus status) =>
             new(Guid.NewGuid(), status, null, null, null, CheckIn.AddDays(1), false, 24, false, false);
 
-        // The control: an expected stay whose communication is still to send is sent by the host on the portal, with the guide.
         Assert.Equal(
             CheckInAlloggiatiNextStep.Manual,
             CheckInWizardService.AlloggiatiNext(sender, Status(AlloggiatiWebStatus.DaInviareManualmente), StayAttendance.Expected).Step);
 
-        // A no-show, a request still waiting and a cancelled booking owe no communication: nothing to do on the portal, whatever the status.
         foreach (var attendance in new[] { StayAttendance.NoShow, StayAttendance.Inactive })
         {
             Assert.Equal(
@@ -262,7 +240,6 @@ public class CheckInWizardServiceTests
 
         var arrival = await lifecycle.RegisterArrivalAsync(booking.Id, CancellationToken.None);
 
-        // The guests did come: the mark goes, the stay is checked in and owes its communication like any other.
         Assert.Null(arrival.Booking.NoShowAt);
         Assert.Equal(BookingStatus.CheckedIn, arrival.Booking.Status);
         Assert.Equal(StayAttendance.Arrived, CheckInAttendance.Of(arrival.Booking));
@@ -274,7 +251,6 @@ public class CheckInWizardServiceTests
         CheckInReadinessRules.Evaluate(new CheckInReadinessInput(
             [guest], null, DateOnly.FromDateTime(CheckIn), DeclaredGuests: 1, OctorateReceivesGuests: false, requiredFields));
 
-    /// <summary>A single guest with a complete Alloggiati record and no statistical field.</summary>
     private static StayGuest CompleteGuest() => new()
     {
         Position = 0,
@@ -298,7 +274,6 @@ public class CheckInWizardServiceTests
     private static AppDbContext NewDb(string databaseName, ITenantContext? tenant) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(databaseName).Options, tenant);
 
-    /// <summary>A confirmed stay of <paramref name="orgId"/> whose check-in day is today in Rome.</summary>
     private static async Task<Booking> SeedStayAsync(AppDbContext db, Guid orgId)
     {
         var property = new Property
@@ -363,7 +338,6 @@ public class CheckInWizardServiceTests
             NullLogger<StayLifecycleService>.Instance,
             Clock);
 
-    /// <summary>Como, in Lombardia: the comune of the tests of the region table.</summary>
     private static Comune Como() => new()
     {
         IstatCode = "013075",

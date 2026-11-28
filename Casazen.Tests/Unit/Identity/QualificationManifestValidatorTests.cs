@@ -6,12 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// E74/F01/US01/T02: the dataset manifest of the qualification toolkit and its validator, on manifests written to a temp folder. The folder is built in code from
-/// placeholder text files: no photo, no frame and no document image is committed (the repository is public), and the ground-truth files hold only a sentinel
-/// that no error, report or message may ever repeat. The two proofs of the brief (data): <c>QualificationManifestValidator_PersonInTwoSplits_IsRefused</c>
-/// (separation by person) and <c>QualificationManifestValidator_MissingRightsOrTrainingUse_IsRefused</c> (rights for the purpose).
-/// </summary>
 public sealed class QualificationManifestValidatorTests : IDisposable
 {
     private const string GroundTruthSentinel = "GROUND-TRUTH-SENTINEL-4F81C2";
@@ -84,14 +78,11 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         var manifest = ValidManifest();
         var rights = manifest.Rights!;
 
-        // No rights at all: not a dataset to qualify on.
         Assert.Equal([QualificationManifestErrorCodes.RightsMissing], CodesOf(manifest with { Rights = null }));
 
-        // Training use declared true, or not declared: a dataset that may train a model is not kept apart from the service.
         Assert.Equal([QualificationManifestErrorCodes.RightsTrainingUseNotFalse], CodesOf(manifest with { Rights = rights with { TrainingUse = true } }));
         Assert.Equal([QualificationManifestErrorCodes.RightsTrainingUseNotFalse], CodesOf(manifest with { Rights = rights with { TrainingUse = null } }));
 
-        // Rights without a purpose, a consent reference or a collector.
         Assert.Equal(
             [
                 QualificationManifestErrorCodes.RightsPurposeMissing,
@@ -100,7 +91,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             ],
             CodesOf(manifest with { Rights = rights with { Purpose = " ", ConsentReference = null, CollectedBy = string.Empty } }));
 
-        // The same, through the JSON a person writes: no "rights" member, and "trainingUse": true.
         var withoutRights = QualificationDatasetManifest.Parse(RemoveMember(manifest.ToJson(), "rights"));
         Assert.Equal([QualificationManifestErrorCodes.RightsMissing], QualificationManifestValidator.Validate(withoutRights, _folder).Errors.Select(error => error.Code));
 
@@ -131,7 +121,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             sessionReport.Errors.Select(error => error.CaptureId));
         Assert.All(sessionReport.Errors, error => Assert.Equal((QualificationManifestErrorCodes.SessionSharedAcrossSplits, "session"), (error.Code, error.Field)));
 
-        // Without generalization only the persons must be separated: the same overlaps are accepted.
         Assert.True(QualificationManifestValidator.Validate(RoundTrip(sharedDevice with { Generalization = false }), _folder).IsValid);
         Assert.True(QualificationManifestValidator.Validate(RoundTrip(sharedSession with { Generalization = false }), _folder).IsValid);
     }
@@ -146,11 +135,9 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         Assert.Equal((QualificationManifestErrorCodes.AttackClassUnknown, "c-test-3", "attackClass"), (error.Code, error.CaptureId, error.Field));
         Assert.DoesNotContain("laser_projection", unknown.ToString(), StringComparison.Ordinal);
 
-        // An unknown class is never counted, under any name.
         Assert.Equal(0, unknown.Splits[2].AttacksByClass[QualificationAttackClasses.PhotoPrint]);
         Assert.Equal(QualificationAttackClasses.All, unknown.Splits[2].AttacksByClass.Keys);
 
-        // An attack without a class, and a genuine capture with one.
         var missing = QualificationManifestValidator.Validate(RoundTrip(WithCapture(manifest, "c-test-3", capture => capture with { AttackClass = null })), _folder);
         Assert.Equal([(QualificationManifestErrorCodes.AttackClassMissing, "c-test-3")], missing.Errors.Select(item => (item.Code, item.CaptureId)));
 
@@ -184,7 +171,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     [Fact]
     public void QualificationManifestValidator_ControlCharactersInAPath_AreRefused()
     {
-        // Built here, not written as test data: a control character does not belong in the name of a test.
         foreach (var control in new[] { '\0', '\n', '\r', '\t', '\u001f', '\u007f' })
             AssertFrontIsRefused("docs/c-dev-1" + control + "-front.bin");
     }
@@ -192,7 +178,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     [Fact]
     public void QualificationManifestValidator_AFileOutsideTheFolder_IsNotAcceptedEvenWhenItExists()
     {
-        // A real file one level up: it exists, and the path to it still goes outside the folder.
         var outside = "casazen-outside-" + Guid.NewGuid().ToString("N") + ".bin";
         var outsidePath = Path.Combine(Path.GetDirectoryName(_folder)!, outside);
         File.WriteAllText(outsidePath, "placeholder");
@@ -232,7 +217,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             report.Errors.Select(error => (error.CaptureId!, error.Field!)));
         Assert.All(report.Errors, error => Assert.Equal(QualificationManifestErrorCodes.FileMissing, error.Code));
 
-        // A path that must be there and is not given.
         var withoutPath = QualificationManifestValidator.Validate(
             WithCapture(manifest, "c-test-2", capture => capture with { Document = capture.Document! with { Front = null, GroundTruthFile = " " } }),
             _folder);
@@ -252,7 +236,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     [Fact]
     public void QualificationManifestValidator_Errors_NeverCarryAGroundTruthValueOrAnythingTheAuthorTyped()
     {
-        // Every free member that is refused holds a recognizable text; none of it, and none of the ground truth, may come back in any error, report or JSON of them.
         var manifest = ValidManifest() with { DatasetId = "SECRET DATASET TEXT", Version = "SECRET VERSION TEXT" };
         manifest = manifest with { Persons = [.. manifest.Persons!, new QualificationPerson("SECRET PERSON TEXT", "SECRET-SPLIT-TEXT")] };
         manifest = WithCapture(manifest, "c-dev-1", capture => capture with
@@ -266,7 +249,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         });
         manifest = WithCapture(manifest, "c-test-3", capture => capture with { AttackClass = "SECRET-CLASS-TEXT" });
 
-        // References to persons nobody lists are not echoed either, whatever they look like.
         manifest = WithCapture(
             manifest,
             "c-test-4",
@@ -286,7 +268,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     [Fact]
     public void QualificationManifestValidator_GroundTruthFiles_AreNeverOpened()
     {
-        // Every ground-truth file is held open exclusively: reading one anywhere would fail with an IOException, and the validator only asks whether it exists.
         var manifest = ValidManifest();
         foreach (var path in Directory.GetFiles(Path.Combine(_folder, "truth")))
             _held.Add(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None));
@@ -367,14 +348,12 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     {
         var manifest = ValidManifest();
 
-        // The document of a development person shown by a test person: the impostor pair would carry a development person into the test split.
         var crossing = WithCapture(manifest, "c-test-2", capture => capture with { Document = capture.Document! with { OwnerPerson = "p-dev-1" } });
         var report = QualificationManifestValidator.Validate(RoundTrip(crossing), _folder);
 
         var error = Assert.Single(report.Errors);
         Assert.Equal((QualificationManifestErrorCodes.DocumentOwnerSplitMismatch, "c-test-2", "p-dev-1", "document.ownerPerson"), (error.Code, error.CaptureId, error.PersonId, error.Field));
 
-        // An owner nobody lists cannot give an impostor pair at all.
         var unknown = WithCapture(manifest, "c-test-2", capture => capture with { Document = capture.Document! with { OwnerPerson = null } });
         var unknownReport = QualificationManifestValidator.Validate(RoundTrip(unknown), _folder);
         Assert.Equal([(QualificationManifestErrorCodes.DocumentOwnerUnknown, "c-test-2")], unknownReport.Errors.Select(item => (item.Code, item.CaptureId)));
@@ -387,7 +366,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         var manifest = ValidManifest();
         var captures = manifest.Captures!.ToList();
 
-        // Another capture of the same couple (a repeat), the opposite couple, an altered and a foreign document, and an attack with a document of somebody else.
         captures.Add(NewCapture("c-test-5", "p-test-2", "s-test", "d-test", owner: "p-test-1"));
         captures.Add(NewCapture("c-test-6", "p-test-1", "s-test", "d-test", owner: "p-test-2"));
         captures.Add(WithDocument(NewCapture("c-test-7", "p-test-1", "s-test", "d-test"), altered: true, foreign: false));
@@ -406,7 +384,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         Assert.Equal(1, test.ForeignDocuments);
         Assert.Equal(1, test.AttacksByClass[QualificationAttackClasses.VideoReplay]);
 
-        // The other splits do not see them.
         Assert.Equal((1, 1), (report.Splits[0].ImpostorPairs, report.Splits[0].DistinctImpostorPairs));
         Assert.Equal(0, report.Splits[1].ImpostorPairs);
     }
@@ -500,7 +477,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             """{ "datasetId": "SECRET-DATASET-TEXT", "generalization": "SECRET-NOT-A-BOOL" }""",
             """{ "datasetId": "SECRET-DATASET-TEXT", "persons": [ { "id": "p1", "split": "test", "name": "SECRET-NAME-TEXT" } ] }""",
 
-            // The NAME of a member it does not know is text the author typed too, and the path of the parser holds it.
             """{ "datasetId": "SECRET-DATASET-TEXT", "SECRET-MEMBER-NAME": 1 }""",
             """{ "persons": [ { "id": "p1", "split": "test", "SECRET-NAME-MEMBER": "x" } ] }""",
             """{ "rights": { "SECRET RIGHTS MEMBER": false } }""",
@@ -521,7 +497,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     [Fact]
     public void QualificationDatasetManifest_ARefusedText_NamesOnlyKnownMembersAndIndexes_AndTheLineCountsFromOne()
     {
-        // (text, path, line): a member the manifest knows is written as the model writes it, whatever the letter case; any other name is "?"; an index is a number.
         (string Text, string Path, long? Line)[] cases =
         [
             ("""{ "datasetId": "d", "SECRET-NAME": 1 }""", "$.?", 1),
@@ -542,7 +517,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             Assert.Equal($"The qualification manifest cannot be read (at {path}, line {line}).", exception.Message);
         }
 
-        // A text that is not a manifest at all has no place to name.
         var nothing = Assert.Throws<QualificationManifestFormatException>(() => QualificationDatasetManifest.Parse("null"));
         Assert.Equal(("$", (long?)null, "The qualification manifest cannot be read (at $, line unknown)."), (nothing.JsonPath, nothing.Line, nothing.Message));
     }
@@ -550,7 +524,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     [Fact]
     public void QualificationDatasetManifest_WhateverTheAuthorTypedAsAMemberName_NeverComesBack()
     {
-        // The parser writes a name with special characters in brackets and does not escape it, so a name can look like part of a path.
         string[] names =
         [
             "SECRET-NAME",
@@ -578,7 +551,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
                 Assert.DoesNotContain("SECRET", exception.Message, StringComparison.Ordinal);
                 Assert.DoesNotContain("SECRET", exception.JsonPath, StringComparison.Ordinal);
 
-                // Only known members, "?" and indexes are ever written.
                 Assert.Matches(@"^\$(\.[A-Za-z]+|\.\?|\[[0-9]+\])*$", exception.JsonPath);
             }
         }
@@ -649,23 +621,19 @@ public sealed class QualificationManifestValidatorTests : IDisposable
 
         Assert.True(report.IsValid, report.ToString());
 
-        // Test: two attacks and a person with the document of another, all with a sequence; no altered and no foreign document.
         var test = report.Splits[2];
         Assert.Equal((2, 1, 0, 0), (test.CriticalCheckIns!["attack"], test.CriticalCheckIns["impostor_pair"], test.CriticalCheckIns["altered"], test.CriticalCheckIns["foreign"]));
         Assert.Equal(["altered", "foreign"], test.CriticalKindsMissing());
 
-        // Development has a person with the document of another and nothing else; calibration has one genuine capture: every kind is missing.
         Assert.Equal(["attack", "altered", "foreign"], report.Splits[0].CriticalKindsMissing());
         Assert.Equal(QualificationCriticalKinds.All, report.Splits[1].CriticalKindsMissing());
 
-        // The warnings name the code, the split and the kind, and nothing else.
         Assert.Equal(9, report.Warnings.Count);
         Assert.All(report.Warnings, warning => Assert.Equal(QualificationManifestWarningCodes.CriticalKindMissing, warning.Code));
         Assert.Contains(report.Warnings, warning => warning.Split == QualificationSplits.Test && warning.Kind == QualificationCriticalKinds.Altered);
         Assert.Contains("warning critical_kind_missing split=test kind=altered", report.ToString(), StringComparison.Ordinal);
         Assert.Contains("wholeCheckIns[attack=2, impostor_pair=1, altered=0, foreign=0]", test.Describe(), StringComparison.Ordinal);
 
-        // A split with no capture is not asked for them.
         var empty = QualificationManifestValidator.Validate(RoundTrip(ValidManifest() with { Persons = [new QualificationPerson("p-dev-1", QualificationSplits.Development)], Captures = [NewCapture("c-dev-9", "p-dev-1", "s-dev", "d-dev")] }), _folder);
         Assert.Empty(empty.Splits[2].CriticalKindsMissing());
     }
@@ -673,7 +641,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
     [Fact]
     public void Validate_ACaptureWithoutASequence_IsNoWholeCheckIn_OfAnyKindOfCriticalCase()
     {
-        // c-test-3 (an attack) and c-test-2 (a person with the document of another, altered and foreign) have a document and no sequence: nothing can be decided on them.
         var manifest = WithCapture(
             WithCapture(ValidManifest(), "c-test-3", capture => capture with { Sequence = null }),
             "c-test-2",
@@ -683,7 +650,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
 
         Assert.Equal((1, 0, 0, 0), (test.CriticalCheckIns!["attack"], test.CriticalCheckIns["impostor_pair"], test.CriticalCheckIns["altered"], test.CriticalCheckIns["foreign"]));
 
-        // The counts of the documents are as they were: they count the documents, not the check-ins.
         Assert.Equal((1, 1, 1), (test.ImpostorPairs, test.AlteredDocuments, test.ForeignDocuments));
         Assert.Equal(["impostor_pair", "altered", "foreign"], test.CriticalKindsMissing());
     }
@@ -708,7 +674,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         return QualificationManifestValidator.Validate(RoundTrip(manifest), _folder).Errors.Select(error => error.Code).ToList();
     }
 
-    // What a person would do: write the JSON, read it back.
     private static QualificationDatasetManifest RoundTrip(QualificationDatasetManifest manifest)
     {
         return QualificationDatasetManifest.Parse(manifest.ToJson());
@@ -743,8 +708,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
         return capture with { Document = capture.Document! with { Altered = altered, Foreign = foreign } };
     }
 
-    // Seven captures in three splits; development and calibration and test each have their own sessions and devices, and one impostor pair in development and
-    // in test (a person shows the document of another person of the same split).
     private QualificationDatasetManifest ValidManifest()
     {
         return new QualificationDatasetManifest(
@@ -770,7 +733,6 @@ public sealed class QualificationManifestValidatorTests : IDisposable
             ]);
     }
 
-    // One capture and the placeholder files it points at, written under the temp folder (text, never an image).
     private QualificationCapture NewCapture(
         string id,
         string person,

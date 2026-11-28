@@ -47,7 +47,6 @@ public class OrgBackfillSimulationTests
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Mirrors <c>BackfillDefaultOrgs</c> Up steps 1–4. Returns orgs created this run.</summary>
     private static async Task RunBackfillAsync(AppDbContext db)
     {
         // 1) One default Org per distinct Property.OwnerId (idempotent on slug).
@@ -64,14 +63,12 @@ public class OrgBackfillSimulationTests
 
         var orgBySlug = await db.Orgs.ToDictionaryAsync(o => o.Slug, o => o.Id);
 
-        // 2) Link each owner's User row to their Org.
         foreach (var user in await db.Users.Where(u => u.OrgId == null).ToListAsync())
         {
             if (orgBySlug.TryGetValue($"org-{user.Id}", out var orgId))
                 user.OrgId = orgId;
         }
 
-        // 3) Relationship walk (only the unassigned sentinel).
         foreach (var p in await db.Properties.Where(p => p.OrgId == Guid.Empty).ToListAsync())
             p.OrgId = orgBySlug[$"org-{p.OwnerId}"];
         await db.SaveChangesAsync();
@@ -87,7 +84,6 @@ public class OrgBackfillSimulationTests
         foreach (var l in await db.LeaseContracts.Where(l => l.OrgId == Guid.Empty).ToListAsync())
             l.OrgId = propOrg[l.PropertyId];
 
-        // 4) Fallback Org (quarantine target).
         if (!await db.Orgs.AnyAsync(o => o.Slug == "casazen-unassigned"))
             db.Orgs.Add(new OrgEntity { Name = "CasaZen Unassigned", Slug = "casazen-unassigned", DisplayName = "CasaZen Unassigned", ContactEmail = "", PlanTier = PlanTier.Starter, IsActive = false });
 
@@ -102,7 +98,6 @@ public class OrgBackfillSimulationTests
 
         await RunBackfillAsync(db);
 
-        // One default org per distinct owner (2) + the fallback org.
         Assert.Equal(2, await db.Orgs.CountAsync(o => o.Slug.StartsWith("org-")));
         Assert.True(await db.Orgs.AnyAsync(o => o.Slug == "casazen-unassigned"));
 
@@ -110,13 +105,12 @@ public class OrgBackfillSimulationTests
         var orgB = (await db.Users.SingleAsync(u => u.Id == OwnerB)).OrgId;
         Assert.NotNull(orgA);
         Assert.NotNull(orgB);
-        Assert.NotEqual(orgA, orgB); // distinct owners never share an org (no cross-owner leak)
+        Assert.NotEqual(orgA, orgB);
 
-        // Every Property/Booking/Payment/Lease assigned to the correct owner's org.
         Assert.All(await db.Properties.Where(p => p.OwnerId == OwnerA).ToListAsync(), p => Assert.Equal(orgA, p.OrgId));
         Assert.All(await db.Properties.Where(p => p.OwnerId == OwnerB).ToListAsync(), p => Assert.Equal(orgB, p.OrgId));
-        Assert.Equal(orgA, (await db.Payments.SingleAsync()).OrgId);       // payment→booking→A1→orgA
-        Assert.Equal(orgB, (await db.LeaseContracts.SingleAsync()).OrgId); // lease→B1→orgB
+        Assert.Equal(orgA, (await db.Payments.SingleAsync()).OrgId);
+        Assert.Equal(orgB, (await db.LeaseContracts.SingleAsync()).OrgId);
     }
 
     [Fact]
@@ -127,7 +121,6 @@ public class OrgBackfillSimulationTests
 
         await RunBackfillAsync(db);
 
-        // AC10b pre-flight precondition: zero tenant-scoped rows remain unassigned.
         Assert.False(await db.Properties.AnyAsync(p => p.OrgId == Guid.Empty));
         Assert.False(await db.Bookings.AnyAsync(b => b.OrgId == Guid.Empty));
         Assert.False(await db.Payments.AnyAsync(p => p.OrgId == Guid.Empty));
@@ -144,9 +137,9 @@ public class OrgBackfillSimulationTests
         var orgsAfterFirst = await db.Orgs.CountAsync();
         var assignmentsAfterFirst = await db.Properties.Select(p => new { p.Id, p.OrgId }).ToListAsync();
 
-        await RunBackfillAsync(db); // re-run
+        await RunBackfillAsync(db);
 
-        Assert.Equal(orgsAfterFirst, await db.Orgs.CountAsync()); // no duplicate orgs
+        Assert.Equal(orgsAfterFirst, await db.Orgs.CountAsync());
         var assignmentsAfterSecond = await db.Properties.Select(p => new { p.Id, p.OrgId }).ToListAsync();
         Assert.Equal(assignmentsAfterFirst.OrderBy(x => x.Id), assignmentsAfterSecond.OrderBy(x => x.Id));
     }

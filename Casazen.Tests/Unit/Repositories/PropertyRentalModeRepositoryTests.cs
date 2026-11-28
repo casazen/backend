@@ -20,8 +20,6 @@ public class PropertyRentalModeRepositoryTests
 {
     private readonly string _databaseName = $"rental-mode-{Guid.NewGuid():N}";
 
-    // ─── List filter ────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetByScopeAsync_WithMode_ReturnsOnlyThatModeOfTheActivePropertiesOfTheOrg()
     {
@@ -73,8 +71,6 @@ public class PropertyRentalModeRepositoryTests
         Assert.Equal(["A breve"], properties.Select(p => p.Name));
     }
 
-    // ─── The generic save never writes the mode ─────────────────────────────────────────────────────
-
     [Fact]
     public async Task UpdateAsync_ChangedRentalModeOnTheEntity_IsNotWritten()
     {
@@ -115,7 +111,6 @@ public class PropertyRentalModeRepositoryTests
         await using var staleCopy = NewDb();
         var property = await staleCopy.Properties.SingleAsync(p => p.Id == propertyId);
 
-        // Meanwhile the scheduled mode change (PM-02) moves the property to long-term.
         await using (var changer = NewDb())
         {
             var current = await changer.Properties.SingleAsync(p => p.Id == propertyId);
@@ -154,8 +149,6 @@ public class PropertyRentalModeRepositoryTests
         Assert.Equal(RentalMode.Long, (await check.Properties.AsNoTracking().SingleAsync(p => p.Id == property.Id)).RentalMode);
     }
 
-    // ─── Plan counter ───────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetEntitlementAsync_CountsThePropertiesOfEveryMode()
     {
@@ -169,7 +162,6 @@ public class PropertyRentalModeRepositoryTests
 
         var entitlement = await entitlements.GetEntitlementAsync(org.Id);
 
-        // Starter allows 3 properties: the two long-term ones use their slots like any other.
         Assert.Equal(3, entitlement.PropertyCount);
         Assert.Equal(3, entitlement.MaxProperties);
         Assert.False(entitlement.CanAddProperty);

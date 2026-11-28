@@ -3,13 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// QA-CLOCK (FD-06): the calendar "today" of hosts, guests and properties is the date in Europe/Rome, from
-/// <c>RomeCalendar</c> on the injected <see cref="TimeProvider"/>. The UTC date differs from it every night between
-/// 22:00 and 24:00 UTC (23:00 and 24:00 in winter), so these constructions give yesterday's date in Rome and made both
-/// the application and its tests wrong in that window. Technical instants (<c>DateTime.UtcNow</c>, <c>GetUtcNow()</c>)
-/// stay allowed; only their truncation to a date and the server's local clock are banned.
-/// </summary>
 public class CalendarTodayArchitectureTests
 {
     private static readonly (Regex Pattern, string Hint)[] ForbiddenInApplication =
@@ -24,11 +17,6 @@ public class CalendarTodayArchitectureTests
         (new(@"DateOnly\.FromDateTime\(\s*DateTime(Offset)?\.(Utc)?Now\b"), "UTC date used as today"),
     ];
 
-    /// <summary>
-    /// In the tests the same constructions build a "today" that is yesterday in Rome for the code under test. Tests use
-    /// a <c>FixedTimeProvider</c>/<c>FakeTimeProvider</c> or, against the real clock of an integration host,
-    /// <c>TimeProvider.System.TodayInRome()</c>.
-    /// </summary>
     private static readonly (Regex Pattern, string Hint)[] ForbiddenInTests =
     [
         (new(@"\bDateTime\.Today\b"), "server-local date"),
@@ -95,14 +83,10 @@ public class CalendarTodayArchitectureTests
     private static bool IsExcluded(string relativePath) =>
         relativePath.Contains("/bin/", StringComparison.Ordinal)
         || relativePath.Contains("/obj/", StringComparison.Ordinal)
-        // Migrations are history, and they never compute a date.
         || relativePath.Contains("/Migrations/", StringComparison.Ordinal)
-        // The one place that turns an instant into the Rome calendar date.
         || relativePath.EndsWith("Casazen.Core/Utilities/RomeCalendar.cs", StringComparison.Ordinal)
-        // This guard spells the banned constructions out.
         || relativePath.EndsWith("/" + nameof(CalendarTodayArchitectureTests) + ".cs", StringComparison.Ordinal);
 
-    /// <summary>Drops a trailing <c>//</c> comment, so the rule can be explained in the code it protects.</summary>
     private static string StripComment(string line)
     {
         var index = line.IndexOf("//", StringComparison.Ordinal);

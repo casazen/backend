@@ -23,8 +23,6 @@ public sealed class LeaseDocumentServiceTests : IDisposable
 
     public LeaseDocumentServiceTests()
     {
-        // Initialize Hangfire with an in-memory storage for unit tests
-        // The LeaseDocumentService enqueues extraction jobs using BackgroundJob.Enqueue
         GlobalConfiguration.Configuration.UseInMemoryStorage();
 
         _storage.Setup(s => s.PutAsync(StorageBucket.Private, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", It.IsAny<CancellationToken>()))
@@ -106,7 +104,6 @@ public sealed class LeaseDocumentServiceTests : IDisposable
 
         Assert.True(await Service.DeleteAsync(lease.Id, saved.Id));
 
-        // The list and the download follow the row. The blob may remain; the document must not.
         Assert.True(rowCommittedBeforeStorageDelete);
         Assert.Empty(await Service.ListAsync(lease.Id));
         Assert.Null(await Service.DownloadAsync(lease.Id, saved.Id));

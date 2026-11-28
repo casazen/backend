@@ -20,8 +20,6 @@ namespace Casazen.Tests.Integration;
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
-    // ─── The tabs ───
-
     [Fact]
     public async Task Inbox_TabNuove_ListsTheNewRequestsTheOneToAnswerFirstFirst()
     {
@@ -140,8 +138,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         Assert.Equal(new[] { cancelled }, Ids(single));
     }
 
-    // ─── The filters ───
-
     [Fact]
     public async Task Inbox_Service_FiltersByTheServiceOfTheCatalogOrByTheCategory()
     {
@@ -209,7 +205,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         var inThreeDays = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: today.AddDays(3));
         var inEightDays = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: today.AddDays(8));
         var yesterday = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: today.AddDays(-1));
-        // On the 1st of the month "today" is the start of the month: reuse that request, a second one would break the "oggi" assertion.
         var firstOfMonth = monthStart == today ? forToday : await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: monthStart);
         var nextMonth = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: nextMonthStart);
         using var supplier = factory.Supplier(world);
@@ -241,8 +236,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         Assert.Empty(Ids(await response.Content.ReadFromJsonAsync<JsonElement>()));
     }
 
-    // ─── What an item shows ───
-
     [Fact]
     public async Task Inbox_BeforeTheTake_ShowsComunePostalCodeDayAndPriceButNeitherThePropertyNorTheNotesNorTheAddress()
     {
@@ -272,7 +265,7 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         Assert.DoesNotContain(ServiceRequestWorlds.PropertyName, raw);
         Assert.DoesNotContain(ServiceRequestWorlds.HostNotes, raw);
         Assert.DoesNotContain(ServiceRequestWorlds.PropertyAddress, raw);
-        Assert.DoesNotContain("Ospite", raw); // never the guest
+        Assert.DoesNotContain("Ospite", raw);
     }
 
     [Fact]
@@ -306,8 +299,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         Assert.DoesNotContain(id, Ids(list));
         Assert.Equal(HttpStatusCode.NotFound, one.StatusCode);
     }
-
-    // ─── Accept many at once ───
 
     [Fact]
     public async Task Accept_ManyRequests_AnswersEachRowAndTakesTheOnesThatCanBeTaken()
@@ -416,8 +407,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         Assert.Equal(HttpStatusCode.Forbidden, (await host.PostAsJsonAsync("/api/supplier/inbox/accept", payload)).StatusCode);
     }
 
-    // ─── Today ───
-
     [Fact]
     public async Task Today_ReturnsTheJobsOfTheDayTheNewRequestsTheEarningsAndTheAverageResponseTime()
     {
@@ -493,8 +482,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         }
     }
 
-    // ─── Checklist ───
-
     [Fact]
     public async Task Checklist_ASupplierThatHasJustStarted_SaysWhatIsMissingAndLeavesThePaymentsEmpty()
     {
@@ -508,7 +495,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         Assert.Equal(JsonValueKind.Null, body.GetProperty("hoursConfiguredAt").ValueKind);
         Assert.False(body.GetProperty("firstRequestAnswered").GetBoolean());
         Assert.False(body.GetProperty("showcasePublished").GetBoolean());
-        // Payments are not available yet: no value, which is not a "no".
         Assert.Equal(JsonValueKind.Null, body.GetProperty("paymentsActive").ValueKind);
         Assert.InRange(body.GetProperty("profileCompletionPercent").GetInt32(), 0, 100);
     }
@@ -542,12 +528,9 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         Assert.True(body.GetProperty("firstRequestAnswered").GetBoolean());
     }
 
-    // ─── helpers ───
-
     private static Guid[] Ids(JsonElement body) =>
         body.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("id").GetGuid()).ToArray();
 
-    /// <summary>A second property of the world's host, in another comune.</summary>
     private async Task<Guid> InsertPropertyAsync(ServiceRequestWorld world, string city, string? istatCode)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -573,10 +556,6 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         return property.Id;
     }
 
-    /// <summary>
-    /// A request for the world's supplier written straight to the table: for a property or a host the world does not own, a
-    /// status the API reaches slowly, or a day of the job (<paramref name="scheduledDay"/>, at noon in Rome).
-    /// </summary>
     private async Task<Guid> InsertRequestAsync(
         ServiceRequestWorld world,
         Guid propertyId,

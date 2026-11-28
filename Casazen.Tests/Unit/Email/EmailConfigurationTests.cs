@@ -14,7 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>FD-13 (A9-06, A9-16): one typed email configuration, validated at startup outside Development/Testing.</summary>
 public class EmailConfigurationTests
 {
     private static readonly Dictionary<string, string?> CompleteConfiguration = new()

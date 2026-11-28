@@ -15,17 +15,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// DEB-01 (2026-10-31): the agency policies checked the plan only, so any member of an agency org read the full IBAN of the owners and
-/// created wire batches. Each policy now also needs its agency permission, held by the caller's org role
-/// (<see cref="OrgRoleCatalog.AgencyPermissionsOf"/>, docs/runbooks/org-team.md § 57).
-/// </summary>
 public class AgencyPermissionAuthorizationHandlerTests
 {
     private const string Sub = "auth0|agency-permission-test";
     private static readonly Guid OrgId = Guid.NewGuid();
 
-    /// <summary>The product rule, by hand: who may read the full IBAN, pay the owners, see the list, run the statements and the withholding.</summary>
     [Theory]
     [InlineData(OrgRole.Owner, AgencyPermissions.OwnerFinancialRead, true)]
     [InlineData(OrgRole.Owner, AgencyPermissions.WireManage, true)]

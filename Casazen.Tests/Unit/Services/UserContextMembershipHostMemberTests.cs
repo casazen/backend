@@ -10,12 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// AM-00 (S2): <see cref="UserContextMembershipService.IsHostMemberAsync"/> tells a member of an org (a DB membership of a
-/// host context with a role other than the owner's) from its owner, a platform admin and a user with no membership.
-/// The seed has the owner roles (1 <c>property_owner</c> of short-rent, 2 <c>long_term_landlord</c> of long-rent,
-/// 3 <c>platform_admin</c> of admin).
-/// </summary>
 public class UserContextMembershipHostMemberTests
 {
     private const string UserId = "auth0|host-member";
@@ -75,7 +69,6 @@ public class UserContextMembershipHostMemberTests
     [Fact]
     public async Task IsHostMemberAsync_OwnerOfOneContextAndCollaboratorOfTheOther_IsTrue()
     {
-        // Any member role makes a member: the onboarding must not be able to rewrite it.
         await using var db = await CreateSeededDbAsync();
         db.UserContextMemberships.AddRange(
             new UserContextMembership { UserId = UserId, ContextKey = "short-rent", RoleId = ShortRentOwnerRoleId },
@@ -114,7 +107,6 @@ public class UserContextMembershipHostMemberTests
     [Fact]
     public async Task IsHostMemberAsync_MembershipAddedAfterTheFirstAnswer_IsSeenAtOnce()
     {
-        // Read from the database on every call, never memoized: it guards a self-service action.
         await using var db = await CreateSeededDbAsync();
         var service = CreateService(db);
         Assert.False(await service.IsHostMemberAsync(UserId));
@@ -125,8 +117,6 @@ public class UserContextMembershipHostMemberTests
         Assert.True(await service.IsHostMemberAsync(UserId));
     }
 
-    // ─── AM-01: the org member row is the source of truth ───────────────────────────────────────────────
-
     [Theory]
     [InlineData(OrgRole.Admin)]
     [InlineData(OrgRole.PropertyManager)]
@@ -134,7 +124,6 @@ public class UserContextMembershipHostMemberTests
     [InlineData(OrgRole.Accountant)]
     public async Task IsHostMemberAsync_OrgMemberThatIsNotTheOwner_IsTrueWhateverItsMemberships(OrgRole role)
     {
-        // An administrator whose only row is in the account context (an owner-level key) still is a member.
         await using var db = await CreateSeededDbAsync();
         db.OrgMembers.Add(new OrgMember { UserId = UserId, OrgId = Guid.NewGuid(), Role = role });
         await db.SaveChangesAsync();
@@ -177,7 +166,6 @@ public class UserContextMembershipHostMemberTests
     [InlineData("org_accountant", true)]
     public async Task IsHostMemberAsync_AccountMembershipAlone_OnlyTheAccountantIsAMember(string roleKey, bool expected)
     {
-        // The account is a host context: a role of it other than the owner's or the administrator's makes a member.
         await using var db = await CreateSeededDbAsync();
         db.UserContextMemberships.Add(new UserContextMembership
         {
@@ -193,7 +181,6 @@ public class UserContextMembershipHostMemberTests
     [Fact]
     public async Task IsHostMemberAsync_OrgIdOfAHostOrgThatAlreadyHasAnOwner_IsTrue()
     {
-        // Removed before User.OrgId was cleared: the row is gone, but onboarding must not make a second owner.
         await using var db = await CreateSeededDbAsync();
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity { Id = orgId, Name = "Host", DisplayName = "Host", Slug = "host", OrgType = OrgType.Host });
@@ -207,7 +194,6 @@ public class UserContextMembershipHostMemberTests
     [Fact]
     public async Task IsHostMemberAsync_OrgIdOfAHostOrgWithNoOwnerYet_IsFalse()
     {
-        // The caller's own org, provisioned before the onboarding writes the owner row.
         await using var db = await CreateSeededDbAsync();
         var orgId = Guid.NewGuid();
         db.Orgs.Add(new OrgEntity { Id = orgId, Name = "New", DisplayName = "New", Slug = "new", OrgType = OrgType.Host });
@@ -225,7 +211,6 @@ public class UserContextMembershipHostMemberTests
         var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options);
-        // Applies the HasData seed: contexts short-rent/long-rent/admin and the owner roles 1..3.
         await db.Database.EnsureCreatedAsync();
         db.Roles.AddRange(
             new Role { Id = ShortRentCollaboratorRoleId, ContextKey = "short-rent", RoleKey = "bk09_collaborator" },

@@ -14,14 +14,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// «Gestisci con AI»: what the assistant plans for the items of the cockpit and what it does when it runs. The cockpit itself is
-/// <see cref="ComplianceWizardServiceTests"/>'s: here it is given, and the rules of the assistant are the subject. The collaborators that
-/// send things (the check-in link, its e-mail, the check-out, the AI) are doubles that record what they were asked.
-/// </summary>
 public class ComplianceAutopilotServiceTests
 {
-    // 11:00 in Rome on 2 November 2026.
     private static readonly DateTimeOffset Instant = new(2026, 11, 2, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTime Today = new(2026, 11, 2, 0, 0, 0, DateTimeKind.Utc);
     private static readonly FixedTimeProvider Clock = new(Instant);
@@ -88,10 +82,8 @@ public class ComplianceAutopilotServiceTests
         public AppDbContext Db { get; }
         public OrgEntity Org { get; }
 
-        /// <summary>The property the caller may write on.</summary>
         public Property Property { get; }
 
-        /// <summary>The property the caller may not write on.</summary>
         public Property Locked { get; }
 
         public ComplianceAutopilotService Service { get; }
@@ -205,8 +197,6 @@ public class ComplianceAutopilotServiceTests
         }
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
-
     private static IAiRuntimeSettings AiOff()
     {
         var settings = new Mock<IAiRuntimeSettings>();
@@ -258,8 +248,6 @@ public class ComplianceAutopilotServiceTests
         Assert.Single(plan.Items, i => i.Topic == topic && i.BookingId == booking.Id);
 
     private const string Phone = "+39 333 123 4567";
-
-    // ─── The plan ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Plan_NothingInTheCockpit_IsEmpty()
@@ -530,8 +518,6 @@ public class ComplianceAutopilotServiceTests
 
         Assert.Equal(5, plan.BeyondLimit);
     }
-
-    // ─── The run ─────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Run_AsksTheGuestByEmail_AndPreparesTheMessageTheHostSends()

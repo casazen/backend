@@ -24,8 +24,6 @@ public class ServiceRequestQuoteTests
 {
     private const string SupplierEmail = "supplier@test.com";
 
-    // ─── Who may send, who may answer ────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Send_OnlyTheActiveSupplierOfThatRequestMayQuote_AndOnlyWhileItIsNew()
     {
@@ -33,18 +31,15 @@ public class ServiceRequestQuoteTests
         var request = await s.RequestAsync();
         var otherSupplier = await s.AddOtherSupplierAsync();
 
-        // Another supplier, and the host that asked, are not the supplier the request was sent to.
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => SendAsync(s, request.Id, orgId: otherSupplier));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => SendAsync(s, request.Id, orgId: s.HostOrgId));
         Assert.Null((await s.ReadAsync(request.Id)).QuoteSentAt);
 
-        // A suspended supplier performs no action.
         await s.SetSupplierStatusAsync(SupplierStatus.Suspended);
         var suspended = await Assert.ThrowsAsync<DomainRuleException>(() => SendAsync(s, request.Id));
         Assert.Equal(ServiceRequestErrorCodes.SupplierNotActive, suspended.Code);
         await s.SetSupplierStatusAsync(SupplierStatus.Active);
 
-        // A request the supplier already took is no longer waiting for its answer.
         var taken = await s.TakenAsync(ServiceRequestScenario.FridayAt14);
         var late = await Assert.ThrowsAsync<DomainRuleException>(() => SendAsync(s, taken.Id));
         Assert.Equal(ServiceRequestErrorCodes.InvalidTransition, late.Code);
@@ -59,7 +54,6 @@ public class ServiceRequestQuoteTests
         await SendAsync(s, request.Id);
         var sentAt = (await s.ReadAsync(request.Id)).QuoteSentAt!.Value;
 
-        // Another org's request answers like a missing one; the supplier cannot answer its own quote.
         foreach (var notTheHost in new[] { Guid.NewGuid(), s.SupplierOrgId })
         {
             var accept = await Assert.ThrowsAsync<NotFoundException>(() => s.Service.AcceptQuoteAsync(request.Id, notTheHost, sentAt));
@@ -73,8 +67,6 @@ public class ServiceRequestQuoteTests
         Assert.Equal(sentAt, saved.QuoteSentAt);
         Assert.Null(saved.QuotedAmountCents);
     }
-
-    // ─── The money ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Accept_TheTotalIsThePriceAgreed_AndTheCompletionIsPaidWithTheCommissionOnIt()
@@ -99,7 +91,6 @@ public class ServiceRequestQuoteTests
         var lines = ServiceRequestJson.ReadPriceLines(saved.PriceLinesJson);
         Assert.Equal([20000, 7500, 2500], lines.Select(line => line.AmountCents));
         Assert.All(lines, line => Assert.Equal(ServiceRequestPriceLineKinds.Quote, line.Kind));
-        // The offer is gone from the request, and the story of the quotes is kept.
         Assert.Null(saved.QuoteSentAt);
         Assert.Null(saved.QuoteTotalCents);
         Assert.Equal("[]", saved.QuoteLinesJson);
@@ -107,7 +98,6 @@ public class ServiceRequestQuoteTests
             [ServiceRequestQuoteEventKinds.Sent, ServiceRequestQuoteEventKinds.Accepted],
             ServiceRequestJson.ReadQuoteEvents(saved.QuoteEventsJson).Select(e => e.Kind));
 
-        // The supplier is told, e-mail and push; the host did it itself.
         var email = Assert.Single(s.Emails.Snapshot());
         Assert.Equal(SupplierEmail, email.To);
         Assert.Equal(EmailTemplates.Names.ServiceRequestQuoteAnswered, email.Template);
@@ -115,8 +105,6 @@ public class ServiceRequestQuoteTests
         Assert.Equal(PushTypes.ServiceRequestQuoteAccepted, push.Payload.Type);
         Assert.Equal(PushAudience.SupplierOrg(s.SupplierOrgId), push.Audience);
 
-        // Completed with nothing declared, the work costs what the customer accepted, line by line, and the payment is that total with the
-        // commission of CasaZen (10 % in the scenario) taken out of it.
         var completed = await s.Service.CompleteAsync(request.Id, s.SupplierOrgId);
         Assert.Equal(30000, completed.FinalAmountCents);
         Assert.False(completed.FinalAmountNeedsConfirmation);
@@ -136,13 +124,10 @@ public class ServiceRequestQuoteTests
         var sentAt = (await s.ReadAsync(request.Id)).QuoteSentAt!.Value;
         await s.Service.AcceptQuoteAsync(request.Id, s.HostOrgId, sentAt);
 
-        // The quote is the price the customer was given: 20 % above it is the limit, one cent more needs the customer.
         var completed = await s.Service.CompleteAsync(request.Id, s.SupplierOrgId, new CompleteServiceRequestCommand(FinalAmountCents: 36001));
 
         Assert.True(completed.FinalAmountNeedsConfirmation);
     }
-
-    // ─── An answer is about the quote the customer read ──────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Accept_AQuoteTheSupplierReplacedMeanwhile_Is409AndNothingChanges_ThenTheNewOneIsAccepted()
@@ -180,7 +165,6 @@ public class ServiceRequestQuoteTests
         var request = await s.RequestAsync();
         await SendAsync(s, request.Id, otherStart: ServiceRequestScenario.FridayAt14);
         var sentAt = (await s.ReadAsync(request.Id)).QuoteSentAt!.Value;
-        // The quote holds nothing: somebody else gets that time first.
         await s.TakenAsync(ServiceRequestScenario.FridayAt14);
         s.ForgetNotifications();
 
@@ -196,8 +180,6 @@ public class ServiceRequestQuoteTests
         var rejected = await s.Service.RejectQuoteAsync(request.Id, s.HostOrgId, sentAt);
         Assert.Null(rejected.QuoteSentAt);
     }
-
-    // ─── A request is taken once ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Accept_ARequestAlreadyTaken_NeverTakesItAgain_AndNoSecondQuoteCanBeSent()
@@ -246,7 +228,6 @@ public class ServiceRequestQuoteTests
         Assert.Equal(EmailTemplates.Names.ServiceRequestQuoteAnswered, email.Template);
         Assert.Equal(PushTypes.ServiceRequestQuoteRejected, Assert.Single(s.Pushes).Payload.Type);
 
-        // The supplier's console: waiting for its answer again, with the quote in the story.
         var view = await s.Reader.GetAsync(request.Id, s.SupplierOrgId);
         Assert.Equal(SupplierRequestPhases.ToAnswer, view!.Phase);
         Assert.Null(view.Quote);
@@ -257,8 +238,6 @@ public class ServiceRequestQuoteTests
         var late = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.AcceptQuoteAsync(request.Id, s.HostOrgId, sentAt));
         Assert.Equal(ServiceRequestErrorCodes.NoQuote, late.Code);
     }
-
-    // ─── A host has no deadline ──────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AutoCancel_AHostsQuoteHasNoDeadline_ButARequestWithoutOneIsStillCancelled()
@@ -281,9 +260,6 @@ public class ServiceRequestQuoteTests
         Assert.NotNull(saved.QuoteSentAt);
     }
 
-    // ─── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>The supplier answers with a quote (by default one line of 300 euro), as its console does.</summary>
     private static Task<ServiceRequest> SendAsync(
         ServiceRequestScenario s,
         Guid requestId,

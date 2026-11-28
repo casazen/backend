@@ -52,10 +52,6 @@ public class MessageHubNpgsqlTranslationTests
         return data;
     }
 
-    /// <summary>
-    /// One row of each source, in the order of the columns of the page statement (the members of the row of the list, in the order the service
-    /// projects them), so the probe goes on to the statements that read the last message of each conversation of the page.
-    /// </summary>
     private static DataTable? PageRowsOf(string sql)
     {
         if (!IsThePage(sql))
@@ -94,7 +90,6 @@ public class MessageHubNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(ScopeOf(scope), Filters[filter], 1, 20));
 
-        // The count, the page, and for the two conversations of the page the id of the last message and the message of each source.
         Assert.True(statements.Count >= 6, $"{filter}/{scope}: only {statements.Count} of the 6 statements were reached.");
 
         var page = Assert.Single(statements, IsThePage);
@@ -104,8 +99,6 @@ public class MessageHubNpgsqlTranslationTests
         Assert.Equal(2, CountOf(statements.First(), "UNION ALL"));
         Assert.StartsWith("SELECT COUNT", statements.First().TrimStart(), StringComparison.OrdinalIgnoreCase);
 
-        // What is searched and ordered is plain columns: the words of a message (encrypted at rest) and the address of a file are in no statement
-        // of the list but the two that read the last message of the page, and the address is in none.
         Assert.All(statements, sql => Assert.DoesNotContain("AttachmentUrl", sql, StringComparison.Ordinal));
         Assert.DoesNotContain("TextEncrypted", statements.First(), StringComparison.Ordinal);
         Assert.DoesNotContain("TextEncrypted", page, StringComparison.Ordinal);
@@ -125,14 +118,12 @@ public class MessageHubNpgsqlTranslationTests
         var restrictedPage = Assert.Single(restricted, IsThePage);
         var orgWidePage = Assert.Single(orgWide, IsThePage);
 
-        // One EXISTS on the grants of the person for each source, none for the whole org; every source names the org of the scope.
         Assert.Equal(3, CountOf(restrictedPage, "PropertyMemberAccesses"));
         Assert.Equal(0, CountOf(orgWidePage, "PropertyMemberAccesses"));
         Assert.Equal(3, CountOf(restrictedPage, "\"OrgId\" = @"));
         Assert.Equal(3, CountOf(orgWidePage, "\"OrgId\" = @"));
     }
 
-    /// <summary>The statement of the page: it selects the columns of the row of the list from the concatenation of the two sources.</summary>
     private static bool IsThePage(string sql) =>
         sql.TrimStart().StartsWith("SELECT ", StringComparison.Ordinal)
         && sql.Contains("\"Source\"", StringComparison.Ordinal)

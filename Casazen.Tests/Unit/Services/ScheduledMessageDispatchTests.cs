@@ -23,7 +23,6 @@ public class ScheduledMessageDispatchTests
 
     private static DateTime Now => ScheduledMessageRig.Now.UtcDateTime;
 
-    /// <summary>A booking of a property with a template and a routine that holds it, and one planned message due half an hour ago.</summary>
     private static async Task<(Property Property, Booking Booking, MessageTemplate Template, Routine Routine, ScheduledMessage Row)> SeedAsync(
         ScheduledMessageRig rig,
         string body = "Ciao {{guest_name}}, benvenuto a {{property_name}}! (TEST)",
@@ -85,10 +84,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(1, saved.Attempts);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (no duplicate message to a guest). The routine that fires, the sweep and «Send now» arriving at one row reach the guest ONCE, whichever comes first: one after another, the second and the
-    /// third find the message sent and do nothing; all three at the same moment, the message layer finds the key of the row and writes the message once.
-    /// </summary>
     [Fact]
     public async Task ScheduledMessage_ConcurrentTriggers_SendOnce_Test()
     {
@@ -105,7 +100,6 @@ public class ScheduledMessageDispatchTests
         Assert.Single(sequential.Sent);
         Assert.Equal(1, sequential.Delivered);
 
-        // While the first send is under way (the row is claimed, the channel has not answered) the sweep and «Send now» arrive: both find the row held and send nothing.
         var racing = new ScheduledMessageRig();
         var (_, _, _, _, second) = await SeedAsync(racing);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -131,10 +125,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(ScheduledMessageStatus.Sent, (await racing.RowAsync(second.Id)).Status);
     }
 
-    /// <summary>
-    /// A claim that lapsed (a process that died after it wrote the message and before it saved the row) cannot write the message twice: the next actor sends with the same key, and the message layer finds
-    /// the message it has.
-    /// </summary>
     [Fact]
     public async Task AMessageThatWasWrittenWhenTheClaimLapsed_IsNotWrittenAgain_ByTheKeyOfTheRow()
     {
@@ -142,7 +132,6 @@ public class ScheduledMessageDispatchTests
         var (_, _, _, _, row) = await SeedAsync(rig);
         await DispatchAsync(rig, row.Id);
 
-        // The row is back as it was before the save (the process died): claimed long ago, planned, not sent.
         await using (var db = rig.NewDb())
         {
             var undone = await db.ScheduledMessages.SingleAsync(m => m.Id == row.Id);
@@ -175,16 +164,11 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(ScheduledMessageDispatchOutcome.InProgress, inProgress.Outcome);
         Assert.Empty(rig.Sent);
 
-        // A claim older than the lease is the one of a process that died: the message goes, and the message layer still finds the key if it had been written.
         var later = await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.Sweep, now: Now.Add(ScheduledMessageRules.ClaimLease));
         Assert.Equal(ScheduledMessageDispatchOutcome.Sent, later.Outcome);
         Assert.Single(rig.Sent);
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (ADR-022-R11). A message with <c>{{access_code}}</c> is never sent while the access code service answers null (the guest is not verified): the row is blocked, nothing leaves, ONE
-    /// «To do» is raised and shared by the other blocked message of the booking, the hosts are told once; once the guest is verified the message goes with the code, and the «To do» closes when the last one is sent.
-    /// </summary>
     [Fact]
     public async Task ScheduledMessage_AccessCode_NeverSentWithoutVerification_Test()
     {
@@ -210,7 +194,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(todo.Id, (await rig.RowAsync(row.Id)).ActivityId);
         Assert.Equal(todo.Id, (await rig.RowAsync(other.Id)).ActivityId);
 
-        // The hosts were told once for each message: the bell of the owner and of the manager, and the push of the one who chose it, with the route of the booking and nothing of the message.
         Assert.Equal(4, (await rig.BellAsync()).Count);
         Assert.Equal(2, rig.Push.Queued.Count);
         Assert.All(
@@ -230,7 +213,6 @@ public class ScheduledMessageDispatchTests
         Assert.Single(await rig.OpenTodosAsync(booking.Id));
         Assert.Equal(4, (await rig.BellAsync()).Count);
 
-        // The guest is verified: the message goes with the code, through the channel it uses, and the «To do» stays until the last blocked message is out.
         rig.AccessCode = "4321";
         await using (var db = rig.NewDb())
             await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(40));
@@ -272,7 +254,6 @@ public class ScheduledMessageDispatchTests
         Assert.Single(await rig.OpenTodosAsync(booking.Id));
         Assert.Equal(2, (await rig.BellAsync()).Count);
 
-        // The sweep tries again only after BlockedRetryMinutes: five minutes later nothing is looked at.
         await using (var early = rig.NewDb())
             Assert.Equal(0, await rig.Dispatcher(early).SweepAsync(Now.AddMinutes(5)));
 
@@ -292,10 +273,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(2, (await rig.BellAsync()).Count);
     }
 
-    /// <summary>
-    /// A «To do» that could not be raised (the database hiccuped: the failure is logged and the row says why it is held back) is raised at the next pass of the sweep, and only then: a blocked message with no
-    /// «To do» linked never stays so, and the alert to the hosts is not repeated at every pass.
-    /// </summary>
     [Fact]
     public async Task ABlockedMessageWhoseTodoCouldNotBeRaised_GetsItAtTheNextPass_WithoutAnotherAlert()
     {
@@ -347,7 +324,6 @@ public class ScheduledMessageDispatchTests
         var rig = new ScheduledMessageRig();
         var (_, booking, _, _, row) = await SeedAsync(rig, "Check-in: {{check_in_link}} (TEST)");
 
-        // The timeline shows the placeholder and issues nothing.
         await using (var db = rig.NewDb())
         {
             var view = Assert.Single(await rig.Service(db).ListForBookingAsync(new HostScope(OrgA), booking.Id));
@@ -376,7 +352,6 @@ public class ScheduledMessageDispatchTests
         await DispatchAsync(german, germanRow.Id);
         Assert.Equal("Hallo Giulia! (TEST)", Assert.Single(german.Sent).Text);
 
-        // A guest of a country whose language has no template gets the Italian one.
         var french = new ScheduledMessageRig();
         var (_, _, _, _, frenchRow) = await SeedAsync(french, "Ciao {{guest_name}}! (TEST)", guestCountry: "FR");
         await DispatchAsync(french, frenchRow.Id);
@@ -459,7 +434,7 @@ public class ScheduledMessageDispatchTests
     {
         var rig = new ScheduledMessageRig();
         var (_, _, _, _, row) = await SeedAsync(rig);
-        var night = new DateTime(2026, 11, 18, 21, 30, 0, DateTimeKind.Utc); // 22:30 Rome
+        var night = new DateTime(2026, 11, 18, 21, 30, 0, DateTimeKind.Utc);
 
         var result = await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.SendNow, ScheduledMessageRig.Owner, night);
 
@@ -500,7 +475,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(ScheduledMessageStatus.Failed, (await rig.RowAsync(row.Id)).Status);
         Assert.Empty(await rig.OpenTodosAsync(booking.Id));
 
-        // The message layer wrote the refused message (state Error): the key of the next attempt goes out.
         await using (var db = rig.NewDb())
         {
             db.OtaMessages.Add(new OtaMessage { OrgId = OrgA, ThreadId = threadId, Direction = OtaMessageDirection.Outbound, Text = "x", IdempotencyKey = $"sm-{row.Id:N}", DeliveryState = OtaMessageDeliveryState.Error });
@@ -516,10 +490,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(2, sent.Attempts);
     }
 
-    /// <summary>
-    /// What is counted is the tries that reached the channel, not the passes of the sweep over a message that is blocked: a message that waited for days has all its tries when it goes out, and a channel that
-    /// fails twice does not make it «failed for good» (the «To do» and the alert of a message the tries of which are used come after the fourth).
-    /// </summary>
     [Fact]
     public async Task AMessageThatWaitedBlockedForDays_HasAllItsTriesLeft_WhenItGoesOut()
     {
@@ -535,7 +505,6 @@ public class ScheduledMessageDispatchTests
 
         Assert.Equal((ScheduledMessageStatus.Blocked, 0), ((await rig.RowAsync(row.Id)).Status, (await rig.RowAsync(row.Id)).Attempts));
 
-        // The house gets its method, and the channel fails (the same refusal twice: no message of the layer is stored, so the key is the same).
         await using (var db = rig.NewDb())
         {
             (await db.Properties.SingleAsync(p => p.Id == property.Id)).SiteProfileJson = """{"checkInMethod":{"it":"ritiro delle chiavi (TEST)"}}""";
@@ -548,7 +517,6 @@ public class ScheduledMessageDispatchTests
         var failed = await rig.RowAsync(row.Id);
         Assert.Equal((ScheduledMessageStatus.Failed, 1), (failed.Status, failed.Attempts));
 
-        // Failed once is not failed for good: the sweep tries it again, and nobody is told that the tries are used.
         await using (var db = rig.NewDb())
             Assert.Equal(1, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(220)));
         var again = await rig.RowAsync(row.Id);
@@ -556,10 +524,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(2, (await rig.BellAsync()).Count);
     }
 
-    /// <summary>
-    /// PROOF TEST: what the message layer says of a message is the state of the row. A message whose outcome nobody knows (it may have left) is not «sent»: the row is <c>Failed</c> with <c>manual_verify</c> and
-    /// the sweep asks again with the key of the row, so the message layer finds the message it holds and writes no second (the guest gets it once); when the message layer knows it left, the row follows it.
-    /// </summary>
     [Fact]
     public async Task AnOutcomeNobodyKnows_IsAFailedTry_NeverASentMessage_AndTheKeyFindsTheMessageSoNothingIsWrittenTwice()
     {
@@ -593,11 +557,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(1, rig.Delivered);
     }
 
-    /// <summary>
-    /// A message the channel manager holds and has not taken (created, waiting for the authorization of the channel) is not a message that went out, as it is not for the routine that writes straight to the
-    /// message layer; one whose outcome nobody knows is not either. The row is tried again with the same key (nothing is written twice), and when the four tries are used the host is told, once, and the
-    /// sweep leaves it.
-    /// </summary>
     [Theory]
     [InlineData(OtaMessageDeliveryState.ManualVerify, "manual_verify")]
     [InlineData(OtaMessageDeliveryState.Created, "message_unconfirmed")]
@@ -626,10 +585,6 @@ public class ScheduledMessageDispatchTests
             Assert.Equal(0, await rig.Dispatcher(db).SweepAsync(Now.AddMinutes(200)));
     }
 
-    /// <summary>
-    /// The same rule where the message is found, not sent: a message the message layer already holds for the row (a send that went out and was never saved, or one still waiting) is read for its real state. A message
-    /// the channel took is only marked sent; one that waits, or whose outcome nobody knows, is a failed try. In both nothing is issued, taken, released or sent again.
-    /// </summary>
     [Theory]
     [InlineData(OtaMessageDeliveryState.ManualVerify, "manual_verify")]
     [InlineData(OtaMessageDeliveryState.Created, "message_unconfirmed")]
@@ -730,14 +685,12 @@ public class ScheduledMessageDispatchTests
         var rig = new ScheduledMessageRig();
         var (_, _, _, _, row) = await SeedAsync(rig, rowStatus: ScheduledMessageStatus.Blocked, plannedAt: Now.AddDays(3));
 
-        // The data is there, but the time has not come: the sweep does not even look at the row, and a try by the sweep or by the routine says «not yet».
         await using (var db = rig.NewDb())
             Assert.Equal(0, await rig.Dispatcher(db).SweepAsync(Now.AddHours(1)));
         Assert.Equal(ScheduledMessageDispatchOutcome.NotDue, (await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.Sweep, now: Now.AddHours(1))).Outcome);
         Assert.Equal(ScheduledMessageDispatchOutcome.NotDue, (await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.Routine, now: Now.AddHours(1))).Outcome);
         Assert.Empty(rig.Sent);
 
-        // «Send now» is the decision of the host, whatever the time.
         var sendNow = await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.SendNow, ScheduledMessageRig.Owner);
         Assert.Equal(ScheduledMessageDispatchOutcome.Sent, sendNow.Outcome);
         Assert.Single(rig.Sent);
@@ -747,10 +700,6 @@ public class ScheduledMessageDispatchTests
 
     private const string StayOfMoreThanTwoNights = """{"version":"1.0","groups":[{"operator":"AND","rules":[{"fieldId":"stayDuration","operator":"greaterThan","value":2}]}]}""";
 
-    /// <summary>
-    /// A routine «only for stays of more than three nights» does not send its message to a stay of three, whoever tries (the sweep reads the condition as the engine reads it): the row is cancelled with
-    /// its reason. A stay that meets the condition of its routine gets the message. «Send now» is the host's own decision: the condition is not asked.
-    /// </summary>
     [Fact]
     public async Task TheConditionOfTheRoutine_IsReadAsTheEngineReadsIt_AndAStayThatDoesNotMeetItGetsNothing()
     {
@@ -843,14 +792,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(ScheduledMessageStatus.Sent, (await rig.RowAsync(row.Id)).Status);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // An outage of the way to the guest
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: <c>Attempts</c> counts the tries that reached the channel. An outage of the channel manager (the way to the guest cannot be read) reached nothing, so however many passes of the sweep it lasts
-    /// the message keeps all its tries: it stays <c>Failed</c> with the code and no count, nobody is told about it (the host is told when the tries are used), and the pass after the outage sends it, once.
-    /// </summary>
     [Fact]
     public async Task AnOutageOfTheWayToTheGuest_UsesNoTry_HoweverLongItLasts_AndTheMessageGoesOutOnceWhenItEnds()
     {
@@ -881,7 +822,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(1, sent.Attempts);
     }
 
-    /// <summary>A message that never reached the channel is not sent days late: the sweep ends it as it ends a planned message that is more than a day overdue.</summary>
     [Fact]
     public async Task AMessageThatFailedBeforeTheChannelWasReached_IsNotSentMoreThanADayLate()
     {
@@ -897,11 +837,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(ScheduledMessageReasons.Missed, ended.SkipReason);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The host while a send is under way
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>Holds the send of the message layer «under way» until the test lets it go, and returns the task of the dispatch that is waiting in it.</summary>
     private static async Task<(Task<ScheduledMessageDispatchResult> UnderWay, TaskCompletionSource Release)> StartASendAndHoldItAsync(ScheduledMessageRig rig, Guid id)
     {
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -916,11 +851,6 @@ public class ScheduledMessageDispatchTests
         return (underWay, release);
     }
 
-    /// <summary>
-    /// PROOF TEST: the host is not told «skipped» for a message that goes out. While a send holds the row (claimed less than the lease ago) its «Edit» and its «Skip» are refused with 409
-    /// <c>scheduled_message_in_progress</c>, as «Send now» is: the text was read when the send began, the message may be in the channel already, and nothing the host does changes what the guest gets. The message goes
-    /// out as it was and the row is sent, not skipped and not edited.
-    /// </summary>
     [Fact]
     public async Task WhileASendHoldsTheRow_EditAndSkipAreRefused_AndTheMessageGoesOutAsItWas()
     {
@@ -984,10 +914,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(1, rig.Delivered);
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The release of the access code
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
     /// <summary>
     /// PROOF TEST: privacy and audit rule (ADR-022-R11). The release log says a code reached a guest only for a message that went out. The code is taken first (the gate of the verification is asked, nothing
     /// is logged) and the line of the release is written after the send: two sends that fail leave no line, and the message that goes out in the end leaves ONE, not one for each retry.
@@ -1017,7 +943,6 @@ public class ScheduledMessageDispatchTests
         Assert.Equal(ScheduledMessageStatus.Sent, (await rig.RowAsync(row.Id)).Status);
     }
 
-    /// <summary>A message that is held back for something else asks for no code: the link of a check-in that is done refuses the message before the gate of the code is asked, so nothing is taken and nothing is logged.</summary>
     [Fact]
     public async Task ACodeIsTakenOnlyWhenNothingElseHoldsTheMessageBack()
     {
@@ -1033,10 +958,6 @@ public class ScheduledMessageDispatchTests
         Assert.Empty(rig.Released);
         Assert.Empty(rig.Sent);
     }
-
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // The check-in link
-    // ------------------------------------------------------------------------------------------------------------------------------------
 
     private const string LinkBody = "Il check-in online: {{check_in_link}} (TEST)";
 
@@ -1132,10 +1053,6 @@ public class ScheduledMessageDispatchTests
         await AssertNoLinkWasIssuedAsync(rig, row.Id, ScheduledMessageReasons.CheckInCompleted, ScheduledMessageStatus.Skipped);
     }
 
-    /// <summary>
-    /// PROOF TEST: a new session would start the identity verification again and could open the lock code against the decision of a person, so a stay whose verification is with an operator (rejected by one, or a
-    /// hand-off still open) gets no link from a message either: the daily job skips such a stay for the same reason.
-    /// </summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1167,10 +1084,6 @@ public class ScheduledMessageDispatchTests
         await AssertNoLinkWasIssuedAsync(rig, row.Id, ScheduledMessageReasons.CheckInNotOpen, ScheduledMessageStatus.Skipped);
     }
 
-    /// <summary>
-    /// A guest who is filling the check-in in right now would lose the session to a new link: the message waits (blocked, with ONE «To do» and one alert, tried again by the sweep) until the session ends or
-    /// expires, and goes out then, with its link. «Send now» is the host's own decision to replace the session, so it is not held.
-    /// </summary>
     [Fact]
     public async Task AGuestFillingTheCheckInIn_KeepsTheSession_TheMessageWaitsForItToEnd_AndTheHostMayReplaceItBySendingNow()
     {
@@ -1188,7 +1101,6 @@ public class ScheduledMessageDispatchTests
         Assert.Single(await rig.OpenTodosAsync(booking.Id));
         Assert.Equal(2, (await rig.BellAsync()).Count);
 
-        // The session ran out: the message goes, with a new link, and the «To do» closes.
         var sent = await DispatchAsync(rig, row.Id, ScheduledMessageDispatchMode.Sweep, now: Now.AddMinutes(40));
 
         Assert.Equal(ScheduledMessageDispatchOutcome.Sent, sent.Outcome);
@@ -1198,7 +1110,6 @@ public class ScheduledMessageDispatchTests
         Assert.EndsWith("/checkin/token-1 (TEST)", text, StringComparison.Ordinal);
         Assert.Empty(await rig.OpenTodosAsync(booking.Id));
 
-        // The host who asks for «Send now» does not wait for the session to end.
         var other = new ScheduledMessageRig();
         var (_, held, _, _, heldRow) = await SeedAsync(other, LinkBody);
         await AddCheckInSessionAsync(other, held, GuestCheckInSessionStatus.InCompilazione, expiresAt: Now.AddMinutes(25));
@@ -1209,10 +1120,6 @@ public class ScheduledMessageDispatchTests
         other.CheckIn.Verify(c => c.IssueLinkAsync(held.Id, OrgA), Times.Once);
     }
 
-    /// <summary>
-    /// PROOF TEST: the link is issued last, right before the send, and never for a message that does not go out. A text the message layer would refuse (here, too long once the link is in it) is held back with the
-    /// stand-in of the link, before anything is issued; a message whose access code cannot be released is held back before the link too, so a guest who is not verified never loses the link it holds.
-    /// </summary>
     [Fact]
     public async Task TheLinkIsIssuedLast_NeverForAMessageThatDoesNotGoOut()
     {
@@ -1238,11 +1145,6 @@ public class ScheduledMessageDispatchTests
         Assert.Single(await notVerified.OpenTodosAsync(booking.Id));
     }
 
-    // ------------------------------------------------------------------------------------------------------------------------------------
-    // Campaigns
-    // ------------------------------------------------------------------------------------------------------------------------------------
-
-    /// <summary>A booking with a routine whose only action is a campaign (<c>isCampaign</c>) and its planned message, due half an hour ago.</summary>
     private static async Task<(Booking Booking, ScheduledMessage Row)> SeedCampaignAsync(ScheduledMessageRig rig, Property property, bool consent)
     {
         var booking = await rig.SeedBookingAsync(property);
@@ -1252,11 +1154,6 @@ public class ScheduledMessageDispatchTests
         return (booking, await rig.SeedRowAsync(booking, routine, template));
     }
 
-    /// <summary>
-    /// PROOF TEST: privacy rule (ADR-022-R11, campaigns only with the marketing consent). The engine reads the consent when the routine fires, but the sweep sends what the routine did not, so a message the engine
-    /// blocked would still go out: the dispatch reads the consent too, as the engine reads it, for the routine, for the sweep and for «Send now». A campaign for a guest who did not agree is skipped with the code
-    /// of the guardrail, nothing is sent, nobody is alerted (it is the normal end of a campaign for that guest), and it does not count as a try; for a guest who agreed it goes out as any message.
-    /// </summary>
     [Theory]
     [InlineData(ScheduledMessageDispatchMode.Routine)]
     [InlineData(ScheduledMessageDispatchMode.Sweep)]

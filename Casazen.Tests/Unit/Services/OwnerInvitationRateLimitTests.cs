@@ -13,10 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Proof test for owner invitation rate limiting (ADR-011-R4).
-/// Enforces 100 invitations per day per organization.
-/// </summary>
 public class OwnerInvitationRateLimitTests
 {
     private const string ActorUserId = "auth0|admin";
@@ -34,7 +30,6 @@ public class OwnerInvitationRateLimitTests
         var emailQueue = new FakeEmailQueue();
         var clock = TimeProvider.System;
 
-        // The link of the e-mail comes from the one public address of the product, which the test sets.
         var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://app.example.test" }));
         return new OwnerInvitationService(
             db,
@@ -79,24 +74,17 @@ public class OwnerInvitationRateLimitTests
         return (org.Id, propertyOwner.Id);
     }
 
-    /// <summary>
-    /// OwnerInvitation_RateLimit_Enforced - proves rate limiting (ADR-011-R4).
-    /// After 100 invitations in 24 hours, the 101st is refused with 429.
-    /// </summary>
     [Fact]
     public async Task OwnerInvitation_RateLimit_Enforced()
     {
-        // Use a shared database name so all operations see the same data
         var sharedDbName = $"OwnerInvitationRateLimitTest_{Guid.NewGuid()}";
         var (orgId, propertyOwnerId) = await SeedOrgAndOwnerAsync(sharedDbName);
 
-        // Create 100 invitations (at the limit)
         for (var i = 0; i < 100; i++)
         {
             await using var db = NewDb(sharedDbName);
             var service = NewService(db);
 
-            // Create a new PropertyOwner for each invitation to avoid duplicates
             var owner = new PropertyOwner
             {
                 Id = Guid.NewGuid(),
@@ -113,7 +101,6 @@ public class OwnerInvitationRateLimitTests
             await service.CreateInvitationAsync(orgId, owner.Id, ActorUserId);
         }
 
-        // The 101st invitation should be refused
         await using var dbFinal = NewDb(sharedDbName);
         var finalService = NewService(dbFinal);
 
@@ -136,7 +123,6 @@ public class OwnerInvitationRateLimitTests
         Assert.Equal(OwnerInvitationErrors.DailyLimitReached, error.Code);
     }
 
-    /// <summary>Fake email queue for testing - does not actually send emails.</summary>
     private class FakeEmailQueue : IEmailQueue
     {
         public bool Enqueue(string? to, EmailContent content, string template) => true;

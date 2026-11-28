@@ -17,11 +17,6 @@ using PlanTier = Casazen.Core.Entities.Enums.PlanTier;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// AM-02b: the plan changes that nobody asks for — a subscription that becomes active gives the tier of its price, a canceled
-/// one takes the plan back to Starter — are told to the activity log by the webhook, in the very save that writes the tier,
-/// with no actor and the source <c>subscription</c>. A repeated or ignored event says nothing.
-/// </summary>
 public class StripeWebhookPlanActivityTests
 {
     private const string ProPrice = "price_test_pro";

@@ -33,10 +33,8 @@ public class FatturaPaProofTests
         // Flat-rate regime, everything without VAT (N2.2) and the tourist tax (N1): 248 without VAT, stamp duty due and not charged.
         { "flat-rate", 248.00m, 0m, 2.00m, 248.00m, 0m },
 
-        // One line of 100 at 22%: 81.97 + 18.03.
         { "single-22", 81.97m, 18.03m, 0m, 100.00m, 0m },
 
-        // Two lines of 10.01 at 22%: the group is 16.41 + 3.61, the cent of difference goes to the first (largest) line.
         { "remainder-22", 16.41m, 3.61m, 0m, 20.02m, 8.21m },
     };
 
@@ -70,7 +68,6 @@ public class FatturaPaProofTests
         Assert.Throws<DomainRuleException>(() => FiscalDocumentTotals.FromGross([new FiscalDocumentGrossLine("TEST", 1m, -1m, 10m, null)], Stamp));
     }
 
-    /// <summary>Every text is escaped and the document still validates against the official schema (names and towns with accents and apostrophes).</summary>
     [Fact]
     public void FatturaPa_SpecialCharactersEscaped_Test()
     {
@@ -89,9 +86,6 @@ public class FatturaPaProofTests
         Assert.Equal(FatturaPaXmlBuilder.ForeignRecipientCode, FatturaPaXmlBuilder.DestinationCode("CH", "ABC1234"));
     }
 
-    /// <summary>
-    /// The official schema is in the build (E17/F01/US01/T03): a built document validates and an altered one does not, never an XML that was not validated.
-    /// </summary>
     [Fact]
     public void FatturaPa_Xml_ValidatesAgainstOfficialSchema_Test()
     {
@@ -185,7 +179,6 @@ public class FatturaPaProofTests
         Assert.Equal("09876543217", parsed.Descendants("IdTrasmittente").Single().Element("IdCodice")!.Value);
         Assert.Empty(XsdValidator.Validate(xml, new FatturaPaSchemaProvider().GetSchemas()));
 
-        // The agency's own invoice names no third party.
         var own = FiscalDocumentService.FatturaPaInputOf(document, FiscalIssuerSnapshot.From(new OrgFiscalIssuerProfile { OrgId = document.OrgId, CountryCode = "IT" }, agency, "RF01"), rule, null);
         Assert.Equal(FatturaPaIssuedBy.Issuer, own.IssuedBy);
         Assert.Empty(XDocument.Parse(FatturaPaXmlBuilder.Write(own)).Descendants("SoggettoEmittente"));
@@ -305,7 +298,6 @@ public class FatturaPaProofTests
         _ => throw new ArgumentOutOfRangeException(nameof(scenario)),
     };
 
-    /// <summary>An issued invoice of a stay with the lines of «ordinary-10» and an Italian company as recipient.</summary>
     private static FiscalDocument Document(DocumentKind kind, string number)
     {
         var document = new FiscalDocument

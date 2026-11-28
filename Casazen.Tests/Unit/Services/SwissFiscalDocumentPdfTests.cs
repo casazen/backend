@@ -54,7 +54,6 @@ public class SwissFiscalDocumentPdfTests
         Assert.Equal(new[] { "3.8%", "3.8%", "8.1%", "—" }, lines.Rows.Select(r => r[4]).ToArray());
         Assert.Equal("Tassa di soggiorno (non soggetta all'IVA) - tassa da riscuotere in struttura", lines.Rows[3][0]);
 
-        // The totals in CHF, written the Swiss way.
         var totals = Assert.Single(content.Blocks.OfType<PdfTable>(), t => t.Columns.Count == 2);
         Assert.Equal("Importo (CHF)", totals.Columns[1].Header);
         Assert.Equal(new[] { "708.11", "27.89", "736.00" }, totals.Rows.Select(r => r[1]).ToArray());

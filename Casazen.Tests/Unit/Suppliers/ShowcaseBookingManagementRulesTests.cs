@@ -18,16 +18,14 @@ namespace Casazen.Tests.Unit.Suppliers;
 /// </summary>
 public class ShowcaseBookingManagementRulesTests
 {
-    private static readonly DateTime Start = new(2026, 10, 10, 7, 0, 0, DateTimeKind.Utc); // Saturday 10 October, 09:00 in Rome
-    private static readonly DateTime Now = new(2026, 10, 8, 10, 0, 0, DateTimeKind.Utc); // Thursday 8 October, 12:00 in Rome
-
-    // ─── The credentials ─────────────────────────────────────────────────────────────────────────────────────────────
+    private static readonly DateTime Start = new(2026, 10, 10, 7, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime Now = new(2026, 10, 8, 10, 0, 0, DateTimeKind.Utc);
 
     [Theory]
     [InlineData("vetrina-test", "7K2XM-9QD4T", "mario@example.com")]
     [InlineData("  Vetrina-TEST ", "7k2xm 9qd4t", "  Mario@Example.COM  ")]
     [InlineData("vetrina-test", "7K2XM9QD4T", "mario@example.com")]
-    [InlineData("vetrina-test", "7k2xm–9qd4t", "mario@example.com")] // an en dash, as a phone pastes it
+    [InlineData("vetrina-test", "7k2xm–9qd4t", "mario@example.com")]
     public void TryNormalize_TheFormsPeopleType_AreTheSameBooking(string slug, string code, string email)
     {
         var valid = ShowcaseBookingManagementRules.TryNormalize(new ShowcaseBookingCredentials(slug, code, email), out var key);
@@ -39,7 +37,6 @@ public class ShowcaseBookingManagementRulesTests
     [Fact]
     public void TryNormalize_ACodeWithTheLettersPeopleConfuse_IsReadTheWayTheyMeantIt()
     {
-        // O is read as 0, I and L as 1 (BookingCodes): a person reading a code to another does not tell them apart.
         var valid = ShowcaseBookingManagementRules.TryNormalize(
             new ShowcaseBookingCredentials("vetrina-test", "OIL00-OIL00", "mario@example.com"), out var key);
 
@@ -59,7 +56,7 @@ public class ShowcaseBookingManagementRulesTests
         { "vetrina-test", "", "mario@example.com" },
         { "vetrina-test", "7K2XM", "mario@example.com" },
         { "vetrina-test", "7K2XM-9QD4T-9", "mario@example.com" },
-        { "vetrina-test", "7K2XM-9QD4U", "mario@example.com" }, // U is not in the alphabet
+        { "vetrina-test", "7K2XM-9QD4U", "mario@example.com" },
         { "vetrina-test", "7K2XM-9QD4%", "mario@example.com" },
         { "vetrina-test", new string('7', 65), "mario@example.com" },
         { "vetrina-test", "7K2XM-9QD4T", null },
@@ -95,11 +92,8 @@ public class ShowcaseBookingManagementRulesTests
             new ShowcaseBookingCredentials("vetrina-test", "7K2XM-9QD4T", tooLong), out _));
     }
 
-    // ─── The table: states and actions ───────────────────────────────────────────────────────────────────────────────
-
     public static TheoryData<ServiceRequestStatus, bool, bool, bool> CancelByStatus => new()
     {
-        // Status, while the time is still ahead, at the time itself, after it
         { ServiceRequestStatus.Richiesto, true, true, true },
         { ServiceRequestStatus.PresoInCarico, true, false, false },
         { ServiceRequestStatus.InCorso, false, false, false },
@@ -133,15 +127,14 @@ public class ShowcaseBookingManagementRulesTests
     [Fact]
     public void CanCancel_ATakenRequestWithoutATime_CanBeCancelled()
     {
-        // A showcase request always has a time; one without cannot have started, so there is nothing to protect.
         Assert.True(ShowcaseBookingManagementRules.CanCancel(ServiceRequestStatus.PresoInCarico, null, Now));
     }
 
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto, true, true, true, true)]
-    [InlineData(ServiceRequestStatus.Richiesto, false, true, true, false)] // no time to move
-    [InlineData(ServiceRequestStatus.Richiesto, true, false, true, false)] // the supplier is suspended
-    [InlineData(ServiceRequestStatus.Richiesto, true, true, false, false)] // the service is paused or gone
+    [InlineData(ServiceRequestStatus.Richiesto, false, true, true, false)]
+    [InlineData(ServiceRequestStatus.Richiesto, true, false, true, false)]
+    [InlineData(ServiceRequestStatus.Richiesto, true, true, false, false)]
     [InlineData(ServiceRequestStatus.PresoInCarico, true, true, true, false)]
     [InlineData(ServiceRequestStatus.InCorso, true, true, true, false)]
     [InlineData(ServiceRequestStatus.Completato, true, true, true, false)]
@@ -160,11 +153,11 @@ public class ShowcaseBookingManagementRulesTests
 
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto, true, 60, true, true)]
-    [InlineData(ServiceRequestStatus.Richiesto, true, 0, true, false)] // the deadline is now
-    [InlineData(ServiceRequestStatus.Richiesto, true, -1, true, false)] // the deadline has passed
-    [InlineData(ServiceRequestStatus.Richiesto, true, null, true, false)] // no deadline recorded: nothing to answer before
-    [InlineData(ServiceRequestStatus.Richiesto, false, 60, true, false)] // no proposal
-    [InlineData(ServiceRequestStatus.Richiesto, true, 60, false, false)] // the supplier is suspended
+    [InlineData(ServiceRequestStatus.Richiesto, true, 0, true, false)]
+    [InlineData(ServiceRequestStatus.Richiesto, true, -1, true, false)]
+    [InlineData(ServiceRequestStatus.Richiesto, true, null, true, false)]
+    [InlineData(ServiceRequestStatus.Richiesto, false, 60, true, false)]
+    [InlineData(ServiceRequestStatus.Richiesto, true, 60, false, false)]
     [InlineData(ServiceRequestStatus.PresoInCarico, true, 60, true, false)]
     [InlineData(ServiceRequestStatus.Annullato, true, 60, true, false)]
     [InlineData(ServiceRequestStatus.Rifiutato, true, 60, true, false)]
@@ -180,15 +173,13 @@ public class ShowcaseBookingManagementRulesTests
         Assert.Equal(expected, ShowcaseBookingManagementRules.CanRespondToProposal(status, proposalPending, answerBy, Now, supplierActive));
     }
 
-    // ─── The 24 hours ────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void FreeCancellationUntil_IsTheHoursBeforeTheStart_AndZeroHoursIsTheStartItself()
     {
         Assert.Equal(Start.AddHours(-24), ShowcaseBookingManagementRules.FreeCancellationUntil(Start, 24));
         Assert.Equal(Start.AddHours(-72), ShowcaseBookingManagementRules.FreeCancellationUntil(Start, 72));
         Assert.Equal(Start, ShowcaseBookingManagementRules.FreeCancellationUntil(Start, 0));
-        Assert.Equal(Start, ShowcaseBookingManagementRules.FreeCancellationUntil(Start, -5)); // never later than the start
+        Assert.Equal(Start, ShowcaseBookingManagementRules.FreeCancellationUntil(Start, -5));
     }
 
     [Fact]
@@ -205,13 +196,11 @@ public class ShowcaseBookingManagementRulesTests
     [Fact]
     public void FreeCancellationUntil_WhenTheClocksGoBack_IsTwentyFourElapsedHours_NotTheSameClockTimeTheDayBefore()
     {
-        // Sunday 25 October 2026: at 03:00 summer time (+02:00) the clocks go back to 02:00 (+01:00). 08:00 that day is +01:00.
         var start = RomeCalendar.ToUtc(new DateOnly(2026, 10, 25), new TimeOnly(8, 0));
         Assert.Equal(new DateTime(2026, 10, 25, 7, 0, 0, DateTimeKind.Utc), start);
 
         var until = ShowcaseBookingManagementRules.FreeCancellationUntil(start, 24);
 
-        // 24 hours earlier is 07:00 UTC on Saturday: 09:00 on the clock of Rome, which was still on summer time then (25 hours of clock).
         Assert.Equal(new DateTime(2026, 10, 24, 7, 0, 0, DateTimeKind.Utc), until);
         var local = RomeCalendar.ToRome(until);
         Assert.Equal(TimeSpan.FromHours(2), local.Offset);
@@ -223,13 +212,11 @@ public class ShowcaseBookingManagementRulesTests
     [Fact]
     public void FreeCancellationUntil_WhenTheClocksGoForward_IsTwentyFourElapsedHours_NotTheSameClockTimeTheDayBefore()
     {
-        // Sunday 29 March 2026: at 02:00 (+01:00) the clocks go forward to 03:00 (+02:00). 09:00 that day is +02:00.
         var start = RomeCalendar.ToUtc(new DateOnly(2026, 3, 29), new TimeOnly(9, 0));
         Assert.Equal(new DateTime(2026, 3, 29, 7, 0, 0, DateTimeKind.Utc), start);
 
         var until = ShowcaseBookingManagementRules.FreeCancellationUntil(start, 24);
 
-        // 24 hours earlier is 07:00 UTC on Saturday: 08:00 on the clock of Rome (+01:00), 23 hours of clock.
         Assert.Equal(new DateTime(2026, 3, 28, 7, 0, 0, DateTimeKind.Utc), until);
         var local = RomeCalendar.ToRome(until);
         Assert.Equal(TimeSpan.FromHours(1), local.Offset);
@@ -239,7 +226,6 @@ public class ShowcaseBookingManagementRulesTests
     [Fact]
     public void FreeCancellationUntil_AWorkOfTheHourThatHappensTwice_IsToldApartByTheOffsetOfRome()
     {
-        // 02:30 on 25 October 2026 happens twice; RomeCalendar takes its first pass (+02:00), 00:30 UTC.
         var start = RomeCalendar.ToUtc(new DateOnly(2026, 10, 25), new TimeOnly(2, 30));
         var second = start.AddHours(1);
 
@@ -247,13 +233,10 @@ public class ShowcaseBookingManagementRulesTests
         Assert.Equal(TimeSpan.FromHours(2), RomeCalendar.ToRome(start).Offset);
         Assert.Equal(TimeSpan.FromHours(1), RomeCalendar.ToRome(second).Offset);
 
-        // The two passes read 02:30 on the clock: only the offset tells them apart, and the page shows it.
         Assert.Equal(RomeCalendar.ToRome(start).DateTime, RomeCalendar.ToRome(second).DateTime);
         Assert.NotEqual(RomeCalendar.ToRome(start), RomeCalendar.ToRome(second));
         Assert.Equal(TimeSpan.FromHours(1), second - start);
     }
-
-    // ─── The reason ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(null)]
@@ -294,8 +277,6 @@ public class ShowcaseBookingManagementRulesTests
         Assert.Equal(new[] { "reason" }, refused.Fields);
     }
 
-    // ─── Codes and texts ─────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public void Errors_AreOfTheRightKind_AndTheNotFoundIsOneAnswer()
     {
@@ -308,7 +289,6 @@ public class ShowcaseBookingManagementRulesTests
         Assert.IsType<DomainRuleException>(ShowcaseBookingManagementErrors.RescheduleRefused());
         Assert.IsType<DomainRuleException>(ShowcaseBookingManagementErrors.ProposalMissing());
         Assert.IsType<DomainRuleException>(ShowcaseBookingManagementErrors.ProposalLapsed());
-        // Two calls give the same code and key: nothing in the exception depends on why nothing matched.
         Assert.Equal(notFound.Code, ShowcaseBookingManagementErrors.BookingNotFound().Code);
         Assert.Equal(notFound.MessageKey, ShowcaseBookingManagementErrors.BookingNotFound().MessageKey);
     }
@@ -351,7 +331,6 @@ public class ShowcaseBookingManagementRulesTests
     {
         var italian = ReadEntries(CultureInfo.InvariantCulture)["SupplierBookingNotFound"];
 
-        // It names the three things together ("this code and this address"), so it holds for the wrong one whichever it is.
         Assert.Contains("codice", italian);
         Assert.Contains("indirizzo email", italian);
         Assert.DoesNotContain("non esiste", italian);

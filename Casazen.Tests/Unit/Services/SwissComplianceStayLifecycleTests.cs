@@ -32,7 +32,6 @@ public class SwissComplianceStayLifecycleTests
         AddStay(db, property, BookingStatus.Confirmed, from: Day.AddDays(1));
         var otherProperty = await SeedPropertyAsync(db);
         AddStay(db, otherProperty, BookingStatus.CheckedIn);
-        // A malformed cross-tenant child must not leak through a background context with its tenant filter disabled.
         var foreign = AddStay(db, property, BookingStatus.CheckedIn);
         foreign.OrgId = Guid.NewGuid();
         await db.SaveChangesAsync();
@@ -40,7 +39,6 @@ public class SwissComplianceStayLifecycleTests
         var day = await new TicinoNotificationService(db, Clock).GetDayAsync(property.Id, ArrivalDay);
 
         Assert.Equal(3, day.StayCount);
-        // The bookers have no check-in data yet: every stay is reported, none is in the file.
         Assert.Empty(day.Plan.Registrations);
         Assert.Equal(expected.Select(b => b.Id).Order(), day.Plan.Issues.Select(i => i.BookingId).Distinct().Order());
         Assert.Equal(0, day.ReceiptCount);
@@ -144,16 +142,14 @@ public class SwissComplianceStayLifecycleTests
         var foreignError = await Assert.ThrowsAsync<NotFoundException>(() => service.GetGroupSheetAsync(property.Id, foreign.Id));
         var notAGroupError = await Assert.ThrowsAsync<DomainRuleException>(() => service.GetGroupSheetAsync(property.Id, notAGroup.Id));
 
-        // The six persons, the leader first; the file of the day has the leader's row only, with the five members counted on it.
         Assert.Equal((6, "text/csv; charset=utf-8"), (sheet.Members, sheet.ContentType));
         Assert.StartsWith("scheda-gruppo-ti-2026-11-18-", sheet.FileName, StringComparison.Ordinal);
         var lines = Encoding.UTF8.GetString(sheet.Content.AsSpan(Encoding.UTF8.Preamble.Length)).Split("\r\n");
         Assert.Equal(["Nome;Cognome;Data di nascita;Nazionalità", "Test0;Gruppo;01.01.1990;CHE"], lines.Take(2));
-        Assert.Equal(8, lines.Length); // the header, the six persons and the empty text after the last CRLF
+        Assert.Equal(8, lines.Length);
         var leader = Assert.Single(day.Plan.Registrations, r => r.BookingId == group.Id);
         Assert.Equal((TicinoRowKind.Group, 6, 5, 0), (leader.Kind, leader.GroupSize, leader.PersonsOver14, leader.PersonsUnder14));
 
-        // A booking of another org is never read through this property, and a stay that is not a group has no sheet.
         Assert.Equal("booking_not_found", foreignError.Code);
         Assert.Equal("ticino_not_a_group", notAGroupError.Code);
     }

@@ -52,8 +52,6 @@ public class SupplierPaymentCompletionTests
         Assert.Equal(expectedTotal, ServiceRequestJson.ReadPriceLines(payment.LineItemsJson).Sum(l => l.AmountCents));
     }
 
-    // ─── The payment is born with the completion ───
-
     [Fact]
     public async Task Complete_OnlineRequest_CreatesTheRequestedPaymentWithTheCommissionSnapshot()
     {
@@ -71,7 +69,6 @@ public class SupplierPaymentCompletionTests
         Assert.Equal(s.HostOrgId, payment.PayerOrgId);
         Assert.Equal(ServiceRequestScenario.ServicePriceCents, payment.AmountCents);
         Assert.Equal("eur", payment.Currency);
-        // 10 % of 60,00 euro: the commission and what is left for the supplier are kept on the row.
         Assert.Equal(10m, payment.CommissionPercent);
         Assert.Equal(600, payment.ApplicationFeeCents);
         Assert.Equal(5_400, payment.NetCents);
@@ -80,7 +77,6 @@ public class SupplierPaymentCompletionTests
         Assert.Equal(0, payment.RefundedCents);
         Assert.Null(payment.PaidAt);
         Assert.Null(payment.PaidVia);
-        // The PaymentIntent is created when the payer opens the session, never before.
         Assert.Null(payment.StripePaymentIntentId);
         Assert.Null(payment.ConnectedAccountId);
         Assert.Equal(0, payment.PaymentIntentCount);
@@ -103,7 +99,6 @@ public class SupplierPaymentCompletionTests
         Assert.Equal("host@test.com", email.To);
         var (paymentId, token) = ServicePaymentTestSupport.LinkOf(email.Content);
         Assert.Equal(payment.Id, paymentId);
-        // 256 random bits, URL-safe; the row keeps their SHA-256 and nothing else.
         Assert.Equal(43, token.Length);
         Assert.NotNull(payment.PaymentTokenHash);
         Assert.Equal(64, payment.PaymentTokenHash.Length);
@@ -111,16 +106,13 @@ public class SupplierPaymentCompletionTests
         Assert.True(CheckoutOutcomes.TokenMatches(payment.PaymentTokenHash, token));
         Assert.False(CheckoutOutcomes.TokenMatches(payment.PaymentTokenHash, token + "x"));
         Assert.DoesNotContain(token, payment.LineItemsJson);
-        // The email names the supplier, the service, the property and the amount.
         Assert.Contains("Supplier Org", email.Content.HtmlBody);
         Assert.Contains(ServiceRequestScenario.ServiceName, email.Content.HtmlBody);
         Assert.Contains(ServiceRequestScenario.PropertyName, email.Content.HtmlBody);
         Assert.Contains("60,00 €", email.Content.HtmlBody);
-        // The link counts from the email: first request, one email, valid 30 days.
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, payment.RequestedAt);
         Assert.Equal(payment.RequestedAt, payment.LastSentAt);
         Assert.Equal(1, payment.SentCount);
-        // The host still gets the ordinary news that the work is completed.
         Assert.Contains(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.ServiceRequestStatusChanged);
     }
 
@@ -136,7 +128,6 @@ public class SupplierPaymentCompletionTests
             s.SupplierOrgId,
             new CompleteServiceRequestCommand(Extras: [new ServiceRequestExtra("Bagno in più", 1_000)]));
 
-        // 60,00 euro agreed + 10,00 euro extra = 70,00 euro, which is 16.7 % above the quote: within the 20 % of decision D7.
         Assert.False(completed.FinalAmountNeedsConfirmation);
         var payment = await s.OnlyPaymentOfAsync(completed.Id);
         Assert.Equal(7_000, payment.AmountCents);
@@ -148,10 +139,8 @@ public class SupplierPaymentCompletionTests
         Assert.Contains(lines, l => l is { Kind: "extra", Label: "Bagno in più", AmountCents: 1_000 });
     }
 
-    // ─── The commission: the supplier's own percentage, rounding, no rewriting ───
-
     [Theory]
-    [InlineData(0, 6_000, 0, 6_000)] // a free period
+    [InlineData(0, 6_000, 0, 6_000)]
     [InlineData(7.5, 6_000, 450, 5_550)]
     [InlineData(50, 6_000, 3_000, 3_000)]
     [InlineData(10.5, 6_000, 630, 5_370)]
@@ -171,10 +160,10 @@ public class SupplierPaymentCompletionTests
     }
 
     [Theory]
-    [InlineData(6_050, 605)] // 605.0 cents
-    [InlineData(6_055, 606)] // 605.5 cents: half a cent goes up
-    [InlineData(6_054, 605)] // 605.4 cents
-    [InlineData(6_056, 606)] // 605.6 cents
+    [InlineData(6_050, 605)]
+    [InlineData(6_055, 606)]
+    [InlineData(6_054, 605)]
+    [InlineData(6_056, 606)]
     public async Task Complete_TheCommissionIsRoundedToTheCentAwayFromZero(int amount, int expectedFee)
     {
         using var s = await ServiceRequestScenario.CreateAsync();
@@ -192,7 +181,6 @@ public class SupplierPaymentCompletionTests
         using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = 10m, HeldForHosts = false });
         var first = await s.CompletedOnlineAsync();
 
-        // The product owner decides another percentage: the existing payment keeps the figures it was created with.
         s.Kit.PaymentOptions.CommissionPercent = 20m;
         var second = await s.TakenAsync();
         var completedSecond = await s.Service.CompleteAsync(second.Id, s.SupplierOrgId);
@@ -233,8 +221,6 @@ public class SupplierPaymentCompletionTests
         Assert.Empty(await s.PaymentsOfAsync(taken.Id));
     }
 
-    // ─── What cannot be charged online falls back to the manual flow ───
-
     [Fact]
     public async Task Complete_AmountBelowTheMinimum_FallsBackToManualWithNoPayment()
     {
@@ -246,7 +232,6 @@ public class SupplierPaymentCompletionTests
         Assert.Equal(ServiceRequestPaymentMode.Manual, (await s.ReadAsync(completed.Id)).PaymentMode);
         Assert.Empty(await s.PaymentsOfAsync(completed.Id));
         Assert.Empty(s.Emails.PaymentEmails());
-        // Nothing is stuck: the host marks it paid by hand, as before.
         Assert.Equal(ServiceRequestStatus.Pagato, (await s.Service.MarkPaidAsync(completed.Id, s.HostOrgId)).Status);
     }
 
@@ -257,7 +242,6 @@ public class SupplierPaymentCompletionTests
 
         var completed = await s.CompletedOnlineAsync(finalAmountCents: 50);
 
-        // Quote 60,00 and a final amount of 0,50: below the quote, never needs a confirmation. 10 % of 50 cents is 5.
         var payment = await s.OnlyPaymentOfAsync(completed.Id);
         Assert.Equal(50, payment.AmountCents);
         Assert.Equal(5, payment.ApplicationFeeCents);
@@ -308,8 +292,6 @@ public class SupplierPaymentCompletionTests
         Assert.Empty(s.Emails.PaymentEmails());
     }
 
-    // ─── A payment that cannot be sent yet is pending ───
-
     [Fact]
     public async Task Complete_TheSupplierNotReadyAnymore_LeavesThePaymentPendingWithoutALink()
     {
@@ -329,12 +311,10 @@ public class SupplierPaymentCompletionTests
         Assert.Equal(0, payment.SentCount);
         Assert.Empty(s.Emails.PaymentEmails());
 
-        // The supplier cannot ask for it until it can be paid ...
         var notReady = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.RequestPaymentAsync(completed.Id, s.SupplierOrgId));
         Assert.Equal(SupplierPaymentsErrors.NotReady, notReady.Code);
         Assert.Empty(s.Emails.PaymentEmails());
 
-        // ... and then the link goes out, as the first request.
         await s.ConnectSupplierAsync(ready: true);
         var sent = await s.Service.RequestPaymentAsync(completed.Id, s.SupplierOrgId);
         Assert.Equal(1, sent.SentCount);
@@ -373,7 +353,6 @@ public class SupplierPaymentCompletionTests
 
         var completed = await s.Service.CompleteAsync(taken.Id, s.SupplierOrgId);
 
-        // The completion stands (the work is done); the payment waits for the supplier to ask again.
         Assert.Equal(ServiceRequestStatus.Completato, completed.Status);
         var payment = await s.OnlyPaymentOfAsync(completed.Id);
         Assert.Equal(ServicePaymentStatus.Requested, payment.Status);
@@ -404,7 +383,6 @@ public class SupplierPaymentCompletionTests
         Assert.Equal(ServiceRequestErrorCodes.StateChanged, ex.Code);
         Assert.Empty(await s.PaymentsOfAsync(taken.Id));
         Assert.Empty(s.Emails.Snapshot());
-        // The context does not keep the payment that was never saved: the next save does not write it by accident.
         Assert.DoesNotContain(s.Db.ChangeTracker.Entries<ServiceRequestPayment>(), e => e.State == EntityState.Added);
     }
 
@@ -435,7 +413,6 @@ public class SupplierPaymentCompletionTests
     [Fact]
     public async Task Complete_AnotherUniqueViolation_IsNotHiddenAsAConflict()
     {
-        // Only the "one live payment per request" index means that someone else got there first: any other database error stays one.
         var interceptor = new FailingSaveInterceptor();
         using var s = await ServiceRequestScenario.CreateAsync(saveInterceptor: interceptor);
         await s.EnablePaymentsAsync();
@@ -461,12 +438,9 @@ public class SupplierPaymentCompletionTests
         using var caller = new CancellationTokenSource();
         interceptor.AfterSave = caller.Cancel;
 
-        // What the host notification does with a token that is already canceled is not what is under test.
         await Record.ExceptionAsync(() => s.Service.CompleteAsync(taken.Id, s.SupplierOrgId, null, caller.Token));
         interceptor.AfterSave = null;
 
-        // The payment was saved with a link, so the link must have been sent: a link that exists and was never sent is the
-        // one thing the payer and the supplier cannot see.
         Assert.True(caller.IsCancellationRequested);
         var payment = await s.OnlyPaymentOfAsync(taken.Id);
         var link = ServicePaymentTestSupport.LinkOf(Assert.Single(s.Emails.RequestEmails()).Content);
@@ -474,21 +448,18 @@ public class SupplierPaymentCompletionTests
         Assert.True(CheckoutOutcomes.TokenMatches(payment.PaymentTokenHash, link.Token));
     }
 
-    // ─── An amount above the quote waits for the host (decision D7) ───
-
     [Fact]
     public async Task Complete_AmountAboveTheQuoteByMoreThanTheTolerance_CreatesNoPaymentUntilTheHostConfirms()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
 
-        var completed = await s.CompletedOnlineAsync(finalAmountCents: 8_000); // 33 % above the 60,00 quote
+        var completed = await s.CompletedOnlineAsync(finalAmountCents: 8_000);
 
         Assert.True(completed.FinalAmountNeedsConfirmation);
         Assert.Equal(ServiceRequestPaymentMode.Online, completed.PaymentMode);
         Assert.Empty(await s.PaymentsOfAsync(completed.Id));
         Assert.Empty(s.Emails.PaymentEmails());
 
-        // The supplier cannot ask for a payment the host has not agreed to.
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.RequestPaymentAsync(completed.Id, s.SupplierOrgId));
         Assert.Equal(ServicePaymentErrors.AmountUnconfirmed, ex.Code);
         Assert.Empty(await s.PaymentsOfAsync(completed.Id));
@@ -504,7 +475,6 @@ public class SupplierPaymentCompletionTests
 
         var confirmed = await s.Service.ConfirmFinalAmountAsync(completed.Id, s.HostOrgId);
 
-        // The confirmation clears the flag every reader looks at, and keeps its trace.
         Assert.False(confirmed.FinalAmountNeedsConfirmation);
         var saved = await s.ReadAsync(completed.Id);
         Assert.False(saved.FinalAmountNeedsConfirmation);
@@ -539,7 +509,7 @@ public class SupplierPaymentCompletionTests
     public async Task ConfirmFinalAmount_NothingToConfirm_Is422()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        var completed = await s.CompletedOnlineAsync(); // the agreed price: no confirmation needed
+        var completed = await s.CompletedOnlineAsync();
 
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.ConfirmFinalAmountAsync(completed.Id, s.HostOrgId));
 
@@ -627,7 +597,6 @@ public class SupplierPaymentCompletionTests
     [Fact]
     public async Task ConfirmFinalAmount_AnotherCallCreatedThePaymentFirst_Is409AndNoPaymentIsLeftBehind()
     {
-        // A double click, or two tabs: both read the amount as still to confirm; the loser is a conflict, never a 500.
         var interceptor = new FailingSaveInterceptor();
         using var s = await ServiceRequestScenario.CreateAsync(saveInterceptor: interceptor);
         var completed = await s.CompletedOnlineAsync(finalAmountCents: 8_000);

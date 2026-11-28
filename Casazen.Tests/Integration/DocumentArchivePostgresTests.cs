@@ -35,8 +35,6 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
         _db = _database.CreateContext();
         _hosts = await HostScopeScenario.SeedAsync(_db);
 
-        // 2026-10-05 23:30 UTC is 01:30 of the 6th in Rome (summer time, +2); 2026-01-15 23:30 UTC is 00:30 of the 16th (winter time, +1);
-        // 2026-10-05 21:30 UTC is 23:30 of the 5th, still the same day.
         _summerNight = AddPropertyDocument("notte-estate_50%.pdf", new DateTime(2026, 10, 5, 23, 30, 0, DateTimeKind.Utc));
         _winterNight = AddPropertyDocument("notte-inverno.pdf", new DateTime(2026, 1, 15, 23, 30, 0, DateTimeKind.Utc));
         _summerEvening = AddPropertyDocument("sera-estate.pdf", new DateTime(2026, 10, 5, 21, 30, 0, DateTimeKind.Utc));
@@ -87,7 +85,6 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
     private DocumentArchiveService Service()
     {
         var storage = new InMemoryFileStorage();
-        // The five sources as the container registers them (the statement holds those of the types the access allows).
         IDocumentArchiveSource[] sources =
         [
             new PropertyDocumentArchiveSource(_db, storage),
@@ -166,7 +163,6 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
         var byCommune = await service.ListAsync(_hosts.OrgWide, DocumentArchiveWorld.Everything, Query(search: "ostun"));
 
         Assert.Equal([_winterNight], byWord.Items.Select(i => i.Id));
-        // 50% finds the title that has those characters, not every title that has "50" followed by anything; _ is not "any character".
         Assert.Equal([_summerNight], byPercent.Items.Select(i => i.Id));
         Assert.Equal([_summerNight], byUnderscore.Items.Select(i => i.Id));
         Assert.Equal([_payment], byCommune.Items.Select(i => i.Id));
@@ -178,12 +174,9 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
         var service = Service();
 
         var everything = await service.ListAsync(_hosts.OrgWide, DocumentArchiveWorld.Everything, Query());
-        // The booking is empty in every branch: filtering by it is an empty answer, not an error of types.
         var byBooking = await service.ListAsync(_hosts.OrgWide, DocumentArchiveWorld.Everything, Query(bookingId: Guid.NewGuid()));
         var byProperty = await service.ListAsync(_hosts.OrgWide, DocumentArchiveWorld.Everything, Query(propertyId: _hosts.Granted.Id));
 
-        // The three uploads and the payment with its receipt (the leases have no file here), newest day first: the 6th of October, the 5th, the payment
-        // of June, the 16th of January.
         Assert.Equal(4, everything.TotalCount);
         Assert.Equal([_summerNight, _summerEvening, _payment, _winterNight], everything.Items.Select(i => i.Id));
         var receipt = everything.Items[2];
@@ -255,7 +248,6 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
         var service = Service();
         _db.ChangeTracker.Clear();
 
-        // Before the deletion everything is there: the three uploads and the payment, the document and the two proofs of the other property, the proof of this one.
         Assert.Equal(8, (await service.ListAsync(_hosts.OrgWide, DocumentArchiveWorld.EveryType, Query())).TotalCount);
 
         var deleted = await _db.Properties.SingleAsync(p => p.Id == _hosts.Hidden.Id);

@@ -29,14 +29,12 @@ public class LeaseIstatRulesTests
     [Fact]
     public void Calculate_TheShareOfTheVariation_IsAppliedToTheRent_AndTheNewRentHasTheCents()
     {
-        // 3.2 % of variation, 75 % of it recognized: 2.4 % of 650.00 is 15.60.
         var seventyFive = LeaseIstatRules.Calculate(650m, 3.2m, 75m);
 
         Assert.Equal(2.4m, seventyFive.AppliedPercent);
         Assert.Equal(15.60m, seventyFive.Increase);
         Assert.Equal(665.60m, seventyFive.NewRent);
 
-        // The whole variation: 1.5 % of 800.00 is 12.00.
         var whole = LeaseIstatRules.Calculate(800m, 1.5m, 100m);
 
         Assert.Equal(1.5m, whole.AppliedPercent);
@@ -47,13 +45,11 @@ public class LeaseIstatRulesTests
     [Fact]
     public void Calculate_RoundsTheIncreaseOnceToTheCent_HalfAwayFromZero()
     {
-        // 1 % of 10.50 is exactly 0.105: half a cent goes up (0.11), where a banker's rounding would stop at 0.10.
         var half = LeaseIstatRules.Calculate(10.50m, 1.00m, 100m);
 
         Assert.Equal(0.11m, half.Increase);
         Assert.Equal(10.61m, half.NewRent);
 
-        // 1.275 % of 733.33 is 9.3499575: nothing is rounded before the end, so it is 9.35 and not 9.34.
         var longer = LeaseIstatRules.Calculate(733.33m, 1.7m, 75m);
 
         Assert.Equal(1.275m, longer.AppliedPercent);
@@ -62,12 +58,12 @@ public class LeaseIstatRulesTests
     }
 
     [Theory]
-    [InlineData(0, 75)] // no variation
-    [InlineData(-1.5, 75)] // the law speaks of increases only
-    [InlineData(3.2, 0)] // no share
-    [InlineData(3.2, 100.5)] // more than the whole variation
-    [InlineData(3.215, 75)] // more than two decimals
-    [InlineData(100.5, 75)] // a typo: no variation of an index is this big
+    [InlineData(0, 75)]
+    [InlineData(-1.5, 75)]
+    [InlineData(3.2, 0)]
+    [InlineData(3.2, 100.5)]
+    [InlineData(3.215, 75)]
+    [InlineData(100.5, 75)]
     public void Check_APercentageThatIsNotAboveZeroOrIsTooBigOrTooPrecise_CannotBeCalculated(double foi, double share)
     {
         Assert.Equal(LeaseIstatProblem.PercentInvalid, LeaseIstatRules.Check((decimal)foi, (decimal)share));
@@ -79,7 +75,7 @@ public class LeaseIstatRulesTests
     {
         var ordinary = LeaseIstatRules.Facts(Lease(LeaseTaxRegime.Ordinario), Today);
         var cedolare = LeaseIstatRules.Facts(Lease(LeaseTaxRegime.CedolareSecca), Today);
-        var unknown = LeaseIstatRules.Facts(Lease(regime: null), Today); // an old concordato that never said its regime
+        var unknown = LeaseIstatRules.Facts(Lease(regime: null), Today);
 
         Assert.True(ordinary.Available);
         Assert.Equal(650m, ordinary.CurrentRent);
@@ -113,7 +109,6 @@ public class LeaseIstatRulesTests
         Assert.Equal(Today, facts.MinEffectiveOn);
         Assert.Equal(new DateOnly(2029, 10, 31), facts.MaxEffectiveOn);
 
-        // A lease that has not begun yet starts the update from its first day, not from today.
         var future = Lease();
         future.StartDate = Utc(2026, 12, 1);
         future.EndDate = Utc(2030, 11, 30);

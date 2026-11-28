@@ -26,7 +26,6 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
 
     public HostAuthorizationIntegrationTests(AiSupplierDiscoveryEnabledFactory factory) => _factory = factory;
 
-    /// <summary>Host endpoints: an authenticated supplier (no host context) gets 403 on every one of them.</summary>
     public static TheoryData<string, string> HostEndpoints() => new()
     {
         { "GET", "/api/payments" },
@@ -75,11 +74,9 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
         var collaboratorId = await SeedCollaboratorAsync(scenario.HostOrgId, "payment.read", "property.read", "booking.read");
         using var collaborator = _factory.CreateAuthenticatedClient(collaboratorId, "PropertyManager");
 
-        // Same org, org-wide reach and payment.read: the payment is visible...
         var read = await collaborator.GetAsync($"/api/payments/{scenario.PaymentId}");
         Assert.Equal(HttpStatusCode.OK, read.StatusCode);
 
-        // ...but without payment.write it cannot be processed or refunded.
         var write = await collaborator.PostAsync($"/api/payments/{scenario.PaymentId}/{operation}", null);
         Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
 
@@ -93,7 +90,6 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
     [Fact]
     public async Task AlloggiatiRecordFile_AsCollaboratorWithoutGuestRead_Returns403()
     {
-        // CO-13: the record file holds the identity documents, so it needs guest.read like the full document numbers.
         var scenario = await SeedScenarioAsync();
         var withoutGuestRead = await SeedCollaboratorAsync(scenario.HostOrgId, "booking.read", "property.read");
         var withGuestRead = await SeedCollaboratorAsync(scenario.HostOrgId, "booking.read", "property.read", "guest.read");
@@ -104,7 +100,6 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
         var refusedForData = await allowed.GetAsync($"/api/alloggiati/{scenario.BookingId}/record-file");
 
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
-        // Authorized, but the seeded booking has no complete guest data and no code table: the file is refused, not served.
         Assert.Equal(HttpStatusCode.UnprocessableEntity, refusedForData.StatusCode);
         await AssertScenarioUnchangedAsync(scenario);
     }
@@ -287,10 +282,6 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
             .Replace("{request}", ServiceRequestId.ToString());
     }
 
-    /// <summary>
-    /// Host org with one property (comune H501), a guest, a booking with a pending payment, a completed service
-    /// request, and an active supplier (its own org) operating in H501.
-    /// </summary>
     private async Task<Scenario> SeedScenarioAsync()
     {
         const string comune = "H501";
@@ -409,15 +400,10 @@ public class HostAuthorizationIntegrationTests : IClassFixture<AiSupplierDiscove
             IsActive = true,
         };
         db.Users.Add(user);
-        // A colleague who completed the onboarding for the org (PL-02): the checks below are about permissions and ownership.
         await HostOnboardingSeed.MarkOnboardedAsync(db, user, orgId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
         await db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// A collaborator of the org: a DB membership in short-rent whose role has only the given permissions (a custom
-    /// role, as an org admin would configure it), no host role in the JWT context fallback.
-    /// </summary>
     private async Task<string> SeedCollaboratorAsync(Guid orgId, params string[] permissions)
     {
         var userId = $"auth0|tn3-collaborator-{Guid.NewGuid():N}";

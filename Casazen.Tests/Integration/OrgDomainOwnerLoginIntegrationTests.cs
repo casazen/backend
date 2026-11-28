@@ -56,7 +56,6 @@ public class OrgDomainOwnerLoginIntegrationTests(CasazenWebApplicationFactory fl
     [Fact]
     public async Task Retry_WithoutPlan_PlanRequired()
     {
-        // A verified domain whose plan lapsed: the plan is asked for after the domain.
         var ownerId = $"auth0|owner-login-starter-{Guid.NewGuid():N}";
         var org = await flagsOn.SeedOrgForOwnerAsync(ownerId);
         await SetPlanAsync(flagsOn, org.Id, PlanTier.Starter);
@@ -74,7 +73,6 @@ public class OrgDomainOwnerLoginIntegrationTests(CasazenWebApplicationFactory fl
     [Fact]
     public async Task Retry_NoCustomDomain_WithoutPlan_IsConflict_NotForbidden()
     {
-        // Nothing to register: the answer is the 409 of the domain whatever the plan, as the body-less POST verify answers 400 before its plan (the owner of an org is never refused by it).
         var ownerId = $"auth0|owner-login-nodomain-{Guid.NewGuid():N}";
         var org = await flagsOn.SeedOrgForOwnerAsync(ownerId);
         await SetPlanAsync(flagsOn, org.Id, PlanTier.Starter);
@@ -140,7 +138,6 @@ public class OrgDomainOwnerLoginIntegrationTests(CasazenWebApplicationFactory fl
         });
         var body = new { state = "Ready" };
 
-        // The owner of the agency cannot enable its own sign-in: the tenant is CasaZen's.
         using var agency = flagsOn.CreateAuthenticatedClient(ownerId, "PropertyOwner");
         var refused = await agency.PutAsJsonAsync($"/api/admin/orgs/{org.Id}/owner-login-state", body);
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);

@@ -19,7 +19,6 @@ public class MessageSyncEventKeyTests
     [Fact]
     public void PassWindowOf_IsTheTenMinutesAnInstantFallsIn_AsAStampOfTheRealDate()
     {
-        // Real instants, not defaults: the stamp is a DateTime format, and a specifier that does not fit throws only when it runs.
         Assert.Equal("202611061500", MessageSyncService.PassWindowOf(new DateTime(2026, 11, 6, 15, 3, 27, DateTimeKind.Utc)));
         Assert.Equal("202611061500", MessageSyncService.PassWindowOf(new DateTime(2026, 11, 6, 15, 9, 59, 999, DateTimeKind.Utc)));
         Assert.Equal("202611061510", MessageSyncService.PassWindowOf(new DateTime(2026, 11, 6, 15, 10, 0, DateTimeKind.Utc)));
@@ -74,7 +73,6 @@ public class MessageSyncEventKeyTests
         Assert.Equal($"ota-thread:11111111222233334444555555555555:{Last}:unknown", MessageSyncService.SyncedEventKey(Thread, Last, null, early));
         Assert.Equal(MessageSyncService.SyncedEventKey(Thread, Last, null, early), MessageSyncService.SyncedEventKey(Thread, Last, null, late));
 
-        // The three states are three keys: a change of the flag with no new message is a new event.
         Assert.Equal(3, new[] { true, false, (bool?)null }.Select(flag => MessageSyncService.SyncedEventKey(Thread, Last, flag, early)).Distinct().Count());
     }
 

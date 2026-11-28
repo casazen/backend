@@ -14,12 +14,10 @@ using Moq;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>An <see cref="IEmailQueue"/> that keeps what it was given, as the Hangfire queue would receive it.</summary>
 internal sealed class RecordingEmailQueue : IEmailQueue
 {
     public List<(string? To, EmailContent Content, string Template)> Sent { get; } = [];
 
-    /// <summary>What <see cref="Enqueue"/> answers: false is a queue that could not take the email.</summary>
     public bool Accepts { get; set; } = true;
 
     public bool Enqueue(string? to, EmailContent content, string template)
@@ -29,10 +27,6 @@ internal sealed class RecordingEmailQueue : IEmailQueue
     }
 }
 
-/// <summary>
-/// The service of the reply (E05/F02/US02/T01) over the data of <see cref="MessageHubTestKit"/>, with every neighbour a test can steer or watch: the Octorate
-/// client, the direct service, the mapping, the targets, the queue of the e-mails, the clock, the log. The activity log and the cache are the real ones.
-/// </summary>
 internal sealed class MessageReplyRig
 {
     public MessageReplyRig(AppDbContext db, TimeProvider? clock = null)
@@ -74,7 +68,6 @@ internal sealed class MessageReplyRig
 
     public MessageReplyService Service { get; }
 
-    /// <summary>The channel manager accepts every message and says it is sent, under the id <paramref name="messageId"/>.</summary>
     public void ChannelManagerAccepts(string messageId = "90001", OtaMessageDeliveryState state = OtaMessageDeliveryState.Sent) =>
         Client
             .Setup(c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -86,10 +79,8 @@ internal sealed class MessageReplyRig
             Times.Never);
 }
 
-/// <summary>Bookings of the kinds the reply cares about, added to the world of <see cref="MessageHubTestKit"/>.</summary>
 internal static class MessageReplyScenario
 {
-    /// <summary>A guest of the org with an address and a number the tests look for in every answer, log and row.</summary>
     public const string GuestEmail = "mei.tanaka@guest-mail.example";
 
     public const string GuestPhone = "+81 90 1234 5678";

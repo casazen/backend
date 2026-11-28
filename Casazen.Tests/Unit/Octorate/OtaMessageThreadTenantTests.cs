@@ -30,8 +30,6 @@ public class OtaMessageThreadTenantTests
         var mine = NewThread(orgA, "7001", "100");
         var theirs = NewThread(orgB, "7001", "200");
 
-        // The sync writes both organizations' rows from a job (no caller, so no filter); the same Octorate thread id in two organizations is
-        // two rows, each in its own.
         await using (var system = NewDb(databaseName, tenant: null))
         {
             system.OtaMessageThreads.AddRange(mine, theirs);
@@ -48,7 +46,6 @@ public class OtaMessageThreadTenantTests
         Assert.Equal(mine.Id, row.Id);
         Assert.Equal(orgA, row.OrgId);
 
-        // By its Octorate id, by its id, by its accommodation, by its messages and by its checkpoints: nothing of the other organization.
         Assert.Equal(mine.Id, (await asOrgA.OtaMessageThreads.AsNoTracking().SingleAsync(t => t.OctorateThreadId == "7001")).Id);
         Assert.Null(await asOrgA.OtaMessageThreads.AsNoTracking().FirstOrDefaultAsync(t => t.Id == theirs.Id));
         Assert.False(await asOrgA.OtaMessageThreads.AsNoTracking().AnyAsync(t => t.OctorateAccommodationId == "200"));
@@ -57,7 +54,6 @@ public class OtaMessageThreadTenantTests
         Assert.Equal("100", Assert.Single(await asOrgA.OtaMessageSyncStates.AsNoTracking().ToListAsync()).OctorateAccommodationId);
         Assert.Equal(orgA, Assert.Single(await asOrgA.MessageTemplates.AsNoTracking().ToListAsync()).OrgId);
 
-        // A caller with no organization is fail-closed: it matches nothing.
         await using var nobody = NewDb(databaseName, new FixedTenantContext(null));
         Assert.Empty(await nobody.OtaMessageThreads.AsNoTracking().ToListAsync());
         Assert.Empty(await nobody.OtaMessages.AsNoTracking().ToListAsync());

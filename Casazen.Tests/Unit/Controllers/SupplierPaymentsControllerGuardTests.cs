@@ -10,12 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Controllers;
 
-/// <summary>
-/// SP-14: the shape of the supplier's payments routes is pinned. Every action needs the supplier policy and is behind
-/// <c>SupplierOnlinePayments</c> (404 while off, before authentication), none is anonymous, and the whole surface is the
-/// account, its state and the two links: no route creates a payment (SP-15), so a payment endpoint added here by mistake fails
-/// this test and has to be a deliberate decision.
-/// </summary>
 public class SupplierPaymentsControllerGuardTests
 {
     private static readonly Type Controller = typeof(SupplierPaymentsController);

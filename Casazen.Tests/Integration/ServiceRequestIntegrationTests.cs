@@ -8,7 +8,6 @@ using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
-// OrgEntity alias from Casazen.Tests.csproj
 
 namespace Casazen.Tests.Integration;
 
@@ -138,7 +137,6 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
             category = "cleaning",
         });
 
-        // TN-3: another org's property is not visible to the caller (tenant filter), so it answers 404.
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(0, await CountRequestsAsync(s.PropertyId));
     }
@@ -151,7 +149,6 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         var supplierEmail = await GetSupplierEmailAsync(s.SupplierOrgId);
         var attackerId = $"auth0|email-shadow-{Guid.NewGuid():N}";
         await SeedUnlinkedUserAsync(attackerId, supplierEmail);
-        // A real host of another org (onboarding completed, PL-02), not a user stopped by the onboarding gate.
         await _factory.SeedOrgForOwnerAsync(attackerId);
 
         using var attackerClient = _factory.CreateAuthenticatedClient(
@@ -296,10 +293,6 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
         Assert.Equal(expectedSupplierOrgId, supplierOrgId);
     }
 
-    /// <summary>
-    /// Host org with one property (comune H501) and one confirmed stay on it, plus an active supplier (its own org)
-    /// operating in H501. Short-rent requests are created for that stay (D2).
-    /// </summary>
     private async Task<Scenario> SeedScenarioAsync()
     {
         const string comune = "H501";
@@ -353,7 +346,6 @@ public class ServiceRequestIntegrationTests : IClassFixture<CasazenWebApplicatio
             Name = "SR Supplier",
             Slug = $"sr-sup-{Guid.NewGuid():N}"[..25],
             DisplayName = "SR Supplier",
-            // One supplier profile per email (SU-14): every scenario gets its own.
             ContactEmail = $"sr-supplier-{Guid.NewGuid():N}@test.com",
             OrgType = OrgType.Supplier,
             PlanTier = PlanTier.Starter,

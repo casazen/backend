@@ -86,7 +86,6 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task DeletePropertyAsync_GuestCheckedInAndNotYetCheckedOut_ThrowsConflict()
     {
-        // An ongoing stay (guest already in the property) must block a delete even more than a future one.
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 11, 9, 0, 0, TimeSpan.Zero));
         var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
         await using (var db = NewContext())
@@ -110,7 +109,6 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
         var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
         await using (var db = NewContext())
         {
-            // A completed stay, already checked out before "today": must not block the delete.
             SeedBooking(db, propertyId, orgId, BookingStatus.CheckedOut,
                 checkIn: new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
                 checkOut: new DateTime(2026, 9, 5, 0, 0, 0, DateTimeKind.Utc));
@@ -125,7 +123,6 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
 
         await using (var check = NewContext())
         {
-            // Excluded from every normal read (the SoftDelete query filter), the row itself kept.
             Assert.Null(await check.Properties.FirstOrDefaultAsync(p => p.Id == propertyId));
             var raw = await check.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId);
             Assert.True(raw.IsDeleted);
@@ -153,7 +150,6 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
 
         await using var check = NewContext();
         var raw = await check.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == propertyId);
-        // The first delete's timestamp is kept: a second delete of an already-deleted property changes nothing.
         Assert.Equal(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero).UtcDateTime, raw.DeletedAt);
     }
 
@@ -242,8 +238,6 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task DeletePropertyAsync_PausedProperty_SoftDeletesItAndFreesItsAddressAndSlug()
     {
-        // PC-03 x PC-05: a paused property can be deleted; the unique address and slug indexes then let the host
-        // create the same unit again.
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 1, 9, 0, 0, TimeSpan.Zero));
         var (orgId, propertyId) = await SeedOrgAndPropertyAsync();
         Property original;
@@ -288,7 +282,6 @@ public class PropertySoftDeletePostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task DeletePropertyAsync_ThenAnnualFiscalReportAndTouristTaxReport_StillSurfaceItsHistoricalIncome()
     {
-        // PC-05 compliance requirement: soft-deleting a property must never make its fiscal history unreportable.
         var clock = new FakeTimeProvider(new DateTimeOffset(2026, 12, 1, 9, 0, 0, TimeSpan.Zero));
         var (orgId, propertyId) = await SeedOrgAndPropertyAsync(city: "Firenze");
         Guid bookingId;

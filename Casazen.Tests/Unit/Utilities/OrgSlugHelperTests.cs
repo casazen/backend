@@ -72,7 +72,6 @@ public class OrgSlugHelperTests
     [Fact]
     public void IsNeutral_GeneratedSlug_IsTrue()
     {
-        // Every slug a new org gets (A1-23) is one the host has not chosen yet (PL-15, A1-37).
         for (var i = 0; i < 50; i++)
             Assert.True(OrgSlugHelper.IsNeutral(OrgSlugHelper.GenerateNeutral()));
     }

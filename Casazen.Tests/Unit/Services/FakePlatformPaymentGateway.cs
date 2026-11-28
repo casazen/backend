@@ -32,19 +32,14 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
 
     public List<PlatformChargeRequest> Created { get; } = [];
 
-    /// <summary>Every capture received (also the repeated ones): PaymentIntent and key.</summary>
     public List<(string PaymentIntentId, string Key)> Captures { get; } = [];
 
-    /// <summary>Every cancellation received: PaymentIntent and key.</summary>
     public List<(string PaymentIntentId, string Key)> Cancellations { get; } = [];
 
-    /// <summary>Every refund request received (also the ones answered with an existing refund by the key).</summary>
     public List<PlatformRefundRequest> RefundRequests { get; } = [];
 
-    /// <summary>Every transfer request received (also the ones answered with an existing transfer by the key).</summary>
     public List<ServiceTransferRequest> TransferRequests { get; } = [];
 
-    /// <summary>The transfers that exist on this fake Stripe: one per key that was ever created.</summary>
     public IReadOnlyList<ServiceTransfer> Transfers
     {
         get
@@ -65,7 +60,6 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
 
     public int ListTransfersCount { get; private set; }
 
-    /// <summary>A block on a card of the customer, ready to be charged: the PaymentIntent exists in <c>requires_capture</c>.</summary>
     public PlatformCharge AddBlock(string id, long amountCents, string transferGroup, IReadOnlyDictionary<string, string>? metadata = null)
     {
         lock (_gate)
@@ -100,7 +94,6 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
                 AmountCapturableCents = status == "requires_capture" ? current.AmountCents : 0,
                 AmountReceivedCents = status == "succeeded" ? received ?? current.AmountCents : current.AmountReceivedCents,
 
-                // A PaymentIntent that was paid has a charge (the source of the transfer to the supplier).
                 LatestChargeId = status == "succeeded" ? current.LatestChargeId ?? $"ch_{id}" : current.LatestChargeId,
             };
             _intents[id] = updated;
@@ -114,7 +107,6 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             return _intents[id];
     }
 
-    /// <summary>The next PaymentIntent cannot be created (Stripe is down): nothing exists on this fake Stripe afterwards.</summary>
     public void FailNextCreate(Exception exception) => _failNextCreate = exception;
 
     public void FailNextCapture(Exception exception) => _failNextCapture = exception;
@@ -123,13 +115,11 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
 
     public void FailNextList(Exception exception) => _failNextList = exception;
 
-    /// <summary>The next refund is refused (or cannot be asked): nothing exists on this fake Stripe afterwards.</summary>
     public void FailNextRefund(Exception exception) => _failNextRefund = exception;
 
     /// <summary>The next transfer is created on Stripe but the answer never comes back (a timeout): the next try must find it, not make another.</summary>
     public void LoseNextTransferAnswer() => _loseNextTransferAnswer = true;
 
-    /// <summary>The next cancellation finds the card already charged (the supplier's capture came just before).</summary>
     public void ChargeOnNextCancel() => _chargeOnNextCancel = true;
 
     public Task<PlatformCharge> CreateAsync(PlatformChargeRequest request, CancellationToken cancellationToken = default)
@@ -178,7 +168,6 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             if (current.Status != "requires_capture")
                 return Task.FromResult(current);
 
-            // A captured PaymentIntent has a charge (the source of the transfer to the supplier), as on Stripe.
             var charged = current with
             {
                 Status = "succeeded",
@@ -219,7 +208,6 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
                 return Task.FromResult(canceled);
             }
 
-            // Charged or already canceled: Stripe says payment_intent_unexpected_state and the gateway returns the real state.
             return Task.FromResult(current);
         }
     }
@@ -267,7 +255,6 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
                 throw failure;
             }
 
-            // The same key is the same transfer (Stripe keeps a key for a day).
             if (_transfersByKey.TryGetValue(request.IdempotencyKey, out var existing))
                 return Task.FromResult(existing);
 

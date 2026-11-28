@@ -18,7 +18,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class SupplierShowcaseContentTenancyTests
 {
-    /// <summary>The files that may read or write the table, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSet and the model.",
@@ -26,13 +25,10 @@ public class SupplierShowcaseContentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the content of the duplicate org.",
     };
 
-    // What may follow "db.SupplierShowcaseContents" (whitespace removed): the org predicate, or an insert.
     private static readonly string[] AllowedContinuations = [".Where(c=>c.OrgId==", ".Add("];
 
-    // Any way to reach the table from code: the DbSet through whatever the context variable is called, or Set<T>().
     private static readonly Regex AnyTableUse = new(@"\.SupplierShowcaseContents\b|Set<SupplierShowcaseContent>\(", RegexOptions.Compiled);
 
-    // The statements of the files that are allowed to: they call the context "db".
     private static readonly Regex DbSetUse = new(@"db\.SupplierShowcaseContents(?<rest>[\s\S]{0,80})", RegexOptions.Compiled);
 
     [Fact]
@@ -44,10 +40,8 @@ public class SupplierShowcaseContentTenancyTests
         var entity = db.Model.FindEntityType(typeof(SupplierShowcaseContent));
         Assert.NotNull(entity);
 
-        // Not tenant-filtered: the host-org filter would hide the rows of a supplier-only account.
         Assert.Null(entity.FindDeclaredQueryFilter(AppDbContext.TenantQueryFilter));
 
-        // One row per supplier, a child of the supplier profile, deleted with it (the repair moves it before it deletes a profile).
         var foreignKey = Assert.Single(entity.GetForeignKeys());
         Assert.Equal(typeof(SupplierProfile), foreignKey.PrincipalEntityType.ClrType);
         Assert.Equal(nameof(SupplierShowcaseContent.OrgId), Assert.Single(foreignKey.Properties).Name);

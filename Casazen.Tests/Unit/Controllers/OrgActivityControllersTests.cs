@@ -75,8 +75,6 @@ public class OrgActivityControllersTests
         return Assert.IsAssignableFrom<ObjectResult>(result.Result);
     }
 
-    // ─── The list ──────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task List_AsksTheServiceForTheCallersOrgOnly_AndShapesTheAnswerLikeTheOtherPages()
     {
@@ -184,8 +182,6 @@ public class OrgActivityControllersTests
         Assert.IsType<UnauthorizedResult>(noAccount.Result);
     }
 
-    // ─── The CSV ───────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Export_IsTheCsvOfTheCallersOrg_NamedByTheDay()
     {
@@ -220,8 +216,6 @@ public class OrgActivityControllersTests
         yield return item;
         await Task.CompletedTask;
     }
-
-    // ─── The request for access ────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Create_PassesTheCallersOrgAndAccount_WithTheNoteAndTheLanguageOfTheRequest_Answers202()
@@ -258,8 +252,6 @@ public class OrgActivityControllersTests
         Assert.IsType<UnauthorizedResult>(noAccount.Result);
         _requests.Verify(r => r.RequestAsync(It.IsAny<RequestOrgAccess>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    // ─── The wiring ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void TheActivityLog_NeedsTheActivityReadPermission_OfTheAccountContext()

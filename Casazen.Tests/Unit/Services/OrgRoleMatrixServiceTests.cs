@@ -6,11 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// AM-02c: <c>OrgRoleMatrixService</c> reads the matrix of the roles from the rows of the database (<c>Roles</c>,
-/// <c>RolePermissions</c>), not from a copy: change a permission of a seeded role and the level of the capability follows. The pure
-/// function that builds the matrix is proved in <c>OrgCapabilityCatalogTests</c>; here it is the reading, the caller and the org.
-/// </summary>
 public class OrgRoleMatrixServiceTests
 {
     private const string OwnerId = "auth0|owner";
@@ -46,7 +41,6 @@ public class OrgRoleMatrixServiceTests
             Assert.Equal(OrgCapabilityLevel.Yes, guests.Level);
         }
 
-        // The collaborator loses the permission that writes a guest: it still reads them.
         await using (var admin = _kit.NewDb())
         {
             var staff = await admin.Roles.Include(r => r.Permissions)
@@ -76,7 +70,6 @@ public class OrgRoleMatrixServiceTests
         Assert.Equal([OrgRole.Admin, OrgRole.PropertyManager, OrgRole.Collaborator, OrgRole.Accountant], byOwner.Where(r => r.Assignable).Select(r => r.Role));
         Assert.Equal([OrgRole.PropertyManager, OrgRole.Collaborator, OrgRole.Accountant], byAdmin.Where(r => r.Assignable).Select(r => r.Role));
         Assert.DoesNotContain(byCollaborator, r => r.Assignable);
-        // The rest of the matrix is the same for everybody.
         Assert.Equal(
             byOwner.Select(r => (r.Role, r.ScopeSupported, string.Join(',', r.Capabilities.Select(c => c.Level)))),
             byCollaborator.Select(r => (r.Role, r.ScopeSupported, string.Join(',', r.Capabilities.Select(c => c.Level)))));
@@ -92,7 +85,6 @@ public class OrgRoleMatrixServiceTests
         await using var db = _kit.NewDb();
         var service = _kit.RoleMatrix(db);
 
-        // A member of another org, a deactivated member and a stranger: nothing of this org's matrix.
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetAsync(org.Id, "auth0|other-owner"));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetAsync(org.Id, "auth0|dora"));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetAsync(org.Id, "auth0|nobody"));

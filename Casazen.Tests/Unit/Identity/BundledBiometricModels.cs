@@ -14,7 +14,6 @@ namespace Casazen.Tests.Unit.Identity;
 /// </summary>
 internal static class BundledBiometricModels
 {
-    /// <summary>The section <c>Biometrics</c> of the committed <c>appsettings.json</c>, with generous time limits (30 seconds).</summary>
     public static BiometricModelOptions PublishedOptions()
     {
         var configuration = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory).AddJsonFile("appsettings.json").Build();
@@ -24,7 +23,6 @@ internal static class BundledBiometricModels
         return options;
     }
 
-    /// <summary>A store that has verified and loaded the models of <paramref name="options"/> (the published ones when none is given); the caller disposes it.</summary>
     public static async Task<BiometricModelStore> LoadAsync(BiometricModelOptions? options = null)
     {
         var store = new BiometricModelStore(Options.Create(options ?? PublishedOptions()), new CheckInIdentityOn(), NullLogger<BiometricModelStore>.Instance);

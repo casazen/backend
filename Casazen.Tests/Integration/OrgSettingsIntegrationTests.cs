@@ -177,7 +177,6 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
 
         using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
 
-        // Off by default: even after setting a contact email, the public page must not show it.
         var offResponse = await client.PutAsJsonAsync("/api/orgs/me/settings", new
         {
             name = "Opt-in Org",
@@ -195,7 +194,6 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
             publicJsonOff.TryGetProperty("contactEmail", out var offValue) && offValue.ValueKind == System.Text.Json.JsonValueKind.Null,
             "contactEmail must be null when the org has not opted in.");
 
-        // Explicit opt-in: now the public page shows it.
         var onResponse = await client.PutAsJsonAsync("/api/orgs/me/settings", new
         {
             name = "Opt-in Org",
@@ -234,7 +232,6 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal("+393331234567", json.GetProperty("contactPhone").GetString());
         Assert.Equal("en", json.GetProperty("defaultLanguage").GetString());
 
-        // A body that does not know the two fields leaves them as they are (AM-08b-b): a client of before never erases them.
         var again = await client.PutAsJsonAsync("/api/orgs/me/settings", new
         {
             name = "Phone Org",
@@ -247,7 +244,6 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal("+393331234567", kept.GetProperty("contactPhone").GetString());
         Assert.Equal("en", kept.GetProperty("defaultLanguage").GetString());
 
-        // Anyone can read the public page of the site: the phone of the account is not on it, even with the email published.
         using var anonymousClient = _factory.CreateClient();
         var publicResponse = await anonymousClient.GetAsync($"/api/public/orgs/{slug}");
         Assert.Equal(HttpStatusCode.OK, publicResponse.StatusCode);
@@ -311,7 +307,6 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(newSlug, json.GetProperty("slug").GetString());
         Assert.Equal("Villa Nuova", json.GetProperty("displayName").GetString());
 
-        // The old slug stays reserved to this org.
         var otherId = $"auth0|settings-alias-other-{Guid.NewGuid():N}";
         await _factory.SeedOrgForOwnerAsync(otherId);
         using var otherClient = _factory.CreateAuthenticatedClient(otherId, "PropertyOwner");
@@ -345,7 +340,6 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
 
         var me = await client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/users/me");
 
-        // MO-11 (A6-09, A3-22): the app shares {publicSiteUrl}/property/{slug}; the base is App:PublicSiteBaseUrl (D3).
         var orgJson = me.GetProperty("org");
         Assert.Equal(newSlug, orgJson.GetProperty("slug").GetString());
         Assert.Equal($"https://casazen-app.vercel.app/book/{newSlug}", orgJson.GetProperty("publicSiteUrl").GetString());
@@ -433,7 +427,6 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(1, owners);
     }
 
-    /// <summary>The seeded slug (<c>test-org-{sub}</c>) is a legacy one; the conflict tests need one a host could choose.</summary>
     private async Task<string> SetSlugAsync(Guid orgId, string slug)
     {
         using var scope = _factory.Services.CreateScope();

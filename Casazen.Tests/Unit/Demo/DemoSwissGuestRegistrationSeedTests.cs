@@ -42,19 +42,16 @@ public class DemoSwissGuestRegistrationSeedTests
 
         var flat = await world.Db.Properties.AsNoTracking().SingleAsync(p => p.Id == world.FlatId);
 
-        // The country as the resolver and the property form use it, with the franc and the clock of Zurich, the postal code and the city, and NO municipality stored.
         Assert.Equal(("CH", "CHF", "Europe/Zurich", "6900", "Lugano"), (flat.Country, flat.Currency, flat.Timezone, flat.PostalCode, flat.City));
         Assert.True(SwissPlace.IsSwissCountry(flat.Country));
         Assert.Null(flat.SwissMunicipalityCode);
         Assert.Equal(RentalMode.Short, flat.RentalMode);
         Assert.True(flat.IsTestData);
 
-        // A TEST structure number that is valid under the very check the file and the activation use.
         Assert.Equal(DemoShowcaseCatalog.SwissFlatStructureId, flat.TicinoStructureId);
         Assert.True(TicinoStructureId.IsValid(flat.TicinoStructureId));
         Assert.Contains("TEST", flat.TicinoStructureId, StringComparison.Ordinal);
 
-        // The real status of a property (the municipality derived, the structure number valid) published it: it is active and listed.
         Assert.Equal((PropertyComplianceStatus.Active, true), (flat.ComplianceStatus, flat.IsActive));
     }
 
@@ -124,7 +121,6 @@ public class DemoSwissGuestRegistrationSeedTests
         Assert.EndsWith("@example.com", booker.Email, StringComparison.Ordinal);
         Assert.Equal(("Zürich", "8001", "Svizzera"), (booker.City, booker.PostalCode, booker.Country));
 
-        // The head lives in Zurich and shows a Swiss identity card; the family member shows a German passport; both documents are stored.
         var guests = await world.Db.StayGuests.AsNoTracking().Where(g => g.BookingId == stay.Id).OrderBy(g => g.Position).ToListAsync();
         Assert.Equal([StayGuestType.HeadOfFamily, StayGuestType.FamilyMember], guests.Select(g => g.Type));
         Assert.All(guests, g =>
@@ -138,7 +134,6 @@ public class DemoSwissGuestRegistrationSeedTests
         Assert.Equal((GuestDocumentType.IdentityCard, "Svizzera"), (guests[0].DocumentType, guests[0].CitizenshipName));
         Assert.Equal((GuestDocumentType.Passport, "Germania"), (guests[1].DocumentType, guests[1].CitizenshipName));
 
-        // The cockpit: one Ticino day to declare, the stay of yesterday.
         var days = await new TicinoNotificationService(world.Db, world.Clock).ListPendingDaysAsync(world.Org.Id, null, today);
         var day = Assert.Single(days);
         Assert.Equal((world.FlatId, today.AddDays(-1), 1), (day.PropertyId, day.Day, day.StayCount));
@@ -167,7 +162,6 @@ public class DemoSwissGuestRegistrationSeedTests
     {
         var world = await SeedAsync();
 
-        // Decision D6: no image of a document for a Swiss property. The check-in sessions and the verification logs are where an image would be: the seeding writes none for this stay.
         Assert.Empty(await world.Db.GuestCheckInSessions.IgnoreQueryFilters().ToListAsync());
         Assert.Empty(await world.Db.BiometricVerificationLogs.IgnoreQueryFilters().ToListAsync());
         Assert.DoesNotContain(DemoShowcaseCatalog.CheckIns, c => c.PropertyKey == DemoShowcaseCatalog.SwissFlatKey);
@@ -193,8 +187,6 @@ public class DemoSwissGuestRegistrationSeedTests
             markers.Where(m => m.EntityType == TestDataEntities.StayGuest).Select(m => m.EntityId).Order());
     }
 
-    // ─── The world ───
-
     private static async Task<SeedWorld> SeedAsync()
     {
         var clock = new FakeTimeProvider(Now);
@@ -203,7 +195,6 @@ public class DemoSwissGuestRegistrationSeedTests
         var owner = OrgTeamTestData.AddUser(db, $"auth0|titolare-{Guid.NewGuid():N}"[..24], org.Id, UserRole.PropertyOwner);
         OrgTeamTestData.AddMember(db, owner.Id, org.Id, OrgRole.Owner);
 
-        // The official directory of swisstopo, the file the application loads at startup, in its Ticino part.
         var directory = SwissMunicipalitySeed.Parse(
             SwissMunicipalitySeed.ReadEmbedded() ?? throw new InvalidOperationException("The seed of the Swiss places is not part of this build."));
         db.SwissMunicipalities.AddRange(directory.Municipalities.Where(m => m.CantonCode == SwissPlace.TicinoCantonCode));
@@ -226,7 +217,6 @@ public class DemoSwissGuestRegistrationSeedTests
         var hostEnvironment = new Mock<IHostEnvironment>();
         hostEnvironment.SetupGet(h => h.EnvironmentName).Returns("Staging");
 
-        // The REAL status of a property decides whether the flat is published: the municipality derived from the postal code and the city, the structure number valid.
         var compliance = new PropertyComplianceStatusService(
             db,
             new ConfigurationBuilder().Build(),

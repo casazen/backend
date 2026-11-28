@@ -5,11 +5,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// AM-02 (D13, D35): the seats of an org are its active members plus its pending invitations that have not expired, against
-/// what the effective plan allows. The accountant counts, a deactivated member does not, an expiry frees the seat the moment it
-/// passes, and an org whose subscription is not in good standing has the Starter number whatever it stored.
-/// </summary>
 public class OrgSeatServiceTests
 {
     private readonly OrgInvitationTestKit _kit = new() { SeedAsAgency = false };

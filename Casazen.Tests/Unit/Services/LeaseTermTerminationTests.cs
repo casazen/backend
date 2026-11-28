@@ -32,7 +32,6 @@ public class LeaseTermTerminationTests : IDisposable
 
     private static DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>A registered lease of a 4+4 contract that began on 1 November 2025 and states its first end on 31 October 2029.</summary>
     private async Task<LeaseContract> RunningLeaseAsync(DateTime? start = null)
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
@@ -52,9 +51,9 @@ public class LeaseTermTerminationTests : IDisposable
     }
 
     [Theory]
-    [InlineData(2025, 11, 1)] // the day the lease began: the lease would begin and end the same day
-    [InlineData(2025, 10, 15)] // before it began
-    [InlineData(2029, 11, 1)] // the day after the period ends
+    [InlineData(2025, 11, 1)]
+    [InlineData(2025, 10, 15)]
+    [InlineData(2029, 11, 1)]
     public async Task ADayThatIsNotBetweenTheStartExcludedAndTheEnd_IsRefused_WithTheDaysThatWouldDo_AndNothingIsWritten(int year, int month, int day)
     {
         var lease = await RunningLeaseAsync();
@@ -74,7 +73,7 @@ public class LeaseTermTerminationTests : IDisposable
     [Fact]
     public async Task ALeaseThatHasNotBegun_IsRefused_WhateverTheDay_AndTheTextSaysWhatCancelsIt()
     {
-        var lease = await RunningLeaseAsync(start: Day(2026, 11, 1)); // today is 10 October 2026
+        var lease = await RunningLeaseAsync(start: Day(2026, 11, 1));
 
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => TerminateAsync(lease.Id, new DateOnly(2027, 3, 31)));
 
@@ -86,10 +85,10 @@ public class LeaseTermTerminationTests : IDisposable
     }
 
     [Theory]
-    [InlineData(2025, 11, 2)] // the day after it began: the first day that is an ending
-    [InlineData(2026, 6, 30)] // a day in the past, for a lease the landlord knows ended earlier
+    [InlineData(2025, 11, 2)]
+    [InlineData(2026, 6, 30)]
     [InlineData(2027, 12, 31)]
-    [InlineData(2029, 10, 31)] // the last day of the period
+    [InlineData(2029, 10, 31)]
     public async Task ADayAfterTheStartAndNotPastTheEnd_EndsTheLease_TheEndOfTheContractStaysAsItWas(int year, int month, int day)
     {
         var lease = await RunningLeaseAsync();
@@ -101,7 +100,7 @@ public class LeaseTermTerminationTests : IDisposable
         var lastDay = new DateTime(year, month, day, 0, 0, 0, DateTimeKind.Utc);
         Assert.Equal(lastDay, ended.TerminatedOn);
         Assert.Equal(lastDay, ended.CurrentTermEndDate);
-        Assert.Equal(Day(2029, 10, 31), ended.EndDate); // the contract still says when it was to end
+        Assert.Equal(Day(2029, 10, 31), ended.EndDate);
         Assert.Equal(Day(2025, 11, 1), ended.StartDate);
         _rent.Verify(r => r.CancelInstallmentsAfterAsync(lease.Id, last, It.IsAny<CancellationToken>()), Times.Once);
     }

@@ -19,10 +19,6 @@ public class OctorateGuestContactInfoClientTests
 {
     private static readonly Guid Org = Guid.Parse("0f5b8f0e-1a7e-4c55-9c38-3b0a2f6c1a01");
 
-    /// <summary>
-    /// Proof test (permission rule, AC-NF94-6): a 401 or a 403 of the contact read (no static IP registered, no permission) is
-    /// <see cref="OctorateSensitiveDataNotAllowedException"/> and never an empty contact; another failure keeps its own type.
-    /// </summary>
     [Theory]
     [InlineData(HttpStatusCode.Forbidden)]
     [InlineData(HttpStatusCode.Unauthorized)]
@@ -39,7 +35,6 @@ public class OctorateGuestContactInfoClientTests
             Assert.Equal(409, refused.ResponseStatusCode);
             Assert.Equal((int)status, refused.OctorateStatusCode);
 
-            // Nothing of the body of the refusal reaches the message of the error.
             Assert.DoesNotContain("example", refused.Message, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -65,7 +60,6 @@ public class OctorateGuestContactInfoClientTests
         Assert.Equal("+39 333 1234567", info.Phone);
         Assert.False(info.IsEmpty);
 
-        // One POST to the guest of the accommodation, for the org of the scope, with an empty JSON object as the body.
         var call = Assert.Single(h.Handler.Calls);
         Assert.Equal(HttpMethod.Post, call.Method);
         Assert.Equal("https://api.octorate.test/connect/rest/v1/guests/585492/guest-77/contactInfo", call.Address.AbsoluteUri);
@@ -77,10 +71,6 @@ public class OctorateGuestContactInfoClientTests
         Assert.DoesNotContain("1234567", info.ToString(), StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// An answer that has the members of a contact and leaves them empty (a null, an empty text, a blank one) is an empty contact that CasaZen
-    /// understood: the guest has none to give.
-    /// </summary>
     [Theory]
     [InlineData("""{"email":null,"phone":""}""")]
     [InlineData("""{"phone":null}""")]
@@ -168,7 +158,6 @@ public class OctorateGuestContactInfoClientTests
         public OctorateApiClient Client { get; }
     }
 
-    /// <summary>Answers every call with one status and one body, and keeps what was called.</summary>
     private sealed class StubHandler : HttpMessageHandler
     {
         public HttpStatusCode Status { get; set; }

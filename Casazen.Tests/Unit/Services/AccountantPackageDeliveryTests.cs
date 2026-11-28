@@ -43,10 +43,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The data of the tests of the monthly package of the accountant (E15/F01/US02/T02): the org of an agency with its settings, the package service as a stand-in that writes a few bytes (what it holds is proved
-/// elsewhere), a private bucket in memory, a recorder for the queue of the e-mails and a clock that says 06:30 in Rome on 3 November 2026, so the previous month is October. EF InMemory.
-/// </summary>
 internal sealed class AccountantPackageDeliveryWorld : IDisposable
 {
     public const string Secret = "a-long-random-secret-of-the-signed-links";
@@ -74,7 +70,6 @@ internal sealed class AccountantPackageDeliveryWorld : IDisposable
 
     public AppDbContext Db { get; } = OrgTeamTestData.NewDb();
 
-    /// <summary>06:30 in Rome, 3 November 2026.</summary>
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 11, 3, 5, 30, 0, TimeSpan.Zero));
 
     public Mock<IAccountantPackageService> Packages { get; } = new();
@@ -87,7 +82,6 @@ internal sealed class AccountantPackageDeliveryWorld : IDisposable
 
     public AccountantPackageLinks Links { get; }
 
-    /// <summary>What the package service was asked for, in order.</summary>
     public List<(HostScope Scope, AccountantPackageAccess Access, AccountantPackagePeriod Period)> Built { get; } = [];
 
     public static IConfiguration Configuration(string? secret = Secret, string? apiBase = ApiBase)
@@ -155,8 +149,6 @@ public class AccountantPackageDeliveryTests : IDisposable
 
     public void Dispose() => _world.Dispose();
 
-    // ---------------------------------------------------------------- the data rule (the proof)
-
     /// <summary>
     /// PROOF TEST: data rule. However many times the job runs on the days from the due day on, a retry, a second instance or a «send a test» reach a month, the accountant of an organization gets one e-mail for
     /// that month, only at the address saved in its own settings; an organization that has not turned the send on, has no address, is not active or whose day has not come gets none, and the next month is another send.
@@ -177,12 +169,10 @@ public class AccountantPackageDeliveryTests : IDisposable
         foreach (var org in due)
             Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(org, Today));
 
-        // The ones that are not due say why, and send nothing.
         Assert.Equal(AccountantPackageMonthlyOutcome.NotDue, await _world.Delivery().SendMonthlyAsync(later, Today));
         Assert.Equal(AccountantPackageMonthlyOutcome.NotConfigured, await _world.Delivery().SendMonthlyAsync(off, Today));
         Assert.Equal(AccountantPackageMonthlyOutcome.NotConfigured, await _world.Delivery().SendMonthlyAsync(withoutAddress, Today));
 
-        // One e-mail for each, to its own address and nobody else's, and the package is kept under the key of the org and the month.
         var sent = _world.Emails.Snapshot();
         Assert.Equal(new[] { "primo@studio.example.com", "secondo@studio.example.com" }, sent.Select(e => e.To!).Order().ToArray());
         Assert.All(sent, e => Assert.Equal(EmailTemplates.Names.AccountantPackage, e.Template));
@@ -192,7 +182,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         var row = await _world.RowAsync(first);
         Assert.Equal(("2026-10", AccountantPackageSendResult.Sent, (string?)null, "2026-10"), (row.LastSendPeriod, row.LastSendResult, row.LastSendError, row.StoredPackagePeriod));
 
-        // Again: the same day and the last day of the month do not make, store or queue anything.
         foreach (var day in new[] { Today, new DateOnly(2026, 11, 30) })
         {
             var stillDue = await _world.Delivery().DueOrganizationsAsync(day);
@@ -205,13 +194,11 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Equal(2, _world.Emails.Snapshot().Count);
         Assert.Equal(2, _world.Built.Count);
 
-        // The organization whose day is the 5th is due then, and only then, once.
         Assert.Equal(new[] { later }, await _world.Delivery().DueOrganizationsAsync(new DateOnly(2026, 11, 5)));
         Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(later, new DateOnly(2026, 11, 5)));
         Assert.Equal(AccountantPackageMonthlyOutcome.AlreadySent, await _world.Delivery().SendMonthlyAsync(later, new DateOnly(2026, 11, 20)));
         Assert.Equal(3, _world.Emails.Snapshot().Count);
 
-        // December: the previous month is November, another package and another e-mail for each.
         var december = new DateOnly(2026, 12, 3);
         Assert.Equal(new[] { first, second }.Order(), (await _world.Delivery().DueOrganizationsAsync(december)).Order());
         Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(first, december));
@@ -219,10 +206,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Equal("2026-11", (await _world.RowAsync(first)).LastSendPeriod);
     }
 
-    /// <summary>
-    /// PROOF TEST: permission rule. The monthly package holds the owner accounting only when the organization is on the agency plan (and not downgraded): an organization on another plan sends none of it, whatever
-    /// folders it chose, and the index says they are left out; the organization of an agency sends all of it.
-    /// </summary>
     [Fact]
     public async Task AccountantPackageJob_AnOrganizationOffTheAgencyPlan_SendsNoOwnerAccounting_Test()
     {
@@ -253,7 +236,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Contains("Casa Rossi Srl", content.HtmlBody);
         Assert.DoesNotContain(AccountantPackageDeliveryWorld.Accountant, content.HtmlBody);
 
-        // The link in it is the one the check opens, for this org and this month, until the end of its 30 days (shown in Italian time).
         var (urlOrg, period, expiresAt, signature) = LinkOf(content);
         Assert.Equal((org, "2026-10"), (urlOrg, period));
         Assert.Equal("2026-12-03T05:30:00Z", expiresAt);
@@ -261,7 +243,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Contains("03/12/2026 06:30", content.HtmlBody);
         Assert.Contains("non è allegato", content.HtmlBody);
 
-        // The package was made for the whole org with the folders of the settings, and kept under the key of the org and the month.
         var built = Assert.Single(_world.Built);
         Assert.Equal((org, true, "2026-10"), (built.Scope.OrgId, built.Scope.IsOrgWide, built.Period.Key));
         Assert.Equal(AccountantPackageFolders.Vat | AccountantPackageFolders.Collections, built.Access.Folders);
@@ -269,7 +250,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         await using var stored = await _world.Storage.OpenReadAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-10"));
         Assert.Equal(AccountantPackageDeliveryWorld.ZipBytes, ReadAll(stored!));
 
-        // The link opens that package and nothing else.
         var file = await _world.Delivery().OpenAsync(urlOrg, period, expiresAt, signature);
         await using (file!.Content)
             Assert.Equal(AccountantPackageDeliveryWorld.ZipBytes, ReadAll(file.Content));
@@ -291,8 +271,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.DoesNotContain("<b>Rossi</b>", content.HtmlBody);
     }
 
-    // ---------------------------------------------------------------- failures are recorded, never swallowed
-
     [Fact]
     public async Task SendMonthly_APackageOverTheCaps_IsRecordedAsFailed_NothingIsSent_AndTheNextRunTriesAgain()
     {
@@ -309,7 +287,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Empty(_world.Emails.Snapshot());
         Assert.Equal(new[] { org }, await _world.Delivery().DueOrganizationsAsync(Today));
 
-        // The next run, with the caps raised, sends it, and the failure is gone from the settings.
         _world.Packages
             .Setup(p => p.BuildAsync(It.IsAny<HostScope>(), It.IsAny<AccountantPackageAccess>(), It.IsAny<AccountantPackagePeriod>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AccountantPackageResult(1, 1, 1, []));
@@ -319,10 +296,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Single(_world.Emails.Snapshot());
     }
 
-    /// <summary>
-    /// The folders are read before the package is made and again, with the row, under the lock: an organization that changes them while the package is being made (here it takes the owner invoices out) never has the package it
-    /// did not choose stored or mailed. Nothing is recorded, and the next run makes it with the folders of the settings and sends it once.
-    /// </summary>
     [Fact]
     public async Task SendMonthly_WhenTheFoldersChangeWhileThePackageIsBeingMade_NothingIsStoredOrMailed_AndTheNextRunSendsTheNewFolders()
     {
@@ -336,7 +309,6 @@ public class AccountantPackageDeliveryTests : IDisposable
                 destination.Write(AccountantPackageDeliveryWorld.ZipBytes);
                 if (!changed)
                 {
-                    // The organization saves other folders while the package is being made.
                     var row = _world.Db.AccountantPackageSettings.Single(s => s.OrgId == org);
                     row.Contents = AccountantPackageFolders.Vat | AccountantPackageFolders.Collections;
                     _world.Db.SaveChanges();
@@ -408,7 +380,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Single(_world.Emails.Snapshot());
     }
 
-    /// <summary>A test of a person that fails leaves the send of the month as it is: the settings keep saying the accountant has it, and the monthly run still sends nothing more.</summary>
     [Fact]
     public async Task ATestThatFails_NeverReplacesTheSendOfTheSameMonth()
     {
@@ -468,8 +439,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Empty(_world.Emails.Snapshot());
     }
 
-    // ---------------------------------------------------------------- «send a test»
-
     [Fact]
     public async Task SendNow_SendsThePreviousMonthWhateverTheDayAndTheSwitch_ForTheFoldersAndTheAccessItIsGiven_AndItIsTheSendOfThatMonth()
     {
@@ -481,12 +450,10 @@ public class AccountantPackageDeliveryTests : IDisposable
         var (to, _, _) = Assert.Single(_world.Emails.Snapshot());
         Assert.Equal(AccountantPackageDeliveryWorld.Accountant, to);
 
-        // An organization off the agency plan holds no owner accounting: the package has none, and only the folders of the settings.
         var built = Assert.Single(_world.Built);
         Assert.False(built.Access.OwnerAccounting);
         Assert.Equal(AccountantPackageFolders.OwnerInvoices | AccountantPackageFolders.Vat, built.Access.Folders);
 
-        // It is the send of the month: the monthly run, once the send is on and the day has come, does not send it again.
         var row = await _world.Db.AccountantPackageSettings.SingleAsync();
         row.MonthlySendEnabled = true;
         row.SendDayOfMonth = 1;
@@ -495,10 +462,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Single(_world.Emails.Snapshot());
     }
 
-    /// <summary>
-    /// A test counts as the send of the month, so on an agency's organization it needs the permission to read the owner accounting: a caller without it is refused (422) and nothing is made, stored, queued or recorded, so the
-    /// monthly run still sends the complete package once; a caller that holds the permission sends it. An organization off the agency plan has no owner accounting to read and is never refused.
-    /// </summary>
     [Fact]
     public async Task SendNow_OnAnAgency_WithoutTheOwnerAccounting_IsRefused_AndTheMonthIsStillSentInFullByTheMonthlyRun()
     {
@@ -514,12 +477,10 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Null(untouched.StoredPackagePeriod);
         Assert.False(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-10")));
 
-        // The monthly run sends the complete package, once.
         Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(org, Today));
         Assert.True(Assert.Single(_world.Built).Access.OwnerAccounting);
         Assert.Single(_world.Emails.Snapshot());
 
-        // The caller that holds the permission sends it; the other plans have nothing to refuse.
         var other = await _world.SeedAsync("altro@studio.example.com", enabled: false);
         Assert.Equal("2026-10", (await _world.Delivery().SendNowAsync(other, AccountantPackageAccess.Full)).Period);
         var pro = await _world.SeedAsync("pro@studio.example.com", enabled: false, plan: PlanTier.Pro);
@@ -534,7 +495,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         var recipient = await Assert.ThrowsAsync<DomainRuleException>(() => _world.Delivery().SendNowAsync(withoutAddress, AccountantPackageAccess.Full));
         Assert.Equal(AccountantPackageErrors.RecipientMissing, recipient.Code);
 
-        // The package over the caps is the original error, with its numbers; a queue that refuses is «not sent»; neither is written in the settings.
         var org = await _world.SeedAsync();
         _world.Packages
             .Setup(p => p.BuildAsync(It.IsAny<HostScope>(), It.IsAny<AccountantPackageAccess>(), It.IsAny<AccountantPackagePeriod>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
@@ -554,8 +514,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Empty(_world.Emails.Snapshot());
     }
 
-    // ---------------------------------------------------------------- the package waits for its link and no longer
-
     [Fact]
     public async Task ANewerPackage_ReplacesTheOlderOne_SoOnlyOnePackageOfAnOrgIsInTheStorage()
     {
@@ -573,10 +531,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Equal("2026-10", (await _world.RowAsync(org)).StoredPackagePeriod);
     }
 
-    /// <summary>
-    /// An older package that cannot be deleted is a failure of the send, recorded with its code and never swallowed: nothing is queued, the row keeps naming the older package (so the nightly run can still delete it), and the
-    /// next run, with the storage back, deletes it, stores the new one and sends once.
-    /// </summary>
     [Fact]
     public async Task ANewerPackage_WhoseOlderOneCannotBeDeleted_IsAFailureRecorded_AndTheRowKeepsNamingTheOlderOne()
     {
@@ -598,7 +552,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Empty(_world.Emails.Snapshot());
         storage.Verify(s => s.PutAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The next run, with the storage back: the older package goes, the new one is stored and named, and the month is sent once.
         Assert.Equal(AccountantPackageMonthlyOutcome.Sent, await _world.Delivery().SendMonthlyAsync(org, Today));
         Assert.False(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-09")));
         Assert.True(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(org, "2026-10")));
@@ -622,7 +575,6 @@ public class AccountantPackageDeliveryTests : IDisposable
 
         await _world.Db.SaveChangesAsync();
 
-        // 3 November: the first was stored 31 days ago (its link expired on 2 November), the second 14 days ago.
         Assert.Equal(1, await _world.Delivery().DeleteExpiredPackagesAsync());
 
         Assert.False(await _world.Storage.ExistsAsync(StorageBucket.Private, AccountantPackageDeliveryWorld.KeyOf(old, "2026-09")));
@@ -633,7 +585,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Equal("2026-10", (await _world.RowAsync(young)).StoredPackagePeriod);
         Assert.Null((await _world.RowAsync(none)).StoredPackagePeriod);
 
-        // Nothing is left to do the next night.
         Assert.Equal(0, await _world.Delivery().DeleteExpiredPackagesAsync());
     }
 
@@ -666,12 +617,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Null((await _world.RowAsync(fine)).StoredPackagePeriod);
     }
 
-    // ---------------------------------------------------------------- the link (the privacy proof)
-
-    /// <summary>
-    /// PROOF TEST: privacy rule. The link opens the package of the org and the month it was made for, and nothing else: a link that is changed in any part, made for another org (which has a package of its own) or another
-    /// month, expired, made with another secret or another kind of signature, missing a part, or whose package is gone, is the same 404 with the same body: nothing says which part was wrong, and no package is read.
-    /// </summary>
     [Fact]
     public async Task AccountantPackageLink_ExpiredOrForeignTokenSame404_Test()
     {
@@ -683,7 +628,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         _world.Storage.Add(AccountantPackageDeliveryWorld.KeyOf(foreign, "2026-10"), Encoding.ASCII.GetBytes("the package of another org"));
         var (_, _, expiresAt, signature) = LinkOf(_world.Links.Create(org, "2026-10").Url);
 
-        // A link that is right for an org whose package is gone (never stored, or deleted by the nightly run).
         var (_, _, goneExpires, goneSignature) = LinkOf(_world.Links.Create(gone, "2026-10").Url);
         var otherSecret = new AccountantPackageLinks(AccountantPackageDeliveryWorld.Configuration(secret: "another-secret-of-the-signed-links"), _world.Clock);
         var (_, _, otherExpires, otherSignature) = LinkOf(otherSecret.Create(org, "2026-10").Url);
@@ -721,11 +665,9 @@ public class AccountantPackageDeliveryTests : IDisposable
 
         Assert.Single(answers.Distinct());
 
-        // Expired: the same link, 31 days later.
         _world.Clock.Advance(TimeSpan.FromDays(31));
         Assert.Equal(answers[0], Answer(await controller.Download(org.ToString("D"), "2026-10", expiresAt, signature, CancellationToken.None)));
 
-        // The link that is right opens its package, on the day it was made, and nothing else.
         _world.Clock.Advance(TimeSpan.FromDays(-31));
         var opened = await controller.Download(org.ToString("D"), "2026-10", expiresAt, signature, CancellationToken.None);
         var stream = Assert.IsType<FileStreamResult>(opened);
@@ -750,7 +692,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.Matches("^[0-9a-f]{64}$", signature);
         Assert.Equal(SignatureWithPurpose(org, "2026-10", expiresAt), signature);
 
-        // Valid to the last second, then not.
         _world.Clock.SetUtcNow(new DateTimeOffset(link.ExpiresAt, TimeSpan.Zero));
         Assert.True(_world.Links.Verify(org, "2026-10", expiresAt, signature));
         _world.Clock.Advance(TimeSpan.FromSeconds(1));
@@ -789,8 +730,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.DoesNotContain(expiresAt, log.AllOutput, StringComparison.Ordinal);
     }
 
-    // ---------------------------------------------------------------- nothing personal in a log
-
     [Fact]
     public async Task ASend_WritesNoAddressAndNoLinkToTheLog()
     {
@@ -809,8 +748,6 @@ public class AccountantPackageDeliveryTests : IDisposable
         Assert.DoesNotContain(signature, log.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain(AccountantPackageDeliveryWorld.Secret, log.AllOutput, StringComparison.Ordinal);
     }
-
-    // ---------------------------------------------------------------- helpers
 
     private static PublicAccountantPackageController ControllerOf(IAccountantPackageDeliveryService delivery) =>
         new(delivery)
@@ -851,7 +788,6 @@ public class AccountantPackageDeliveryTests : IDisposable
     private static string SignatureWithPurpose(Guid orgId, string period, string expiresAt) =>
         Sign($"{AccountantPackageLinkRules.SignaturePurpose}.{orgId:D}.{period}.{expiresAt}");
 
-    /// <summary>What a signature of the same org, month and expiry would be if it did not name the kind of link: it must never open the package.</summary>
     private static string SignatureWithoutPurpose(Guid orgId, string period, string expiresAt) => Sign($"{orgId:D}.{period}.{expiresAt}");
 
     private static string Sign(string payload) =>
@@ -1046,10 +982,6 @@ public class AccountantPackageMonthlyJobTests
     }
 }
 
-/// <summary>
-/// E15/F01/US02/T02: the e-mail to the accountant is Italian and English, every dynamic value is HTML-encoded, it carries the link and its last day and says there is no attachment, and it holds no figure and no
-/// name of a guest or of an owner (it has no such value to hold).
-/// </summary>
 public class AccountantPackageEmailTests
 {
     private const string Url = "https://api.casazen.test/api/public/accountant-package/7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11/2026-10?expiresAt=2026-12-03T05%3A30%3A00Z&signature=abc";
@@ -1095,10 +1027,6 @@ public class AccountantPackageEmailTests
     }
 }
 
-/// <summary>
-/// E15/F01/US02/T02: what the registration of the application says about the monthly package: the delivery service and the job, once and scoped, the signed link once and as a singleton (it holds no state of a
-/// request), the two limits of the endpoints (the public link per client IP, the test per person), and the key of the storage.
-/// </summary>
 public class AccountantPackageDeliveryRegistrationTests
 {
     [Fact]

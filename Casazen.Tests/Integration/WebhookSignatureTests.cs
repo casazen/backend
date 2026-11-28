@@ -23,8 +23,6 @@ public class WebhookSignatureTests : IClassFixture<CasazenWebApplicationFactory>
     [Fact]
     public async Task ESignWebhook_ProviderFlagOff_Returns404AndQueuesNothing()
     {
-        // LT-02: with Features:ESignProvider off (default) the endpoint does not exist, even with a valid signature.
-        // The HMAC checks with the flag on are in LeaseSigningProviderIntegrationTests.
         _factory.BackgroundJobClientMock.Invocations.Clear();
         var payload = """{"sessionId":"any","kind":"all_signed"}""";
         using var client = _factory.CreateClient();

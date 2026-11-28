@@ -7,11 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// What the HTTP tests of the guided lease draft (LR-12) share: the bodies of the requests, the way an answer is read and checked,
-/// and the walk through the five data steps with valid values. The values are the ones of <c>LeaseDraftTestData</c> (a valid fiscal
-/// code for each party), so a lease made here passes every rule of the flow.
-/// </summary>
 internal static class LeaseDraftHttp
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -22,7 +17,6 @@ internal static class LeaseDraftHttp
 
     public static StringContent Body(string json) => new(json, Encoding.UTF8, "application/json");
 
-    /// <summary>The body of one save: the version it was made on, the step and the values of the step (a JSON object).</summary>
     public static StringContent SaveBody(int version, int step, string values) =>
         Body($$"""{"version":{{version}},"step":{{step}},"values":{{values}}}""");
 
@@ -31,7 +25,6 @@ internal static class LeaseDraftHttp
     public static async Task<JsonElement> JsonAsync(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>(JsonOptions);
 
-    /// <summary>The answer must have this status; returns its body (default for an empty one), cloned so it outlives the response.</summary>
     public static async Task<JsonElement> ExpectAsync(HttpResponseMessage response, HttpStatusCode status)
     {
         var text = await response.Content.ReadAsStringAsync();
@@ -39,7 +32,6 @@ internal static class LeaseDraftHttp
         return string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
     }
 
-    /// <summary>The answer must be a problem with this status and this stable code, and a localized text.</summary>
     public static async Task<JsonElement> ExpectProblemAsync(HttpResponseMessage response, HttpStatusCode status, string code)
     {
         var problem = await ExpectAsync(response, status);
@@ -61,10 +53,6 @@ internal static class LeaseDraftHttp
 
     private static readonly ConcurrentDictionary<Guid, int> StartSlots = new();
 
-    /// <summary>
-    /// A start date that no lease made here before on the same property covers (two leases of one property cannot cover the same days,
-    /// LR-OVERLAP): 1 January 2031, then five years later at every call (the first period of a libero lasts four years).
-    /// </summary>
     public static string FreeStartFor(Guid propertyId) =>
         $"{2031 + 5 * (StartSlots.AddOrUpdate(propertyId, 0, (_, slot) => slot + 1))}-01-01";
 
@@ -88,13 +76,11 @@ internal static class LeaseDraftHttp
         return (id, version);
     }
 
-    /// <summary>The codes of what is missing in a step of a <c>flow</c>.</summary>
     public static IReadOnlyList<string> NeedCodes(JsonElement flow, int step) =>
         flow.GetProperty("steps")[step - 1].GetProperty("needs").EnumerateArray().Select(n => n.GetProperty("code").GetString()!).ToList();
 
     public static string StateOf(JsonElement flow, int step) => flow.GetProperty("steps")[step - 1].GetProperty("state").GetString()!;
 
-    /// <summary>Starts the requests together and waits for all of them (few at a time: each holds a connection while it waits for the row lock).</summary>
     public static async Task<IReadOnlyList<HttpResponseMessage>> InParallelAsync(IEnumerable<Func<Task<HttpResponseMessage>>> requests)
     {
         var start = new TaskCompletionSource();

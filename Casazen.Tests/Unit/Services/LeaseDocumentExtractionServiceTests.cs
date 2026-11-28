@@ -26,8 +26,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public sealed class LeaseDocumentExtractionServiceTests
 {
-    // ---- the contract of an imported draft ----------------------------------------------------------------------------
-
     [Fact]
     public async Task TheContractOfAnImportedDraft_FillsWhatIsEmpty_AndTheResultHoldsNoPerson()
     {
@@ -50,19 +48,17 @@ public sealed class LeaseDocumentExtractionServiceTests
         Assert.Equal("2026-11-01", read.Values.StartDate);
         Assert.Equal(2, read.Version);
 
-        // Both Italian birthplaces are confirmed by their fiscal codes: the wizard has no party data left to ask for.
         Assert.Empty(read.Flow.Steps.Single(step => step.Step == 2).Needs);
 
         var stored = await StoredAsync(harness, document.Id);
         Assert.Equal(LeaseDocumentExtractionStatus.Completed, stored.ExtractionStatus);
         Assert.Null(stored.ExtractionError);
 
-        // DATA RULE PROOF (ADR-009-R10, the privacy rule of NL-DOCS): the values read are in the draft, which is encrypted at rest, and not here.
         foreach (var personal in new[] { "Mario", "Rossi", "Giulia", "Verdi", "RSSMRA80A01H501U", "VRDGLI85B42F205E", "Via dei Mille", "Via Argiro", "Roma (RM)" })
             Assert.DoesNotContain(personal, stored.ExtractionResult);
         Assert.DoesNotContain("\"value\"", stored.ExtractionResult);
         Assert.Contains("fiscalCode", stored.ExtractionResult);
-        Assert.Contains("2026-10-15", stored.ExtractionResult); // the one date it keeps: the day of the signature
+        Assert.Contains("2026-10-15", stored.ExtractionResult);
     }
 
     [Fact]
@@ -77,11 +73,10 @@ public sealed class LeaseDocumentExtractionServiceTests
 
         await CreateSut(harness, Reads(LeaseContractTextParserTests.Libero)).ExtractAsync(document.Id);
 
-        // DATA RULE PROOF (ADR-009-R9): the contract says 800 and the first of November; the person typed 950 and the first of December.
         var read = await harness.Service.GetAsync(draft.Id);
         Assert.Equal(950m, read.Values.MonthlyRent);
         Assert.Equal("2026-12-01", read.Values.StartDate);
-        Assert.Equal(1600m, read.Values.SecurityDeposit); // what was empty is filled all the same
+        Assert.Equal(1600m, read.Values.SecurityDeposit);
         Assert.Equal(version + 1, read.Version);
         var stored = await StoredAsync(harness, document.Id);
         Assert.Equal(LeaseDocumentExtractionStatus.NeedsReview, stored.ExtractionStatus);
@@ -98,7 +93,6 @@ public sealed class LeaseDocumentExtractionServiceTests
 
         var refused = await Assert.ThrowsAsync<DomainRuleException>(() => CreateSut(harness, reader).ExtractAsync(document.Id));
 
-        // DATA RULE PROOF (tenancy, ADR-009-R2): the job runs without an org filter, so the document and the lease must agree on the org.
         Assert.Equal("tenant_isolation_violation", refused.Code);
         reader.Verify(r => r.ReadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()), Times.Never);
         var read = await harness.Service.GetAsync(draft.Id);
@@ -118,7 +112,6 @@ public sealed class LeaseDocumentExtractionServiceTests
         reader.Setup(r => r.ReadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
             .Returns(async (byte[] _, CancellationToken token) =>
             {
-                // The person removes the file while the pages are being read (the wrong contract, then another upload).
                 var row = await harness.Db.LeaseDocuments.SingleAsync(d => d.Id == document.Id, token);
                 harness.Db.LeaseDocuments.Remove(row);
                 await harness.Db.SaveChangesAsync(token);
@@ -127,7 +120,6 @@ public sealed class LeaseDocumentExtractionServiceTests
 
         var gone = await Assert.ThrowsAsync<NotFoundException>(() => CreateSut(harness, reader).ExtractAsync(document.Id));
 
-        // DATA RULE PROOF: the reading of a file that is gone is not written. What was empty stays empty, so the next file can fill it.
         Assert.Equal("document_not_found", gone.Code);
         var untouched = await harness.Service.GetAsync(draft.Id);
         Assert.Equal(draft.Version, untouched.Version);
@@ -159,12 +151,6 @@ public sealed class LeaseDocumentExtractionServiceTests
         Assert.Equal(draft.Version, (await harness.Service.GetAsync(draft.Id)).Version);
     }
 
-    // ---- any other lease: the first pipeline ---------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST for the first pipeline (ADR-009-R4, R6): the fields certain enough go to the lease, and the result kept with the
-    /// document names the fields without the names of the people, which the privacy rule of NL-DOCS no longer allows there.
-    /// </summary>
     [Fact]
     public async Task ExtractAsync_OfALeaseThatExists_PopulatesItAndKeepsNoNameInTheResult()
     {
@@ -187,7 +173,6 @@ public sealed class LeaseDocumentExtractionServiceTests
         Assert.DoesNotContain("1200", stored.ExtractionResult);
     }
 
-    /// <summary>PROOF TEST for the first pipeline (ADR-009-R9): a lease that already has its rent keeps it, and the document is flagged.</summary>
     [Fact]
     public async Task ExtractAsync_ConflictsWithUserData_FlagsForReviewNotOverwrite()
     {
@@ -204,8 +189,6 @@ public sealed class LeaseDocumentExtractionServiceTests
         Assert.Contains("conflicts", stored.ExtractionResult);
         Assert.DoesNotContain("Paolo", stored.ExtractionResult);
     }
-
-    // ---- helpers ---------------------------------------------------------------------------------------------------------
 
     private static LeaseDocumentExtractionService CreateSut(LeaseDraftHarness harness, Mock<IContractTextReader> reader) =>
         new(harness.Db, harness.Storage.Object, reader.Object, harness.Service, NullLogger<LeaseDocumentExtractionService>.Instance);

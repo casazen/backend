@@ -7,7 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Features;
 
-/// <summary>FD-20 / D10: the OTA partner adapters stay out of the container while <c>Features:OtaPartnerApi</c> is off.</summary>
 public class OtaIntegrationsRegistrationTests
 {
     private static readonly Type[] AdapterTypes =
@@ -27,7 +26,6 @@ public class OtaIntegrationsRegistrationTests
         var services = Register(flag: null);
 
         Assert.All(AdapterTypes, type => Assert.DoesNotContain(services, d => d.ServiceType == type));
-        // OtaManager still resolves: the factory has no adapter to hand out.
         Assert.Contains(services, d => d.ServiceType == typeof(IChannelFactory));
     }
 

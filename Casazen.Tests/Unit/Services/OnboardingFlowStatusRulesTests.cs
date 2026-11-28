@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The flow status (NF-106, E10/F01/US01/T02): the pure rules that order the states of a flow on a property, and the proof that the counts
-/// and the lists of the service stay within what the caller reaches.
-/// </summary>
 public class OnboardingFlowStatusRulesTests
 {
     private static readonly FlowPropertyFacts ShortRentProperty = new(Guid.NewGuid(), "Trullo", "Ostuni", RentalMode.Short, true);
@@ -28,13 +24,6 @@ public class OnboardingFlowStatusRulesTests
         DeactivatedAt = deactivatedAt,
     };
 
-    // ─── The proof: what the caller reaches ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Permission rule: the counts and the lists of the flow status include only the properties the caller's <see cref="Casazen.Core.Authorization.HostScope"/>
-    /// reaches and never another org's. A collaborator «Solo alcuni» is counted and listed for the property it was given and for no other;
-    /// the whole org for the two of its properties; and no provider is ever asked about a property outside the scope.
-    /// </summary>
     [Fact]
     public async Task FlowStatus_HostScope_NarrowsToReachableProperties_Test()
     {
@@ -47,7 +36,6 @@ public class OnboardingFlowStatusRulesTests
             Flow = OnboardingFlow.Bookings,
             ActivatedByUserId = world.OwnerUserId,
         });
-        // An activation of the other org: it must never be counted for this one.
         db.PropertyFlowActivations.Add(new PropertyFlowActivation
         {
             OrgId = world.OtherOrgId,
@@ -61,7 +49,6 @@ public class OnboardingFlowStatusRulesTests
         var service = new OnboardingFlowStatusService(db, providers);
         var ct = CancellationToken.None;
 
-        // The collaborator «Solo alcuni» reaches one property: one in each count of each flow.
         var restricted = await service.GetSummariesAsync(world.Restricted, ct);
         Assert.Equal(Enum.GetValues<OnboardingFlow>(), restricted.Select(summary => summary.Flow));
         Assert.All(restricted, summary => Assert.Equal(1, summary.Total));
@@ -74,7 +61,6 @@ public class OnboardingFlowStatusRulesTests
         Assert.Equal(world.Granted.Id, Assert.Single(restrictedPage.Items).PropertyId);
         Assert.Equal(1, restrictedPage.TotalCount);
 
-        // The whole org: its two properties, never the one of the other org, by name.
         var orgWide = await service.GetSummariesAsync(world.OrgWide, ct);
         Assert.All(orgWide, summary => Assert.Equal(2, summary.Total));
         var orgWideBookings = orgWide.Single(summary => summary.Flow == OnboardingFlow.Bookings);
@@ -85,7 +71,6 @@ public class OnboardingFlowStatusRulesTests
         Assert.Equal(2, orgWidePage.TotalCount);
         Assert.DoesNotContain(orgWidePage.Items, item => item.PropertyId == world.OtherOrgProperty.Id);
 
-        // A state and a search narrow the list, never widen it: the property of the other org is not found by its own name.
         var toComplete = await service.GetPropertiesAsync(world.OrgWide, OnboardingFlow.Bookings, OnboardingFlowStates.ToComplete, null, 1, 50, ct);
         Assert.Equal(world.Hidden.Id, Assert.Single(toComplete.Items).PropertyId);
         var foreign = await service.GetPropertiesAsync(world.OrgWide, OnboardingFlow.Bookings, null, "Villa Altrove", 1, 50, ct);
@@ -94,11 +79,8 @@ public class OnboardingFlowStatusRulesTests
         var hiddenFromTheCollaborator = await service.GetPropertiesAsync(world.Restricted, OnboardingFlow.Bookings, null, "Casa Bianca", 1, 50, ct);
         Assert.Empty(hiddenFromTheCollaborator.Items);
 
-        // No provider was asked about a property outside the scope that asked.
         Assert.DoesNotContain(providers.SelectMany(provider => provider.Asked), id => id == world.OtherOrgProperty.Id);
     }
-
-    // ─── The rules ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Evaluate_LongRentOrInactiveProperty_IsNotAvailableBeforeAnyPrerequisite()
@@ -208,7 +190,6 @@ public class OnboardingFlowStatusRulesTests
             mode => Assert.Equal(predicate(new Property { RentalMode = mode }), OnboardingFlowStatusRules.IsShortRent(mode)));
     }
 
-    /// <summary>A provider that finds every prerequisite met and remembers the properties it was asked about.</summary>
     private sealed class RecordingProvider(OnboardingFlow flow) : IFlowReadinessProvider
     {
         public List<Guid> Asked { get; } = [];

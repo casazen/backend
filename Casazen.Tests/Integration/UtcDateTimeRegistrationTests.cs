@@ -7,7 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>FD-06: the API pipeline actually uses the UTC JSON converter, model binder and clock.</summary>
 public class UtcDateTimeRegistrationTests(CasazenWebApplicationFactory factory)
     : IClassFixture<CasazenWebApplicationFactory>
 {

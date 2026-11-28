@@ -13,10 +13,10 @@ public class ShowcaseAlternativeRulesTests
 {
     [Theory]
     [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.System, ServiceRequestCancellationReasons.NoResponse, true)]
-    [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.System, ServiceRequestCancellationReasons.QuoteNotAnswered, false)] // the supplier did answer: the customer did not
+    [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.System, ServiceRequestCancellationReasons.QuoteNotAnswered, false)]
     [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.System, ServiceRequestCancellationReasons.ProposalNotAnswered, false)]
     [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.Customer, ServiceRequestCancellationReasons.CancelledByCustomer, false)]
-    [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.Supplier, null, false)] // it answered: it cannot do it
+    [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.Supplier, null, false)]
     [InlineData(ServiceRequestStatus.Annullato, ServiceRequestActorParty.System, null, false)]
     [InlineData(ServiceRequestStatus.Rifiutato, ServiceRequestActorParty.Supplier, null, false)]
     [InlineData(ServiceRequestStatus.Richiesto, null, null, false)]
@@ -32,8 +32,8 @@ public class ShowcaseAlternativeRulesTests
 
     [Theory]
     [InlineData(false, true, true)]
-    [InlineData(true, false, false)] // paused: it takes no booking
-    [InlineData(false, false, false)] // published but its bookings are not open (no account, payments off, online booking off)
+    [InlineData(true, false, false)]
+    [InlineData(false, false, false)]
     public void ASupplier_QualifiesOnlyWithAPublishedShowcaseThatIsNotPausedAndTakesBookings(bool paused, bool bookingsOpen, bool expected)
     {
         var page = new PublishedShowcasePage(new ShowcaseContentDocument(), paused, bookingsOpen, Verified: true, JobsDone: null, 180, bookingsOpen, null);

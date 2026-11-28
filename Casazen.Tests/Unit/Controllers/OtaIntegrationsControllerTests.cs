@@ -45,7 +45,6 @@ public class OtaIntegrationsControllerTests
             HttpContext = new DefaultHttpContext
             {
                 User = new ClaimsPrincipal(identity),
-                // ApiProblem localizes the detail through SharedResources.
                 RequestServices = new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider(),
             }
         };
@@ -67,8 +66,6 @@ public class OtaIntegrationsControllerTests
         IsActive = true,
         CreatedAt = DateTime.UtcNow
     };
-
-    // ─── GetAll ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetAll_AsOwner_ReturnsOk()
@@ -109,8 +106,6 @@ public class OtaIntegrationsControllerTests
 
         Assert.IsType<NotFoundResult>(result.Result);
     }
-
-    // ─── Get ─────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Get_AsOwner_ReturnsOk()
@@ -155,8 +150,6 @@ public class OtaIntegrationsControllerTests
 
         Assert.IsType<NotFoundResult>(result.Result);
     }
-
-    // ─── Create ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Create_AsOwner_ReturnsCreated()
@@ -212,8 +205,6 @@ public class OtaIntegrationsControllerTests
         Assert.Equal("validation_error", Assert.IsType<ProblemDetails>(problem.Value).Extensions["code"]);
     }
 
-    // ─── Update ──────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Update_AsOwner_ReturnsNoContent()
     {
@@ -241,8 +232,6 @@ public class OtaIntegrationsControllerTests
 
         Assert.IsType<ForbidResult>(result);
     }
-
-    // ─── Delete ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Delete_AsOwner_ReturnsNoContent()

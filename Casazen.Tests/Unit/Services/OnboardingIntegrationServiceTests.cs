@@ -29,14 +29,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The integration settings of the activation (E10/F01/US02/T01, NF-108): the proofs of its privacy and permission rules, and the rules of the
-/// overview and of the reopen, on EF InMemory and the world of <see cref="HostScopeScenario"/> (an org with a property given to the
-/// collaborator «Solo alcuni», one not given, and another org).
-/// </summary>
 public class OnboardingIntegrationServiceTests : IAsyncLifetime
 {
-    // One provider for the whole class: EF keeps one model per provider, and a provider per test would fill the cache the other tests share.
     private static readonly IDataProtectionProvider Provider = TestDataProtection.Shared;
 
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -51,11 +45,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
 
-    /// <summary>
-    /// Proof (privacy, ADR-023-R2 and R13): the overview serializes no token and no ciphertext of the <c>OctorateConnection</c>. The connection
-    /// holds an access and a refresh token; neither the clear value, nor its tail, nor the Data Protection payload the column keeps shows in the
-    /// overview (as the service answers it and as the API serializes it), and no type of the answer has a member that could carry one.
-    /// </summary>
     [Fact]
     public async Task OnboardingIntegration_NeverExposesTokens_Test()
     {
@@ -79,7 +68,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         });
         await db.SaveChangesAsync();
 
-        // What the column keeps for each token: the payload of the Octorate purpose, so the proof covers the ciphertext too.
         var entity = db.Model.FindEntityType(typeof(OctorateConnection))!;
         var secrets = new List<string> { access, refresh, access[^16..], refresh[^16..] };
         foreach (var (property, token) in new[]
@@ -108,19 +96,12 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
             Assert.DoesNotContain(EncryptedColumns.ProtectedPayloadPrefix, answer, StringComparison.Ordinal);
         }
 
-        // Nothing in the types of the answer could carry one either.
         var carriers = MemberNamesOf(typeof(OnboardingIntegrationOverview), typeof(Casazen.Web.DTOs.Onboarding.OnboardingIntegrationDto), typeof(OnboardingPartReopen))
             .Where(name => new[] { "token", "cipher", "encrypted", "secret", "refresh" }.Any(word => name.Contains(word, StringComparison.OrdinalIgnoreCase)))
             .ToList();
         Assert.True(carriers.Count == 0, "A member of the integration settings could carry a token: " + string.Join(", ", carriers));
     }
 
-    /// <summary>
-    /// Proof (permission): the overview and the reopen are under the org policy <see cref="CasazenPolicies.OrgBillingAdmin"/> and nothing else
-    /// opens them: no <c>[AllowAnonymous]</c>, no other routed action on the controller, behind <c>Features:OctorateOnboarding</c>; and the real
-    /// registered policy refuses a collaborator of the org (a DB membership, no Staff claim) and a property manager, while the owner passes (the
-    /// positive control).
-    /// </summary>
     [Fact]
     public async Task OnboardingIntegration_RequiresOrgAdmin_Test()
     {
@@ -167,11 +148,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.True(asOwner.HasSucceeded, "The owner of the org does not pass the policy of the integration settings.");
     }
 
-    /// <summary>
-    /// Proof (data, permission): the overview speaks about the caller's org only, and over what the caller reaches (AM-03). The collaborator «Solo
-    /// alcuni» counts the senders, the channel states and the parts of the plan over its one property; the owner over the two houses of the org; the other org's
-    /// connection, sender and channel states are in neither, and in turn the other org sees only its own. A scope of another org is refused.
-    /// </summary>
     [Fact]
     public async Task GetOverview_CountsOnlyTheOrgOfTheCaller_AndThePropertiesTheScopeReaches()
     {
@@ -209,8 +185,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal([(ChannelPublishStatus.Draft, 1), (ChannelPublishStatus.Published, 1), (ChannelPublishStatus.ToFix, 1)], Counted(orgWide));
         Assert.Equal([(ChannelPublishStatus.Published, 2), (ChannelPublishStatus.ManagedOnChannel, 1)], Counted(other));
 
-        // The parts follow the reach too: the plan is read over the same scope, so the evaluators count the one house of the collaborator and the
-        // two of the owner (a plan read over the whole org for everybody would show 2 of 2 to the collaborator).
         Assert.Equal(12, orgWide.Parts.Count);
         Assert.Equal(12, restricted.Parts.Count);
         Assert.Equal((Done: 1, Total: 1), ProgressOf(restricted, OnboardingPartKey.PricesRules));
@@ -220,11 +194,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentException>(() => service.GetOverviewAsync(_world.OtherOrgId, _world.OrgWide, Ct));
     }
 
-    /// <summary>
-    /// The senders are counted from the stored choices of E03, over the short-rent, active properties the plan counts: a house with no stored
-    /// choice is <c>notSet</c>; a house outside Italy has no sender to choose, a long-rent one and an inactive one are not the plan's, so none of
-    /// them is in any count (even with a stored row).
-    /// </summary>
     [Fact]
     public async Task GetOverview_SenderCounts_CountTheStoredChoices_OfTheShortRentActiveItalianHouses()
     {
@@ -253,15 +222,10 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         var inherited = await Build(_db).Integration.GetOverviewAsync(_world.OrgId, _world.OrgWide, Ct);
         Assert.Equal(new OnboardingSenderCounts(ChannelManager: 1, CasaZen: 1, Manual: 1, NotSet: 0), inherited.Senders);
-        // Stored choices win, foreign/long/inactive properties remain excluded, and collaborator scope stays narrow.
         var restricted = await Build(_db).Integration.GetOverviewAsync(_world.OrgId, _world.Restricted, Ct);
         Assert.Equal(new OnboardingSenderCounts(ChannelManager: 1, CasaZen: 0, Manual: 0, NotSet: 0), restricted.Senders);
     }
 
-    /// <summary>
-    /// The channel states are counted over the same houses, and every publication status is listed in the order of the enum, with zero when none
-    /// is in it: the client never has to guess a missing status.
-    /// </summary>
     [Fact]
     public async Task GetOverview_Channels_ListEveryStatusInOrder_AndSkipTheHousesThePlanDoesNotCount()
     {
@@ -296,11 +260,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
             overview.Channels.Select(count => (count.Status, count.Count)));
     }
 
-    /// <summary>
-    /// AC-NF108-4: a connection that is disconnected or in error says <c>ReconnectRequired</c>, and the part «Octorate connection» of the plan
-    /// carries the reason <c>connection_lost</c> (also for houses that declared no inventory scenario: a lost connection stops every scenario);
-    /// a connected one needs nothing.
-    /// </summary>
     [Theory]
     [InlineData(OctorateConnectionStatus.Connected, false)]
     [InlineData(OctorateConnectionStatus.Disconnected, true)]
@@ -342,10 +301,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal((OctorateConnectionStatus.Disconnected, OctorateEnvironment.Test, true), (thisEnvironment.Connection.Status, thisEnvironment.Connection.Environment, thisEnvironment.Connection.ReconnectRequired));
     }
 
-    /// <summary>
-    /// <c>reopenable</c> is false only for a part nobody provides (there is no wizard to go back to); a part that is done, deferred, open or
-    /// blocked can be reopened (AC-NF108-1: any part).
-    /// </summary>
     [Fact]
     public async Task GetOverview_Parts_AreReopenable_ExceptThoseNobodyProvides()
     {
@@ -369,7 +324,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal(8, overview.Parts.Count(p => p.Reopenable));
     }
 
-    /// <summary>The API shape the settings page reads: the names of the members, the enums as text, every status listed.</summary>
     [Fact]
     public async Task GetOverview_Dto_HasTheShapeOfTheContract()
     {
@@ -399,11 +353,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal("sender", reopened.RootElement.GetProperty("focus").GetString());
     }
 
-    /// <summary>
-    /// Reopening a part that was put off clears the deferral (the stored intent is open again, with no reminder) and closes its "To do"
-    /// (AC-NF108-2), and says where to continue: the compliance wizard, on the choice of the sender. The same part of another org stays put off,
-    /// with its "To do" open.
-    /// </summary>
     [Fact]
     public async Task Reopen_ADeferredPart_ClearsTheDeferral_ClosesItsTodo_AndSaysWhereToContinue()
     {
@@ -427,11 +376,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Null((await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == otherDeferred.TodoId)).CompletedAt);
     }
 
-    /// <summary>
-    /// Every part the org can do answers the launch target of the catalog (add a channel is <c>channels</c>, add properties <c>mapping</c>,
-    /// reconnect <c>connect</c>), and the focus <c>sender</c> only for the compliance wizard. A part never put off is reopened without writing
-    /// anything.
-    /// </summary>
     [Fact]
     public async Task Reopen_AnswersTheLaunchTargetOfThePart_AndTheSenderFocusOnlyForCompliance()
     {
@@ -477,8 +421,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         var (service, plan) = Build(_db);
 
-        // Every part is put off first (the ones nothing else needs) or left half way (the others), so each one has its stored intent and an open
-        // "To do": the reopen then takes the one path that writes, and the rows it must not touch still do not change.
         OnboardingPartKey[] parts = [OnboardingPartKey.Compliance, OnboardingPartKey.Channels, OnboardingPartKey.Properties, OnboardingPartKey.OctorateConnection];
         foreach (var key in parts)
         {
@@ -494,7 +436,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         foreach (var key in parts)
             await service.ReopenPartAsync(_world.OrgId, _world.OwnerUserId, key, Ct);
 
-        // The one thing the reopen writes is done (the intents are open again with no reminder, every "To do" is closed); nothing else changed.
         var rows = await _db.OnboardingPartStates.AsNoTracking().ToListAsync(Ct);
         Assert.Equal(parts.Length, rows.Count);
         Assert.All(rows, row => Assert.Equal((OnboardingPartStatus.Open, (DateTime?)null, (Guid?)null), (row.Status, row.RemindAt, row.ActivityId)));
@@ -502,7 +443,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal(before, await SnapshotAsync());
     }
 
-    /// <summary>A part nobody provides has no wizard to go back to: 422 and nothing is written (no intent, no "To do").</summary>
     [Fact]
     public async Task Reopen_APartNobodyProvides_Is422_AndWritesNothing()
     {
@@ -520,7 +460,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentException>(() => service.ReopenPartAsync(_world.OrgId, " ", OnboardingPartKey.Compliance, Ct));
     }
 
-    /// <summary>The services with the real evaluators of the connection, the channels, the listings and the prices, and fixed ones for the rest.</summary>
     private (OnboardingIntegrationService Integration, OnboardingPlanService Plan) Build(AppDbContext db)
     {
         var environment = new Mock<IHostEnvironment>();
@@ -549,7 +488,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
     private async Task<string> StateOfAsync(OnboardingPlanService plan, OnboardingPartKey key) =>
         (await plan.GetPlanAsync(_world.OrgId, _world.OrgWide, Ct)).Parts.Single(p => p.Key == key).State;
 
-    /// <summary>Every row a reopen must not touch, as text, in a stable order.</summary>
     private async Task<string> SnapshotAsync() => JsonSerializer.Serialize(new object[]
     {
         await _db.PropertyComplianceSenders.AsNoTracking().OrderBy(s => s.PropertyId).ToListAsync(),
@@ -576,11 +514,9 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Status = status,
     };
 
-    /// <summary>The statuses that have channel states, with how many, in the order of the answer.</summary>
     private static (ChannelPublishStatus Status, int Count)[] Counted(OnboardingIntegrationOverview overview) =>
         [.. overview.Channels.Where(count => count.Count > 0).Select(count => (count.Status, count.Count))];
 
-    /// <summary>How much of a part is done over how much there is to do, as the overview shows it for the reach of its caller.</summary>
     private static (int Done, int Total) ProgressOf(OnboardingIntegrationOverview overview, OnboardingPartKey key)
     {
         var part = overview.Parts.Single(p => p.Plan.Key == key).Plan;
@@ -590,7 +526,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
     private static string[] Names(JsonElement element) =>
         [.. element.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal)];
 
-    /// <summary>The names of every member of the types, and of the types of their members, that belong to CasaZen (not the framework's).</summary>
     private static IEnumerable<string> MemberNamesOf(params Type[] roots)
     {
         var seen = new HashSet<Type>();
@@ -617,7 +552,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
     private static ClaimsPrincipal Principal(params string[] jwtRoles) =>
         OrgBillingAdminAuthorizationHandlerTests.Context(jwtRoles.Select(role => new Claim(ClaimTypes.Role, role))).User;
 
-    /// <summary>A mapping nobody confirmed anything in: the evaluators of these tests never ask it.</summary>
     private sealed class NoMappingReader : IPropertyMappingReader
     {
         public bool IsProvided => true;
@@ -632,7 +566,6 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         }
     }
 
-    /// <summary>An evaluator that always answers the same facts.</summary>
     private sealed class ConstantEvaluator(OnboardingPartKey part, PartFacts facts) : IOnboardingPartEvaluator
     {
         public OnboardingPartKey Part { get; } = part;

@@ -42,7 +42,6 @@ public class RliChecklistServiceTests
     [Fact]
     public async Task GetAsync_ExtraEuTenantAfterReminderEmails_QuesturaItemNotDone()
     {
-        // LT-07 (A7-08): the old notice ("extra-eu") and the new reminders are emails CasaZen sent, not the communication.
         var lease = BuildLease(extraEu: true);
         var sut = CreateSut(lease, events:
         [
@@ -74,7 +73,6 @@ public class RliChecklistServiceTests
     [Fact]
     public async Task GetAsync_ExtraEuWithoutDeclaredDelivery_DeadlineIsStartDatePlus48Hours()
     {
-        // Start 1/9 = delivery by default: the 48 hours end at the latest on 3/9. Today 2/9 in Rome (22:30 UTC of 1/9).
         var lease = BuildLease(extraEu: true);
         var sut = CreateSut(lease, clock: new FixedTimeProvider(new DateTimeOffset(2026, 9, 1, 22, 30, 0, TimeSpan.Zero)));
 
@@ -122,7 +120,6 @@ public class RliChecklistServiceTests
 
         var result = await sut.GetAsync(lease);
 
-        // Labels are localized by the API from the key (A7-26): the service returns no Italian text.
         Assert.All(result.Items, item => Assert.Contains(item.Key, RliChecklistKeys.All));
         Assert.True(result.Items.Single(i => i.Key == RliChecklistKeys.ContractSigned).Done);
         Assert.False(result.Items.Single(i => i.Key == RliChecklistKeys.RliRegistered).Done);
@@ -134,7 +131,6 @@ public class RliChecklistServiceTests
     public async Task GetAsync_ProviderSubmissionInProgress_RegistrationItemNotTicked(
         LeaseStatus leaseStatus, RegistrationStatus registrationStatus)
     {
-        // A7-01: "sent to the filing channel" was ticked as if the contract were registered.
         var lease = BuildLease(extraEu: false, leaseStatus);
         lease.Registration = new LeaseRegistration { LeaseContractId = lease.Id, Status = registrationStatus };
         var sut = CreateSut(lease, providerAvailable: true);
@@ -222,7 +218,6 @@ public class RliChecklistServiceTests
     [Fact]
     public async Task GetAsync_SignedBeforeStart_DeadlineFromStipulaAndDaysOnRomeCalendar()
     {
-        // LT-04 (A7-04): signed 1/8, start 1/10 → deadline 31/8; today 24/8 (00:30 in Rome) → 7 days.
         var lease = BuildLease(extraEu: false);
         lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
         lease.RecordStipula(new DateTime(2026, 8, 1, 10, 0, 0, DateTimeKind.Utc));
@@ -253,7 +248,6 @@ public class RliChecklistServiceTests
     [InlineData(LeaseStatus.AwaitingSignature)]
     public async Task GetAsync_NoStipulaAndStartAhead_DeadlineToBeDetermined(LeaseStatus status)
     {
-        // Signed without a recorded stipula (older lease), or not signed yet with the start date ahead: no deadline.
         var lease = BuildLease(extraEu: false, status);
         lease.StartDate = new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc);
         var sut = CreateSut(lease, clock: new FixedTimeProvider(new DateTimeOffset(2026, 9, 24, 8, 0, 0, TimeSpan.Zero)));

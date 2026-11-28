@@ -40,7 +40,6 @@ public class GuestDocumentPurgeNpgsqlTranslationTests
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.PurgeDocumentsAfterReceipt)).Returns(true);
 
-        // The traffic light reads every stay it is asked about green: the statements are the ones of the purge, not the state engine's (which has its own proofs).
         var engine = new Mock<IComplianceStatusService>();
         engine
             .Setup(s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -64,7 +63,6 @@ public class GuestDocumentPurgeNpgsqlTranslationTests
         Assert.Contains("\"DocumentScanUrl\" IS NOT NULL", stays, StringComparison.Ordinal);
         Assert.Matches("ORDER BY .*\"CheckInDate\"", stays);
 
-        // The receipts that cover the stays: the flat the proof was filed under and the flats it also covers, each of the org.
         var filed = Assert.Single(statements, sql => Root(sql) == "ManualComplianceProofs");
         var covered = Assert.Single(statements, sql => Root(sql) == "ManualComplianceProofProperties");
         Assert.All(new[] { filed, covered }, sql =>
@@ -74,7 +72,6 @@ public class GuestDocumentPurgeNpgsqlTranslationTests
             Assert.Matches("\"Day\" <= @", sql);
         });
 
-        // What the covered stay holds: its photos, the reference of the scan of its booker, the other stays of that guest, then the record of the guest.
         var photos = Assert.Single(statements, sql => Root(sql) == "DocumentImages");
         Assert.Matches("\"OrgId\" = @", photos);
         Assert.Matches("\"BookingId\" = @", photos);
@@ -92,17 +89,13 @@ public class GuestDocumentPurgeNpgsqlTranslationTests
         Assert.Matches("\"Status\" IN \\(", others);
         Assert.Contains("\"NoShowAt\" IS NULL", others, StringComparison.Ordinal);
 
-        // A job has no tenant: no statement of the run leans on the filter of the context, which is off there; each one names the org itself. The reading of the receipts
-        // is the one of the traffic light (it names the org too, and keeps the filter of the context, which a request relies on).
         Assert.DoesNotContain(
             statements.Where(sql => Root(sql) is not ("ManualComplianceProofs" or "ManualComplianceProofProperties")),
             sql => sql.Contains("@ef_filter", StringComparison.Ordinal));
     }
 
-    /// <summary>The table a statement reads first (the root of its query): its subqueries read others, and do not tell what the statement is.</summary>
     private static string Root(string sql) => Regex.Match(sql, "FROM \"(\\w+)\"").Groups[1].Value;
 
-    /// <summary>One row for each shape the run reads, so the queries that come after the first are compiled too.</summary>
     private static DataTable? Rows(string sql)
     {
         if (Regex.IsMatch(sql, "FROM \"Bookings\"", RegexOptions.IgnoreCase) && sql.Contains("\"DocumentImages\"", StringComparison.Ordinal))
@@ -119,7 +112,6 @@ public class GuestDocumentPurgeNpgsqlTranslationTests
                 ProofId, PropertyId, (int)ManualProofKind.AlloggiatiReceipt, new DateOnly(2026, 11, 3), Arrival);
         }
 
-        // The reference of the scan of the booker (one column); the whole record of the guest is left empty.
         if (Regex.IsMatch(sql, "FROM \"Guests\"", RegexOptions.IgnoreCase) && !sql.Contains("\"FirstName\"", StringComparison.Ordinal))
             return Table([("DocumentScanUrl", typeof(string))], $"guest-documents/{OrgId}/{GuestId}/scansione.jpg");
 

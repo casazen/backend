@@ -12,13 +12,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// The host of the long-term aggregates (LR-01): a clock the tests control (10:00 in Rome on 9 October 2026) and an email queue that
-/// records what is queued, over the usual integration host (PostgreSQL in CI, EF InMemory in a local run).
-/// </summary>
 public sealed class LongRentAggregatesFactory : CasazenWebApplicationFactory
 {
-    /// <summary>10:00 in Rome on 9 October 2026 (daylight saving time): "today" of every test is 2026-10-09.</summary>
     public static readonly DateTimeOffset Now = new(2026, 10, 9, 8, 0, 0, TimeSpan.Zero);
 
     public FakeTimeProvider Clock { get; } = new(Now);
@@ -62,7 +57,6 @@ internal sealed class LongRentWorld
 {
     public const string TenantEmailSuffix = "@tenants.example";
 
-    /// <summary>Makes every name and address of the world its own: the emails of one world are never mistaken for another's.</summary>
     public required string Tag { get; init; }
 
     public required string OwnerId { get; init; }
@@ -95,14 +89,12 @@ internal sealed class LongRentWorld
 
     public required Guid Colleague { get; init; }
 
-    /// <summary>Installments by name: <c>ActiveAug</c>, <c>ActiveSep</c>, <c>ActiveOct</c>, <c>ActiveNov</c>, <c>ExpiringOct</c>, <c>ExpiringCancelled</c>, <c>TransitoryOct</c>, <c>ColleagueSep</c>, <c>ColleagueOct</c>.</summary>
     public required IReadOnlyDictionary<string, Guid> Installments { get; init; }
 
     public Guid Installment(string name) => Installments[name];
 
     public string OrgName => $"Org {OwnerId}";
 
-    /// <summary>The email address of a tenant of this world (<c>first.last.tag@tenants.example</c>).</summary>
     public string EmailOf(string first, string last) => TenantEmail(Tag, first, last);
 
     public static string TenantEmail(string tag, string first, string last) => $"{first}.{last}.{tag}{TenantEmailSuffix}".ToLowerInvariant();
@@ -267,15 +259,12 @@ internal sealed class LongRentWorld
         };
     }
 
-    /// <summary>The owner of P1 and P2: only the properties it owns.</summary>
     public HttpClient OwnerClient(CasazenWebApplicationFactory factory) =>
         factory.CreateAuthenticatedClient(OwnerId, "LongTermLandlord");
 
-    /// <summary>A colleague of the same org with no org-wide role: only the properties it owns (P3).</summary>
     public HttpClient ColleagueClient(CasazenWebApplicationFactory factory) =>
         factory.CreateAuthenticatedClient(ColleagueId, "LongTermLandlord");
 
-    /// <summary>A property manager of the org: every property.</summary>
     public HttpClient ManagerClient(CasazenWebApplicationFactory factory) =>
         factory.CreateAuthenticatedClient(ColleagueId, "LongTermLandlord,PropertyManager");
 

@@ -32,7 +32,6 @@ public sealed class Ross1000SubmissionFactory : OctorateOnboardingOpenFactory
             route.Setup(x => x.EffectiveFromAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => RouteActive ? new DateOnly(2026, 1, 1) : null);
             services.AddSingleton(route.Object);
-            // Model an enabled pilot only inside this scoped service, while replacing the entire HTTP transport.
             services.AddScoped(sp => new Ross1000DayService(sp.GetRequiredService<AppDbContext>(), route.Object,
                 new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Ross1000:Enabled"] = "true" }).Build(),
                 new Ross1000Client(new HttpClient(Transport, disposeHandler: false)), TimeProvider.System,

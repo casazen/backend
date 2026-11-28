@@ -35,7 +35,6 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
         { "PropertyOwner", "POST", "/api/guests" },
         { "PropertyOwner", "POST", "/api/bookings" },
         { "PropertyOwner", "GET", "/api/properties" },
-        // long-rent is a host context too: a JWT landlord role alone opens neither leases nor long-rent properties.
         { "LongTermLandlord", "GET", "/api/leases" },
         { "LongTermLandlord", "POST", "/api/properties" },
     };
@@ -47,7 +46,6 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
         string method,
         string path)
     {
-        // The Auth0 sign-up with a host role, straight to the API or the app: no onboarding, no consents.
         var sub = NewSub();
         using var client = _factory.CreateAuthenticatedClient(sub, roles: role);
 
@@ -81,7 +79,6 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task HostEndpoints_AfterOnboardingWithCurrentConsents_CreatePropertyGuestAndBooking()
     {
-        // No JWT role at all (the Auth0 role sync may lag): the DB memberships of the onboarding open the context.
         var sub = NewSub();
         using var client = _factory.CreateAuthenticatedClient(sub);
 
@@ -94,10 +91,8 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
         Assert.False(me.GetProperty("onboardingRequired").GetBoolean());
         Assert.True(me.GetProperty("consentsAccepted").GetBoolean());
         Assert.Equal("PropertyOwner", me.GetProperty("role").GetString());
-        // Onboarded but no property yet: the web app takes the host to the first-property creation.
         Assert.False(me.GetProperty("hasProperties").GetBoolean());
 
-        // A new commercial signup remains gated until the subscription is confirmed.
         Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/properties")).StatusCode);
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
@@ -139,7 +134,6 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
         Assert.False(me.GetProperty("consentsAccepted").GetBoolean());
         Assert.NotEqual(JsonValueKind.Null, me.GetProperty("onboardingCompletedAt").ValueKind);
 
-        // Re-acceptance through the onboarding (same rental type): the host features open again at once.
         var renewal = await client.PostAsJsonAsync("/api/users/onboarding", OnboardingPayload(ConsentVersion));
         Assert.Equal(HttpStatusCode.OK, renewal.StatusCode);
 
@@ -150,8 +144,6 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task HostEndpoints_LegacyPropertyOwnerWithOrgButNoOnboarding_Return403OnboardingRequired()
     {
-        // Org auto-provisioned before PL-02, DB role PropertyOwner, no onboarding and no consents: the data stays, the
-        // host features wait for the onboarding.
         var sub = NewSub();
         await using (var scope = _factory.Services.CreateAsyncScope())
         {
@@ -189,7 +181,6 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
         var keys = contexts.GetProperty("contexts").EnumerateArray().Select(c => c.GetProperty("contextKey").GetString()).ToList();
         Assert.Contains("admin", keys);
         Assert.DoesNotContain("short-rent", keys);
-        // A host org is a host thing: the admin completes the onboarding first, like any host.
         await AssertOnboardingRequiredAsync(await client.GetAsync("/api/billing/subscription"));
     }
 
@@ -227,7 +218,6 @@ public class HostOnboardingGatePostgresTests : IClassFixture<CasazenWebApplicati
     [PostgresFact]
     public async Task HostEndpoint_DeactivatedUserWithoutOnboarding_Returns403AccountInactiveNotOnboardingRequired()
     {
-        // PL-03 takes precedence: a deactivated account is told so, never sent to the onboarding.
         var sub = NewSub();
         await using (var scope = _factory.Services.CreateAsyncScope())
         {

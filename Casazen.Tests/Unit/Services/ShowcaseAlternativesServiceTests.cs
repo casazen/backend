@@ -53,7 +53,6 @@ public class ShowcaseAlternativesServiceTests
     private ShowcaseAlternativesQuery Query(string category = Category, string? istat = "015146", string? city = "Milano") =>
         new(_original, category, istat, city);
 
-    /// <summary>A supplier of the ranking, with the showcase it has: published and open by default.</summary>
     private SupplierProfile Add(
         string name,
         bool published = true,
@@ -93,8 +92,6 @@ public class ShowcaseAlternativesServiceTests
 
     private static SupplierPublicService Priced(string slug, string name, int? cents, string category = Category) =>
         new(slug, name, category, null, null, cents, SupplierServicePriceUnit.PerJob, true, cents is null, 120, [], [], [], [], null, SupplierServiceWeekdays.AllMask);
-
-    // ─── Who is offered, and in which order ───
 
     [Fact]
     public async Task Find_OffersTheSuppliersInTheOrderOfTheRanking_WithWhatTheirShowcaseSays()
@@ -155,7 +152,6 @@ public class ShowcaseAlternativesServiceTests
         var found = await Service().FindAsync(Query());
 
         Assert.Equal(new[] { "Uno", "Due", "Tre" }, found.Select(a => a.Name).ToArray());
-        // The fourth and the fifth were never even read.
         _showcase.Verify(s => s.GetPublishedPageAsync(It.IsAny<SupplierProfile>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
 
@@ -196,8 +192,6 @@ public class ShowcaseAlternativesServiceTests
 
         Assert.Equal("Pulizie Rossi", Assert.Single(found).Name);
     }
-
-    // ─── When nothing is looked for ───
 
     [Fact]
     public async Task Find_WithTheOnlinePaymentsOff_NoShowcaseTakesBookings_SoNothingIsLookedFor()
@@ -275,8 +269,6 @@ public class ShowcaseAlternativesServiceTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Service().FindAsync(Query(), cts.Token));
     }
-
-    // ─── What leaves ───
 
     [Fact]
     public void WhatLeaves_HasNoContactNoScoreAndNoId()

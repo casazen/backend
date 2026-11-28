@@ -11,7 +11,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.HealthChecks;
 
-/// <summary>FD-12 (A9-19, A3-24): configuration checks of /api/health/ready. Optional integrations are degraded.</summary>
 public class ConfigurationHealthChecksTests
 {
     private const string SecretValue = "sk_live_51SecretValueNeverShown";
@@ -60,7 +59,6 @@ public class ConfigurationHealthChecksTests
     [Fact]
     public async Task StripeCheck_AppsettingsPlaceholders_ReturnsDegraded()
     {
-        // The values committed in appsettings.json must never count as configured.
         var result = await CheckStripeAsync(new Dictionary<string, string?>
         {
             ["Stripe:SecretKey"] = "sk_test_YOUR_KEY",
@@ -87,7 +85,6 @@ public class ConfigurationHealthChecksTests
     [Fact]
     public async Task StripeCheck_PlanWithoutPriceId_ReturnsDegradedNamingThePlanVariable()
     {
-        // PL-11 (A1-31): outside Production a plan without price is not purchasable; the health check says which one.
         var configuration = new Dictionary<string, string?>(CompleteStripe) { ["Billing:Prices:Scale"] = "price_PLACEHOLDER_scale" };
 
         var result = await CheckStripeAsync(configuration);

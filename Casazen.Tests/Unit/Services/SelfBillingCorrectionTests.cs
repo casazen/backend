@@ -57,7 +57,6 @@ public class SelfBillingCorrectionTests
 
         var replacement = await CorrectionsOf(rig, recorder.Object).StartSelfBillingCorrectionAsync(rig.OrgId, rejected.Id, Host);
 
-        // The replacement holds the series and the number of the rejected TD17 and is that TD17 again: issuer, month, supplier, amounts and lines as stored.
         var draft = await rig.DocumentAsync(replacement.Id);
         Assert.Equal((replacement.Id, FiscalDocumentStatus.Draft, (Guid?)rejected.Id, "TD17-2026", (int?)1, "TD17-2026/1"), (draft.Id, draft.Status, draft.ReplacesDocumentId, draft.Series, draft.SequenceNumber, draft.Number));
         Assert.Equal((FiscalDocumentPurpose.SelfBilling, rejected.IssuerProfileId, (int?)2026, (int?)10), (draft.Purpose, draft.IssuerProfileId, draft.PeriodYear, draft.PeriodMonth));
@@ -73,7 +72,6 @@ public class SelfBillingCorrectionTests
         Assert.Null(draft.IssueDate);
         Assert.Equal(FiscalDocumentSdiStatuses.NotApplicable, draft.SdiStatus);
 
-        // The rejected TD17 gave the number up and keeps its display number, its day and its rejection for the history; the event is recorded once, with ids only.
         var gaveUp = await rig.DocumentAsync(rejected.Id);
         Assert.Equal((FiscalDocumentStatus.Discarded, (int?)null, "TD17-2026/1", FiscalDocumentSdiStatuses.Rejected, rejected.IssueDate), (gaveUp.Status, gaveUp.SequenceNumber, gaveUp.Number, gaveUp.SdiStatus, gaveUp.IssueDate));
         Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
@@ -81,13 +79,11 @@ public class SelfBillingCorrectionTests
             r => r.Record(DomainEventType.FiscalDocumentCorrected, rejected.Id, new FiscalDocumentCorrectedPayload(rejected.Id, replacement.Id, null), $"fiscal-document-corrected:{rejected.Id:N}", rig.OrgId),
             Times.Once);
 
-        // The replacement is never discarded: the number would be lost (a hole in the series) and the rejected TD17 could not be corrected again.
         var holding = await Assert.ThrowsAsync<DomainRuleException>(() => rig.Service.DiscardDraftAsync(rig.OrgId, replacement.Id));
         Assert.Equal(FiscalDocumentSdiErrors.ReplacementHoldsNumber, holding.Code);
         var stillHeld = await rig.DocumentAsync(replacement.Id);
         Assert.Equal((FiscalDocumentStatus.Draft, (int?)1), (stillHeld.Status, stillHeld.SequenceNumber));
 
-        // Issued from the self-billed invoices (nine days later), it uses the number it holds and the day of the TD17 it replaces, reserves no other and is left to send.
         rig.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 21, 12, 0, 0, TimeSpan.Zero));
         var issued = (await rig.Service.IssueAsync(rig.OrgId, replacement.Id, confirm: true, Host)).Document;
         Assert.Equal((FiscalDocumentStatus.Issued, "TD17-2026", (int?)1, "TD17-2026/1", new DateOnly(2026, 11, 12), FiscalDocumentSdiStatuses.ToSend), (issued.Status, issued.Series, issued.SequenceNumber, issued.Number, issued.IssueDate, issued.SdiStatus));
@@ -97,7 +93,6 @@ public class SelfBillingCorrectionTests
         Assert.Empty(XsdValidator.Validate(issued.FatturaPaXml!, new FatturaPaSchemaProvider().GetSchemas()));
         Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
 
-        // The next TD17 of the series is the next number: no duplicate, no hole.
         var september = Assert.Single((await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 9, null)).Drafts);
         var next = (await rig.Service.IssueAsync(rig.OrgId, september.DocumentId, confirm: true, null)).Document;
         Assert.Equal(("TD17-2026/3", (int?)3), (next.Number, next.SequenceNumber));
@@ -147,14 +142,12 @@ public class SelfBillingCorrectionTests
         var (rejected, _) = await RejectedFirstAsync(rig);
         var before = await SnapshotAsync(rig);
 
-        // Another organization finds nothing: at the service and at the controller of that organization, whatever its reach.
         var otherOrg = Guid.NewGuid();
         Assert.Equal(FiscalDocumentErrors.NotFound, (await Assert.ThrowsAsync<NotFoundException>(() => CorrectionsOf(rig, recorder.Object).StartSelfBillingCorrectionAsync(otherOrg, rejected.Id, Host))).Code);
         var foreign = new SelfBillingController(rig.Service, CorrectionsOf(rig, recorder.Object), Org(otherOrg), Scope(otherOrg, new HostScope(otherOrg))) { ControllerContext = Context() };
         Assert.Equal(FiscalDocumentErrors.NotFound, (await Assert.ThrowsAsync<NotFoundException>(() => foreign.Correct(rejected.Id))).Code);
         Assert.Equal(before, await SnapshotAsync(rig));
 
-        // A caller who reaches only some properties is refused before the services are asked anything (a TD17 spans the properties of its holder).
         foreach (var restricted in new[] { new HostScope(rig.OrgId, GrantedToUserId: "auth0|solo-alcuni"), new HostScope(rig.OrgId, OwnerId: "auth0|solo-alcuni") })
         {
             var service = new Mock<ISelfBillingService>(MockBehavior.Strict);
@@ -168,7 +161,6 @@ public class SelfBillingCorrectionTests
         Assert.Equal(before, await SnapshotAsync(rig));
         recorder.VerifyNoOtherCalls();
 
-        // The permission, the flags and the route are the ones of the other self-billed actions: the policy of the controller and no weaker one on the action, never anonymous.
         var action = typeof(SelfBillingController).GetMethod(nameof(SelfBillingController.Correct))!;
         Assert.Equal("{id:guid}/correct", action.GetCustomAttribute<HttpPostAttribute>()!.Template);
         Assert.Empty(action.GetCustomAttributes<AllowAnonymousAttribute>());
@@ -178,7 +170,6 @@ public class SelfBillingCorrectionTests
         Assert.Equal(new[] { FeatureFlags.FiscalDocumentIssuance }, typeof(SelfBillingController).GetCustomAttributes<FeatureGateAttribute>(inherit: false).Select(g => g.Flag));
         Assert.Equal(new[] { FeatureFlags.SdiSubmission }, action.GetCustomAttributes<FeatureGateAttribute>().Select(g => g.Flag));
 
-        // A caller who reaches the whole organization is served: 201 with the replacement draft, which names the rejected TD17 and cannot be corrected itself.
         var served = new SelfBillingController(rig.Service, CorrectionsOf(rig, recorder.Object), Org(rig.OrgId), Scope(rig.OrgId, new HostScope(rig.OrgId))) { ControllerContext = Context() };
         var created = Assert.IsType<CreatedAtActionResult>((await served.Correct(rejected.Id)).Result);
         var dto = Assert.IsType<SelfBillingDto>(created.Value);
@@ -205,7 +196,6 @@ public class SelfBillingCorrectionTests
         var airbnb = generation.Drafts.Single(d => d.PortalName == "Airbnb Ireland UC").DocumentId;
         var september = Assert.Single((await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 9, Host)).Drafts).DocumentId;
 
-        // A draft is not corrected; neither is one that was discarded (it never was issued).
         await AssertRefusedAsync(corrections, rig, booking);
         await rig.Service.DiscardDraftAsync(rig.OrgId, september);
         await AssertRefusedAsync(corrections, rig, september);
@@ -219,7 +209,6 @@ public class SelfBillingCorrectionTests
             await AssertRefusedAsync(corrections, rig, booking);
         }
 
-        // Rejected, but credited: the accountant decides, the correction would bill the same operation twice.
         await rig.Service.IssueAsync(rig.OrgId, airbnb, confirm: true, Host);
         await RejectedBySdiAsync(rig, airbnb);
         rig.Db.ChangeTracker.Clear();
@@ -238,17 +227,14 @@ public class SelfBillingCorrectionTests
         await AssertRefusedAsync(corrections, rig, airbnb);
         Assert.False(Assert.Single(await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10)), r => r.Id == airbnb).CanCorrect);
 
-        // Documents that are no TD17 of the organization are not found, even rejected and with a number: the guest invoice and the owner invoice have their own corrections.
         var guest = new FiscalDocument { OrgId = rig.OrgId, Purpose = FiscalDocumentPurpose.GuestStay, Status = FiscalDocumentStatus.Issued, SdiStatus = FiscalDocumentSdiStatuses.Rejected, Series = "2026", SequenceNumber = 9, Number = "2026/9" };
         var ownerInvoice = new FiscalDocument { OrgId = rig.OrgId, Purpose = FiscalDocumentPurpose.OwnerInvoice, Status = FiscalDocumentStatus.Issued, SdiStatus = FiscalDocumentSdiStatuses.Rejected, Series = "PM2026", SequenceNumber = 1, Number = "PM2026/1" };
         await rig.AddAsync(guest, ownerInvoice);
         foreach (var other in new[] { guest.Id, ownerInvoice.Id, Guid.NewGuid() })
             Assert.Equal(FiscalDocumentErrors.NotFound, (await Assert.ThrowsAsync<NotFoundException>(() => corrections.StartSelfBillingCorrectionAsync(rig.OrgId, other, Host))).Code);
 
-        // The guest endpoint of the correction still refuses every TD17, whatever its state: its answer is unchanged.
         Assert.Equal(SelfBillingErrors.NotCorrectable, (await Assert.ThrowsAsync<DomainRuleException>(() => corrections.StartCorrectionAsync(airbnb, Host))).Code);
 
-        // No refusal made, changed, numbered or recorded anything: the two numbers of the series are the two TD17 that were issued.
         Assert.Empty(await rig.Db.FiscalDocuments.AsNoTracking().Where(d => d.ReplacesDocumentId != null).ToListAsync());
         Assert.Equal([1, 2], await rig.Db.FiscalDocuments.AsNoTracking().Where(d => d.Purpose == FiscalDocumentPurpose.SelfBilling && d.SequenceNumber != null).OrderBy(d => d.SequenceNumber).Select(d => d.SequenceNumber!.Value).ToListAsync());
         recorder.VerifyNoOtherCalls();
@@ -273,14 +259,12 @@ public class SelfBillingCorrectionTests
         await using var rig = await SelfBillingRig.CreateAsync();
         var (rejected, neighbour) = await RejectedFirstAsync(rig);
 
-        // Before the correction the list offers it on the rejected TD17 only.
         var listed = await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10));
         Assert.Equal([rejected.Id], listed.Where(r => r.CanCorrect).Select(r => r.Id));
         Assert.Equal(2, listed.Count);
 
         var replacement = await CorrectionsOf(rig, Mock.Of<IDomainEventRecorder>()).StartSelfBillingCorrectionAsync(rig.OrgId, rejected.Id, Host);
 
-        // The list: the replacement as a draft, the original as discarded, the neighbour as it was; none can be corrected.
         var after = await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10));
         Assert.Equal(3, after.Count);
         var original = Assert.Single(after, r => r.Id == rejected.Id);
@@ -291,13 +275,11 @@ public class SelfBillingCorrectionTests
         var other = Assert.Single(after, r => r.Id == neighbour.Id);
         Assert.Equal((FiscalDocumentStatus.Issued, "TD17-2026/2", false), (other.Status, other.Number, other.CanCorrect));
 
-        // The detail of each says the same (a discarded original is read as it was issued; the replacement is a draft with its lines).
         var originalDetail = await rig.Service.GetAsync(rig.OrgId, rejected.Id);
         var draftDetail = await rig.Service.GetAsync(rig.OrgId, replacement.Id);
         Assert.Equal((FiscalDocumentStatus.Discarded, (Guid?)replacement.Id, 0m), (originalDetail.Row.Status, originalDetail.Row.ReplacedByDocumentId, originalDetail.EstimatedAmount));
         Assert.Equal((FiscalDocumentStatus.Draft, (Guid?)rejected.Id, 2), (draftDetail.Row.Status, draftDetail.Row.ReplacesDocumentId, draftDetail.Document.Lines.Count));
 
-        // The month is not made again: the replacement is made again from the ledger and keeps its number, the neighbour is left alone, no second TD17 appears for the holder and portal.
         var again = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host);
         Assert.Equal((0, 1, 1, 0), (again.Created, again.Updated, again.AlreadyIssued, again.Discarded));
         var outcome = Assert.Single(again.Drafts, d => d.PortalName == "Booking.com B.V.");
@@ -338,7 +320,6 @@ public class SelfBillingCorrectionTests
         await RejectedBySdiAsync(rig, drafted.DocumentId);
         var replacement = await CorrectionsOf(rig, Mock.Of<IDomainEventRecorder>()).StartSelfBillingCorrectionAsync(rig.OrgId, drafted.DocumentId, Host);
 
-        // The commission is reversed: nothing in the ledger supports a TD17 of the month any more.
         await rig.AddAsync(rig.Reversal(fee));
         var generation = await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host);
 
@@ -350,13 +331,11 @@ public class SelfBillingCorrectionTests
         Assert.Contains(await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10)), r => r.Id == replacement.Id && r.Status == FiscalDocumentStatus.Draft);
         Assert.Equal([1], await SequenceNumbersAsync(rig));
 
-        // The answer says why the draft is kept (ids, the name of the portal, the number and a code), and so do the list and the detail of the draft.
         var held = Assert.Single(generation.Kept!);
         Assert.Equal((replacement.Id, SelfBillingHolderKind.Owner, (Guid?)rig.Company, "Booking.com B.V.", "TD17-2026/1", SelfBillingKeptReasons.NotInLedger), (held.DocumentId, held.HolderKind, held.HolderOwnerId, held.PortalName, held.Number, held.Reason));
         Assert.Equal(SelfBillingKeptReasons.NotInLedger, Assert.Single(await rig.Service.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10)), r => r.Id == replacement.Id).KeptReason);
         Assert.Equal(SelfBillingKeptReasons.NotInLedger, (await rig.Service.GetAsync(rig.OrgId, replacement.Id)).Row.KeptReason);
 
-        // A draft nobody replaces is dropped as it always was (the rule of the guard is the held number, nothing else).
         var other = rig.Fee(rig.Company, rig.Mountain, await rig.StayAsync(rig.Mountain, BookingSource.Airbnb, new DateTime(2026, 10, 12)), 60.00m);
         await rig.AddAsync(other);
         var airbnb = Assert.Single((await rig.Service.CreateDraftsForPeriodAsync(rig.OrgId, 2026, 10, Host)).Drafts, d => d.PortalName == "Airbnb Ireland UC").DocumentId;
@@ -365,7 +344,6 @@ public class SelfBillingCorrectionTests
         Assert.Equal(FiscalDocumentStatus.Discarded, (await rig.DocumentAsync(airbnb)).Status);
         Assert.Equal(FiscalDocumentStatus.Draft, (await rig.DocumentAsync(replacement.Id)).Status);
 
-        // The holder loses what it needs to issue: the reason is the code of its failure, in the answer and in the list.
         var profile = await rig.Db.OrgFiscalIssuerProfiles.SingleAsync(p => p.Id == rig.CompanyProfile);
         (profile.AddressStreet, profile.PostalCode, profile.City) = (null, null, null);
         await rig.Db.SaveChangesAsync();
@@ -404,7 +382,6 @@ public class SelfBillingCorrectionTests
         Assert.Equal(2, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodMonth == 10 && d.Status != FiscalDocumentStatus.Discarded));
         Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
 
-        // The portal was in another country: the host puts that right too. The same draft again, with the same number.
         settings = SelfBillingRig.Shipped();
         (PortalOf(settings, BookingSource.BookingCom).Country, PortalOf(settings, BookingSource.BookingCom).VatNumber) = ("BE", "BE0805734958");
         var countryFixed = rig.ServiceWith(settings);
@@ -415,7 +392,6 @@ public class SelfBillingCorrectionTests
         Assert.Equal((FiscalDocumentStatus.Draft, (int?)1, "BE", "BE0805734958"), (moved.Status, moved.SequenceNumber, moved.RecipientCountryCode, moved.RecipientVatNumber));
         Assert.Equal(3, await rig.Db.FiscalDocuments.AsNoTracking().CountAsync(d => d.Purpose == FiscalDocumentPurpose.SelfBilling && d.PeriodMonth == 10));
 
-        // Then issued under the number it holds, with the portal of the settings in the file; nothing else is numbered.
         var issued = (await countryFixed.IssueAsync(rig.OrgId, replacement.Id, confirm: true, Host)).Document;
         Assert.Equal((FiscalDocumentStatus.Issued, (int?)1, "TD17-2026/1", (Guid?)rejected.Id), (issued.Status, issued.SequenceNumber, issued.Number, issued.ReplacesDocumentId));
         var supplier = XDocument.Parse(issued.FatturaPaXml!).Descendants("CedentePrestatore").Single();
@@ -470,7 +446,6 @@ public class SelfBillingCorrectionTests
         Assert.Equal((FiscalDocumentStatus.Draft, (int?)1, "NL805734958B019"), (stillHeld.Status, stillHeld.SequenceNumber, stillHeld.RecipientVatNumber));
         Assert.Equal(airbnbDraft.Id, Assert.Single(second.Drafts, d => d.PortalName == "Airbnb Ireland UC").DocumentId);
 
-        // The list says the same, only for that draft; the host can neither issue nor discard it.
         var rows = await renamed.ListAsync(rig.OrgId, new SelfBillingCriteria(2026, 10));
         Assert.Equal(SelfBillingKeptReasons.PortalNotConfigured, Assert.Single(rows, r => r.Id == bookingDraft.Id).KeptReason);
         Assert.All(rows.Where(r => r.Id != bookingDraft.Id), r => Assert.Null(r.KeptReason));
@@ -479,9 +454,6 @@ public class SelfBillingCorrectionTests
         Assert.Equal([1, 2], await SequenceNumbersAsync(rig));
     }
 
-    // ---------------------------------------------------------------- helpers
-
-    /// <summary>The entry of <paramref name="settings"/> (a copy of the shipped settings a test changes) that names the portal of <paramref name="channel"/>.</summary>
     private static SelfBillingPortalOptions PortalOf(SelfBillingOptions settings, BookingSource channel) =>
         settings.Portals.Single(p => p.Channel == channel.ToString());
 
@@ -524,7 +496,6 @@ public class SelfBillingCorrectionTests
     private static IEnumerable<(int Number, FiscalLineType Type, string Text, decimal Net, decimal Rate, decimal? Vat)> LinesOf(FiscalDocument document) =>
         document.Lines.OrderBy(l => l.LineNumber).Select(l => (l.LineNumber, l.LineType, l.Description, l.TotalPrice, l.VatRatePercent, l.VatAmount));
 
-    /// <summary>The sequence numbers the documents hold, in order: what the unique index of the series would see.</summary>
     private static async Task<List<int>> SequenceNumbersAsync(SelfBillingRig rig) =>
         await rig.Db.FiscalDocuments.AsNoTracking().Where(d => d.SequenceNumber != null).OrderBy(d => d.SequenceNumber).Select(d => d.SequenceNumber!.Value).ToListAsync();
 

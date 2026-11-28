@@ -18,8 +18,6 @@ public class SupplierPaymentOfflineTests
 {
     private const string UserId = ServiceRequestScenario.SupplierUserId;
 
-    // ─── A request paid by hand ───
-
     [Fact]
     public async Task RecordOffline_AManualRequest_NeedsNoReason_AndKeepsTheOfflinePaymentWithoutCommission()
     {
@@ -34,13 +32,11 @@ public class SupplierPaymentOfflineTests
         var request = await s.ReadAsync(taken.Id);
         Assert.Equal(ServiceRequestStatus.Pagato, request.Status);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, request.PaidAt);
-        // The history credits the payment to who recorded it.
         Assert.Equal(ServiceRequestActorParty.Supplier, request.PaidBy);
         Assert.Equal(ServicePaymentStatus.Paid, payment.Status);
         Assert.Equal(ServicePaymentChannel.Offline, payment.PaidVia);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, payment.PaidAt);
         Assert.Equal(ServiceRequestScenario.ServicePriceCents, payment.AmountCents);
-        // No money went through CasaZen: no commission, the net is the whole amount.
         Assert.Equal(0m, payment.CommissionPercent);
         Assert.Equal(0, payment.ApplicationFeeCents);
         Assert.Equal(payment.AmountCents, payment.NetCents);
@@ -52,7 +48,6 @@ public class SupplierPaymentOfflineTests
         Assert.Equal(request.Id, payment.ServiceRequestId);
         Assert.Empty(s.Gateway.Created);
 
-        // The host is told, and only the host.
         var email = Assert.Single(s.Emails.PaymentEmails());
         Assert.Equal(EmailTemplates.Names.ServicePaymentOfflineRecorded, email.Template);
         Assert.Equal("host@test.com", email.To);
@@ -73,8 +68,6 @@ public class SupplierPaymentOfflineTests
         var email = Assert.Single(s.Emails.PaymentEmails());
         Assert.Contains("Bonifico del 3 ottobre", email.Content.HtmlBody);
     }
-
-    // ─── A request paid inside CasaZen: a traced exception ───
 
     [Theory]
     [InlineData(null)]
@@ -110,7 +103,6 @@ public class SupplierPaymentOfflineTests
 
         var request = await s.ReadAsync(completed.Id);
         Assert.Equal(ServiceRequestStatus.Pagato, request.Status);
-        // The request keeps its mode: it was to be paid inside CasaZen, and the exception is what the payment row records.
         Assert.Equal(ServiceRequestPaymentMode.Online, request.PaymentMode);
         var all = await s.PaymentsOfAsync(completed.Id);
         Assert.Equal(2, all.Count);
@@ -123,7 +115,6 @@ public class SupplierPaymentOfflineTests
         Assert.Equal("Il cliente ha pagato in contanti", offline.OfflineNote);
         Assert.Equal(0, offline.ApplicationFeeCents);
         Assert.Equal(UserId, offline.MarkedPaidByUserId);
-        // Only one live payment is left: the offline one (the unique index of PostgreSQL allows exactly that).
         Assert.Single(all, p => p.Status != ServicePaymentStatus.Canceled);
         var email = Assert.Single(s.Emails.PaymentEmails());
         Assert.Contains("Il cliente ha pagato in contanti", email.Content.HtmlBody);
@@ -139,7 +130,6 @@ public class SupplierPaymentOfflineTests
 
         await s.Service.RecordOfflinePaymentAsync(completed.Id, s.SupplierOrgId, UserId, "Pagato a mano");
 
-        // The payer must not be able to pay online an amount the supplier declared received.
         var canceled = Assert.Single(s.Gateway.Canceled);
         Assert.Equal(intentId, canceled.PaymentIntentId);
         Assert.Equal(ServiceRequestScenario.SupplierAccountId, canceled.AccountId);
@@ -158,7 +148,6 @@ public class SupplierPaymentOfflineTests
 
         var recorded = await s.Service.RecordOfflinePaymentAsync(completed.Id, s.SupplierOrgId, UserId, "Pagato a mano");
 
-        // Nobody can pay on an account that does not exist: the supplier is not blocked by a PaymentIntent that cannot be read.
         Assert.Equal(ServicePaymentStatus.Paid, recorded.Status);
         Assert.Equal(ServiceRequestStatus.Pagato, (await s.ReadAsync(completed.Id)).Status);
         Assert.Empty(s.Gateway.Canceled);
@@ -182,13 +171,11 @@ public class SupplierPaymentOfflineTests
         var ex = await Assert.ThrowsAsync<DomainConflictException>(
             () => s.Service.RecordOfflinePaymentAsync(completed.Id, s.SupplierOrgId, UserId, "Pagato a mano"));
 
-        // The same money is never counted twice: the request is not marked paid, the online payment is shown as in progress.
         Assert.Equal(ServicePaymentErrors.InFlight, ex.Code);
         Assert.Equal(ServiceRequestStatus.Completato, (await s.ReadAsync(completed.Id)).Status);
         var payment = await s.OnlyPaymentOfAsync(completed.Id);
         Assert.Equal(ServicePaymentStatus.Processing, payment.Status);
         Assert.Equal(intentId, payment.StripePaymentIntentId);
-        // A payment that is paid or in progress is never canceled.
         Assert.Empty(s.Gateway.Canceled);
         Assert.Empty(s.Emails.Snapshot());
     }
@@ -231,8 +218,6 @@ public class SupplierPaymentOfflineTests
         Assert.Equal(ServicePaymentErrors.InFlight, ex.Code);
         Assert.Equal(ServiceRequestStatus.Completato, (await s.ReadAsync(completed.Id)).Status);
     }
-
-    // ─── When it is not possible ───
 
     [Theory]
     [InlineData(ServiceRequestStatus.Richiesto)]
@@ -287,7 +272,6 @@ public class SupplierPaymentOfflineTests
     [Fact]
     public async Task RecordOffline_AReasonLongerThanTheColumn_IsAProgrammingError()
     {
-        // The endpoint refuses it with a 400 before (MaxLength 500); the service does not silently cut a trace.
         using var s = await ServiceRequestScenario.CreateAsync();
         var taken = await s.TakenAsync();
         await s.Service.CompleteAsync(taken.Id, s.SupplierOrgId);
@@ -333,7 +317,6 @@ public class SupplierPaymentOfflineTests
         Assert.Empty(s.Emails.Snapshot());
     }
 
-    /// <summary>The payer opens the payment session of the request's only payment (a PaymentIntent is created on the fake Stripe).</summary>
     private static async Task<ServicePaymentSession> OpenSessionAsync(ServiceRequestScenario s, Guid requestId)
     {
         var payment = await s.OnlyPaymentOfAsync(requestId);

@@ -13,10 +13,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The tenant opens a request, another org cannot see it, a rejection cannot be paid, and an approval is paid
-/// once by the euro debit: a second pay does not start another PaymentIntent.
-/// </summary>
 public class LeaseMaintenanceServiceTests : IDisposable
 {
     private readonly string _databaseName = Guid.NewGuid().ToString();

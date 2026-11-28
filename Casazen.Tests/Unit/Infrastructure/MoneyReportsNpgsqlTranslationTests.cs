@@ -40,7 +40,6 @@ public class MoneyReportsNpgsqlTranslationTests
 
     private static readonly HostReportQuery October = new(new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31));
 
-    /// <summary>Every call, by the name the failure reports.</summary>
     private static readonly Dictionary<string, Func<AppDbContext, HostScope, Task>> Calls = new()
     {
         ["collections"] = (db, scope) => Collections(db).GetCollectionsAsync(scope, October),
@@ -50,15 +49,11 @@ public class MoneyReportsNpgsqlTranslationTests
         ["channel-costs"] = (db, scope) => new ChannelCostsReportService(db, Settings(db)).GetChannelCostsAsync(scope, October),
     };
 
-    /// <summary>How many statements each call sends at least (all of them are reached when nothing was swallowed early).</summary>
     private static readonly Dictionary<string, int> MinimumStatements = new()
     {
-        // The collected payments, the credits of the card provider, the credits of the channels: three whatever the number of payments.
         ["collections"] = 3,
         ["collections-long-period"] = 3,
-        // The stays of CasaZen's money, the stays of the channel manager's: two whatever the number of stays.
         ["balances-to-collect"] = 2,
-        // The stays, the card payments of the direct stays, and the connection of the org (not connected here, so the portals are not read: see below).
         ["channel-costs"] = 3,
     };
 
@@ -125,11 +120,9 @@ public class MoneyReportsNpgsqlTranslationTests
 
             await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Calls[call](db, ScopeOf("whole-org")));
 
-            // A money report carries no guest: no statement of it reads the table of the guests, so no name or contact can reach a row.
             Assert.All(statements, sql => Assert.DoesNotContain("\"Guests\"", sql, StringComparison.Ordinal));
             if (call == "balances-to-collect")
             {
-                // What a stay has collected is added up by the database, not read payment by payment.
                 Assert.Contains(statements, sql => sql.Contains("SUM(", StringComparison.OrdinalIgnoreCase) && sql.Contains("\"Payments\"", StringComparison.Ordinal));
             }
         }
@@ -145,7 +138,6 @@ public class MoneyReportsNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Settings(db).GetModesAsync(OrgId));
 
-        // The connection of the org, then the portals of the catalog cache: platform data (no org), nothing asked of Octorate.
         Assert.Equal(2, statements.Count);
         Assert.Contains("\"MarketplacePortals\"", statements[1], StringComparison.Ordinal);
     }

@@ -21,8 +21,6 @@ public class ServiceRequestReliabilityTests
 {
     private static readonly TimeSpan HostWindow = TimeSpan.FromMinutes(120);
 
-    // ─── The answers ───
-
     [Fact]
     public async Task Take_BeforeTheDeadline_EarnsAPointOfReliability()
     {
@@ -83,14 +81,11 @@ public class ServiceRequestReliabilityTests
             new[] { proposed.Id, quoted.Id }.Order(),
             (await s.ReliabilityEventsAsync()).Where(e => e.Kind == SupplierReliabilityEventKind.RepliedInTime).Select(e => e.RequestId!.Value).Order());
 
-        // The host turns the proposal down and the supplier takes the request: the answer was already counted.
         await s.Service.RejectProposalAsync(proposed.Id, s.HostOrgId);
         await s.Service.TakeAsync(proposed.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
 
         Assert.Equal(2, (await s.ReliabilityEventsAsync()).Count);
     }
-
-    // ─── The jobs ───
 
     [Theory]
     [InlineData(ServiceRequestRentalContext.ShortRent)]
@@ -106,7 +101,6 @@ public class ServiceRequestReliabilityTests
         var job = Assert.Single(await s.ReliabilityEventsAsync(), e => e.Kind == SupplierReliabilityEventKind.JobCompletedClean);
         Assert.Equal(request.Id, job.RequestId);
         Assert.Equal(completed.CompletedAt, job.OccurredAt);
-        // The reply in time and the job: one point and two.
         Assert.Equal(1 + 2, (await s.Kit.Reliability.PointsAsync([s.SupplierOrgId]))[s.SupplierOrgId]);
     }
 
@@ -116,7 +110,6 @@ public class ServiceRequestReliabilityTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var request = await s.RequestAsync();
 
-        // Not taken yet: the state machine refuses the completion, and nothing is written for it.
         await Assert.ThrowsAnyAsync<Exception>(() => s.Service.CompleteAsync(request.Id, s.SupplierOrgId));
 
         Assert.Empty(await s.ReliabilityEventsAsync());
@@ -161,7 +154,6 @@ public class ServiceRequestReliabilityTests
                 r.ResponseDueAt = ServiceRequestScenario.Instant.UtcDateTime.AddHours(2);
             });
 
-        // One lapses with nobody answering it, the other one is taken in time: neither is a sign of reliability for the hosts.
         await AutoCancel(s).CancelUnansweredShowcaseAsync();
         await s.Service.TakeAsync(answered.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
 
@@ -170,15 +162,12 @@ public class ServiceRequestReliabilityTests
         Assert.Empty(await s.ReliabilityEventsAsync());
     }
 
-    // ─── The requests nobody answered ───
-
     [Fact]
     public async Task AutoCancel_ARequestNobodyAnswered_CostsThePrimaryItsPoints_AndTheEmailSaysSo()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         s.Flags.Set(FeatureFlags.SupplierRequestAutoCancel, true);
         var request = await s.RequestAsync();
-        // Due at 14:00 in Rome: the two hours it waited include the last hour of the morning band.
         s.Clock.Advance(HostWindow);
         s.ForgetNotifications();
 
@@ -201,7 +190,6 @@ public class ServiceRequestReliabilityTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         s.Flags.Set(FeatureFlags.SupplierRequestAutoCancel, true);
-        // A Sunday morning: the supplier does not work on Sundays. The job is for Monday at 10:00.
         s.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 11, 8, 0, 0, TimeSpan.Zero));
         var request = await s.RequestAsync(new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Utc));
         s.Clock.Advance(HostWindow);
@@ -209,7 +197,6 @@ public class ServiceRequestReliabilityTests
 
         var run = await AutoCancel(s).CancelUnansweredAsync();
 
-        // The request still lapses (the host must not wait for ever), but the supplier is not marked down for it.
         Assert.Equal(1, run.Cancelled);
         Assert.Equal(ServiceRequestStatus.Annullato, (await s.ReadAsync(request.Id)).Status);
         Assert.Empty(await s.ReliabilityEventsAsync());
@@ -248,8 +235,6 @@ public class ServiceRequestReliabilityTests
         Assert.DoesNotContain("punteggio di affidabilità", toSupplier.Content.HtmlBody);
     }
 
-    // ─── A dispute ───
-
     [Fact]
     public async Task Dispute_OnAServicePayment_IsRecordedOnTheSupplier_OnceEvenIfStripeSendsItAgain()
     {
@@ -265,7 +250,6 @@ public class ServiceRequestReliabilityTests
         var recorded = Assert.Single(events, e => e.Kind == SupplierReliabilityEventKind.DisputeOpened);
         Assert.Equal(opened.Request.Id, recorded.RequestId);
         Assert.Equal("dp_123", recorded.Detail);
-        // The reply in time (+1) stays, the job (+2) is taken back and the dispute costs 12.
         Assert.Equal(1 - 12, (await s.Kit.Reliability.PointsAsync([s.SupplierOrgId]))[s.SupplierOrgId]);
     }
 

@@ -56,15 +56,12 @@ public class ComplianceArchiveNpgsqlTranslationTests
         return (service, statements);
     }
 
-    /// <summary>One row for each shape the services read, so the queries that come after the first are compiled too.</summary>
     private static DataTable? Rows(string sql)
     {
         var text = sql.TrimStart();
         if (Regex.IsMatch(text, "^SELECT EXISTS", RegexOptions.IgnoreCase))
             return Table([("value", typeof(bool))], true);
 
-        // A count is answered by the probe (one row, the number it was built with), whatever tables its subqueries read: a collaborator's count names the flats
-        // in a subquery, and must not be taken for the read of the flats.
         if (Regex.IsMatch(text, "^SELECT\\s+COUNT\\(", RegexOptions.IgnoreCase))
             return null;
 
@@ -80,7 +77,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
 
         if (Regex.IsMatch(text, "FROM \"ManualComplianceProofs\"", RegexOptions.IgnoreCase) && text.Contains("\"FileKey\"", StringComparison.Ordinal))
         {
-            // The download asks for the kind, the day, the key and the type; the export for the whole row, key last.
             return text.Contains("\"Name\"", StringComparison.Ordinal)
                 ? Table(
                     [("Id", typeof(Guid)), ("Kind", typeof(int)), ("PropertyId", typeof(Guid)), ("Name", typeof(string)), ("Day", typeof(DateOnly)), ("ContentType", typeof(string)), ("UploadedAt", typeof(DateTime)), ("FileKey", typeof(string))],
@@ -97,7 +93,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
                 ProofId, (int)ManualProofKind.AlloggiatiReceipt, PropertyId, "Trullo", DateOnly.FromDateTime(Arrival), "application/pdf", Arrival);
         }
 
-        // The flats each proof of a page covers (E20/F02/US01/T01): the proof, the flat and its name.
         if (Regex.IsMatch(text, "FROM \"ManualComplianceProofProperties\"", RegexOptions.IgnoreCase)
             && text.Contains("\"ProofId\"", StringComparison.Ordinal)
             && !Regex.IsMatch(text, "FROM \"ManualComplianceProofs\"", RegexOptions.IgnoreCase))
@@ -107,7 +102,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
 
         if (Regex.IsMatch(text, "FROM \"Bookings\"", RegexOptions.IgnoreCase))
         {
-            // The stay of the booking page (id, property, arrival) and the stay of the report (id, property, name, code, arrival).
             return text.Contains("\"BookingCode\"", StringComparison.Ordinal)
                 ? Table(
                     [("Id", typeof(Guid)), ("PropertyId", typeof(Guid)), ("Name", typeof(string)), ("BookingCode", typeof(string)), ("CheckInDate", typeof(DateTime))],
@@ -129,8 +123,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
         table.Rows.Add(values);
         return table;
     }
-
-    // ─── The list, the download, the stay, the export ───────────────────────────────────────────────────
 
     /// <summary>
     /// PROOF TEST: data and permission rule (shape of the statement). The list is a count and a page, both naming the org of the scope on the
@@ -155,7 +147,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
         var limited = await Run(Restricted);
         var owned = await Run(Owned);
 
-        // The total and the page of the proofs, then the flats each proof of the page covers (E20/F02/US01/T01) in one statement for the whole page.
         Assert.Equal(3, wholeOrg.Count);
         Assert.Equal(3, limited.Count);
         Assert.Equal(3, owned.Count);
@@ -172,7 +163,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
             Assert.DoesNotContain("IsDeleted", sql, StringComparison.Ordinal);
         }
 
-        // The flats of the page: of the org, of the proofs of the page, the history of deleted flats kept.
         foreach (var coverage in new[] { wholeOrg[2], limited[2], owned[2] })
         {
             Assert.Contains("FROM \"ManualComplianceProofProperties\"", coverage, StringComparison.Ordinal);
@@ -182,8 +172,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
 
         Assert.DoesNotContain(wholeOrg, sql => sql.Contains("PropertyMemberAccesses", StringComparison.Ordinal));
 
-        // The reach of a collaborator is in the statement of the proofs, and a receipt of several flats is read only when every flat it covers is in reach: a
-        // NOT EXISTS over the lines of the flats of the proof, with the same grants.
         Assert.All(limited.Take(2), sql =>
         {
             Assert.Contains("EXISTS", sql, StringComparison.Ordinal);
@@ -206,7 +194,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
             Restricted, new ComplianceArchiveQuery(PropertyId, null, null, null), CancellationToken.None));
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenDownloadAsync(Restricted, ProofId, moneyProofs: true, CancellationToken.None));
 
-        // The property filter is checked first, in the reach; the download names the proof, the org and the reach in one statement.
         Assert.Contains(statements, sql => sql.TrimStart().StartsWith("SELECT EXISTS", StringComparison.OrdinalIgnoreCase)
                                           && sql.Contains("PropertyMemberAccesses", StringComparison.Ordinal));
         var download = Assert.Single(statements, sql => sql.Contains("\"FileKey\"", StringComparison.Ordinal) && !sql.Contains("\"Name\"", StringComparison.Ordinal));
@@ -237,7 +224,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
         var withoutMoney = await Run(false);
         var withMoney = await Run(true);
 
-        // The total and the page of the list, the download, the export: four statements on the proofs, each of them cut (or none of them).
         Assert.Equal(4, withoutMoney.Count);
         Assert.Equal(4, withMoney.Count);
         Assert.All(withoutMoney, sql => Assert.Matches("\"Kind\" NOT IN \\(", sql));
@@ -252,7 +238,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.GetBookingComplianceAsync(Restricted, BookingId, CancellationToken.None));
 
-        // The stay, its proofs, the flats each proof covers, its log, and the names of the people of the org who declared a send: five statements, each of the org.
         Assert.Equal(5, statements.Count);
         Assert.Contains("FROM \"Bookings\"", statements[0], StringComparison.Ordinal);
         Assert.Contains("FROM \"ManualComplianceProofs\"", statements[1], StringComparison.Ordinal);
@@ -262,7 +247,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
         Assert.All(statements, sql => Assert.Matches("\"OrgId\" = @", sql));
         Assert.All(new[] { statements[0], statements[1], statements[3] }, sql => Assert.Contains("PropertyMemberAccesses", sql, StringComparison.Ordinal));
 
-        // The proofs of the stay are those that cover its flat on its arrival day, the flat they were filed under or another one of the receipt.
         Assert.Contains("\"ManualComplianceProofProperties\"", statements[1], StringComparison.Ordinal);
     }
 
@@ -281,13 +265,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
         Assert.Contains("LIMIT", proofs, StringComparison.Ordinal);
     }
 
-    // ─── The report and the upload ──────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// PROOF TEST: data rule (shape of the statement). The rows the report reads besides the traffic light's (the stays that owe nothing, the names of
-    /// the properties and the codes of the stays) are all of the org, the no-show ones only from the active statuses and with the mark, and in the reach
-    /// of the caller; none of them reads a guest.
-    /// </summary>
     [Fact]
     public async Task ComplianceReport_TheRowsItAddsToTheTrafficLight_AreOfTheOrgAndTheReach_AndReadNoGuest_Test()
     {
@@ -312,7 +289,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.GetCoverageReportAsync(
             Restricted, new ComplianceReportQuery(new DateOnly(2026, 8, 1), new DateOnly(2026, 11, 6), PropertyId), CancellationToken.None));
 
-        // The property filter, the no-show stays, the names of the properties and the codes of the stays.
         Assert.Equal(4, statements.Count);
         var noShows = Assert.Single(statements, sql => sql.Contains("\"NoShowAt\" IS NOT NULL", StringComparison.Ordinal));
         Assert.Matches("\"OrgId\" = @", noShows);
@@ -341,7 +317,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
                 CancellationToken.None);
         });
 
-        // The first statement is the check of the flat of the request (E20/F02/US01/T01: one statement for the flats a receipt covers; the next ones count the stays).
         var property = statements[0];
         Assert.Contains("FROM \"Properties\"", property, StringComparison.Ordinal);
         Assert.Matches("\"OrgId\" = @", property);
@@ -349,19 +324,12 @@ public class ComplianceArchiveNpgsqlTranslationTests
         Assert.Matches("\"Id\" = @", property);
     }
 
-    /// <summary>
-    /// PROOF TEST: data and permission rule (shape of the statements, E20/F02/US01/T01). The flats a receipt covers are checked in ONE statement of the org and the
-    /// reach of the caller (the ids as one array, not a query for each flat), and the stays the receipt may prove are read by the database, as one statement, from the one
-    /// definition of a stay that owes the communication: of the org, in the reach, in an active status with no no-show mark, arrived within the Europe/Rome day. Which of them
-    /// the receipt turns green is the verdict of the traffic light (the state engine, asked once for all of them).
-    /// </summary>
     [Fact]
     public async Task ComplianceArchive_TheCoverageOfSeveralFlats_IsOneStatementOfTheOrgAndTheReach_AndTheStaysAreReadInSql_Test()
     {
         var other = OtherPropertyId;
         DataTable? TwoFlats(string sql)
         {
-            // The read of the stays reads the flats in a subquery too: what is read first (FROM) decides what the statement is.
             if (Regex.IsMatch(sql, "FROM \"Bookings\"", RegexOptions.IgnoreCase))
                 return Table([("Id", typeof(Guid)), ("PropertyId", typeof(Guid))], BookingId, PropertyId);
 
@@ -375,7 +343,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
             return Rows(sql);
         }
 
-        // The traffic light turns every stay it is asked about green: the statements are the ones of the archive, not the engine's.
         var engine = new Mock<IComplianceStatusService>();
         engine
             .Setup(s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
@@ -414,7 +381,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
             Assert.DoesNotContain("\"Guests\"", stays, StringComparison.Ordinal);
         }
 
-        // The summary stops after the stays: two statements, none for a guest, a proof or a file.
         Assert.Equal(2, previewStatements.Count);
         engine.Verify(
             s => s.GetStaysAReceiptTurnsGreenAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()),
@@ -458,7 +424,6 @@ public class ComplianceArchiveNpgsqlTranslationTests
         TodayRome = new DateOnly(2026, 11, 6),
     };
 
-    /// <summary>A private bucket that signs and keeps nothing: the probes never reach a file.</summary>
     private sealed class SigningStorage : IFileStorage
     {
         public Task PutAsync(StorageBucket bucket, string key, Stream content, string contentType, CancellationToken cancellationToken = default) =>

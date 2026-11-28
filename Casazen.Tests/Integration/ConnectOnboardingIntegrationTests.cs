@@ -22,7 +22,6 @@ namespace Casazen.Tests.Integration;
 /// </summary>
 public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
-    /// <summary><c>App:PublicSiteBaseUrl</c> of <see cref="CasazenWebApplicationFactory"/>.</summary>
     private const string PublicSite = "https://casazen-app.vercel.app";
 
     private readonly CasazenWebApplicationFactory _factory;
@@ -110,7 +109,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         await _factory.SeedOrgForOwnerAsync(owner);
         var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
 
-        // A3-42: URLs sent by a client (old web app, forged request) are ignored.
         var payload = JsonSerializer.Serialize(new
         {
             returnUrl = "https://evil.example.com/phish?return=1",
@@ -253,7 +251,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.True(_factory.UsesPostgreSql);
         var owner = $"auth0|connect-parallel-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(owner);
-        // Keeps the first creation in flight long enough for the second click to arrive before its commit.
         _stripe.CreateDelay = TimeSpan.FromMilliseconds(400);
         var first = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
         var second = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
@@ -276,8 +273,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
     [Fact]
     public async Task CreateAccount_CollaboratorNotBillingAdmin_Returns403AndCreatesNothing()
     {
-        // A3-42: a collaborator of the org whose short-rent role has property.write (enough for the old policy) but who is
-        // not the org's billing admin (JWT role Staff) may read the status, not start or restart the onboarding.
         var owner = $"auth0|connect-owner-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(owner);
         var collaborator = await SeedCollaboratorAsync(org.Id, "property.read", "property.write", "payment.read");
@@ -298,7 +293,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
     [Fact]
     public async Task DashboardLink_CollaboratorNotBillingAdmin_Returns403AndCallsNothing()
     {
-        // AM-08b-d: the Express dashboard (balance, payouts, bank details) opens for the org's billing admin only, like the onboarding.
         var owner = $"auth0|connect-dash-owner-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(owner);
         await LinkAccountAsync(org.Id, "acct_dash_staff", chargesEnabled: true);
@@ -318,7 +312,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         var org = await _factory.SeedOrgForOwnerAsync(owner);
         var client = _factory.CreateAuthenticatedClient(userId: owner, roles: "PropertyOwner");
 
-        // No account yet: nothing to open, and nothing is created on Stripe for a link that would open nothing.
         var none = await client.PostAsync("/api/connect/dashboard-link", null);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, none.StatusCode);
@@ -327,7 +320,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal(0, _stripe.CreateAccountCallCount);
         Assert.Null((await GetOrgAsync(org.Id)).StripeConnectedAccountId);
 
-        // With the account of the org: the link of that account, without asking Stripe for its status first.
         await LinkAccountAsync(org.Id, "acct_dash_own", chargesEnabled: true);
         var linked = await client.PostAsync("/api/connect/dashboard-link", null);
 
@@ -337,7 +329,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         Assert.Equal("acct_dash_own", _stripe.LastLoginLinkAccountId);
         Assert.Equal(0, _stripe.GetAccountCallCount);
 
-        // Stripe refusing it (the onboarding is not complete) is the same answer as no account, not a server error.
         _stripe.FailLoginLink("acct_dash_own", HttpStatusCode.BadRequest, null);
         var refused = await client.PostAsync("/api/connect/dashboard-link", null);
 
@@ -375,10 +366,6 @@ public class ConnectOnboardingIntegrationTests : IClassFixture<CasazenWebApplica
         await db.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// A collaborator of the org: onboarded user of the org with a short-rent DB membership whose custom role has only
-    /// <paramref name="permissions"/>.
-    /// </summary>
     private async Task<string> SeedCollaboratorAsync(Guid orgId, params string[] permissions)
     {
         var userId = $"auth0|connect-collaborator-{Guid.NewGuid():N}";
@@ -440,11 +427,9 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
     public int GetAccountCallCount => Volatile.Read(ref _getAccountCallCount);
     public int OnboardingLinkCallCount => Volatile.Read(ref _onboardingLinkCallCount);
 
-    /// <summary>Calls of <see cref="CreateDashboardLoginLinkAsync"/> (SP-14).</summary>
     public int LoginLinkCallCount => Volatile.Read(ref _loginLinkCallCount);
     public string? LastAccountId { get; private set; }
 
-    /// <summary>The country the last <see cref="CreateExpressAccountAsync"/> was asked to create the account in (issue #1001).</summary>
     public string? LastCreatedCountry { get; private set; }
     public string? LastLoginLinkAccountId { get; private set; }
     public ConnectAccountSnapshot? NextSnapshot { get; set; }
@@ -471,13 +456,11 @@ internal sealed class FakeStripeConnectGateway : IStripeConnectGateway
         LastRefreshUrl = null;
     }
 
-    /// <summary><c>GET /v1/accounts/{accountId}</c> answers with this Stripe error.</summary>
     public void FailGetAccount(string accountId, HttpStatusCode status, string? code) =>
         _getAccountFailures[accountId] = StripeConnectGateway.ToConnectException(
             StripeConnectGatewayTests.StripeError(status, code),
             "read the connected account");
 
-    /// <summary><c>POST /v1/accounts/{accountId}/login_links</c> answers with this Stripe error.</summary>
     public void FailLoginLink(string accountId, HttpStatusCode status, string? code) =>
         _loginLinkFailures[accountId] = StripeConnectGateway.ToConnectException(
             StripeConnectGatewayTests.StripeError(status, code),

@@ -14,8 +14,6 @@ public class ServicePaymentScheduleTests
     private static readonly DateTime Asked = new(2026, 10, 1, 9, 0, 0, DateTimeKind.Utc);
     private static readonly int[] Days = [2, 7];
 
-    // ─── Late ───
-
     [Fact]
     public void LateSince_IsTheRequestPlusTheConfiguredDays_AndNullWhileNotAsked()
     {
@@ -43,13 +41,10 @@ public class ServicePaymentScheduleTests
         Assert.False(ServicePaymentSchedule.IsLate(ServicePaymentStatus.Requested, Asked, 7, Asked.AddDays(7).AddTicks(-1)));
         Assert.True(ServicePaymentSchedule.IsLate(ServicePaymentStatus.Requested, Asked, 7, Asked.AddDays(7)));
         Assert.True(ServicePaymentSchedule.IsLate(ServicePaymentStatus.Failed, Asked, 7, Asked.AddDays(30)));
-        // Paid, in flight, withdrawn or waiting for a review are not "late"; neither is a payment nobody asked for yet.
         foreach (var status in new[] { ServicePaymentStatus.Paid, ServicePaymentStatus.Processing, ServicePaymentStatus.Canceled, ServicePaymentStatus.NeedsReview })
             Assert.False(ServicePaymentSchedule.IsLate(status, Asked, 7, Asked.AddDays(30)));
         Assert.False(ServicePaymentSchedule.IsLate(ServicePaymentStatus.Requested, null, 7, Asked.AddDays(30)));
     }
-
-    // ─── Reminders ───
 
     private static bool Due(int sentCount, DateTime now, DateTime? lastSentAt = null, ServicePaymentStatus status = ServicePaymentStatus.Requested, IReadOnlyList<int>? days = null) =>
         ServicePaymentSchedule.ReminderIsDue(status, sentCount, Asked, lastSentAt ?? Asked, days ?? Days, now);
@@ -92,7 +87,6 @@ public class ServicePaymentScheduleTests
     [Fact]
     public void ReminderIsDue_ARemindersTheSupplierSentByHand_CountsAsOneOfThem()
     {
-        // The supplier reminded at day 1 (two emails so far): the reminder of day 2 is already made up for, the one of day 7 is not.
         Assert.False(Due(2, Asked.AddDays(2), Asked.AddDays(1)));
         Assert.False(Due(2, Asked.AddDays(6), Asked.AddDays(1)));
         Assert.True(Due(2, Asked.AddDays(7), Asked.AddDays(1)));
@@ -103,7 +97,6 @@ public class ServicePaymentScheduleTests
     {
         var sentAt = Asked.AddDays(2).AddHours(3);
 
-        // The supplier asked three hours ago and the day of the second reminder has come: it waits for the day to pass.
         Assert.False(ServicePaymentSchedule.ReminderIsDue(ServicePaymentStatus.Requested, 2, Asked, Asked.AddDays(7).AddHours(-3), Days, Asked.AddDays(7)));
         Assert.True(ServicePaymentSchedule.ReminderIsDue(ServicePaymentStatus.Requested, 2, Asked, Asked.AddDays(7).AddHours(-24), Days, Asked.AddDays(7)));
         Assert.False(Due(2, sentAt.AddHours(23), sentAt));

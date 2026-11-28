@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// AM-03 (S3): the one answer to «which properties does the caller reach?», read from the org membership in the
-/// authorization snapshot and not from the token. A role × scope × status table, then the single-resource check and the cache.
-/// </summary>
 public class HostScopeResolverTests
 {
     private const string UserId = "auth0|member";
@@ -38,8 +34,6 @@ public class HostScopeResolverTests
 
     private static HashSet<string> Roles(params string[] roles) => new(roles, StringComparer.Ordinal);
 
-    // ─── a member of the team: the row decides ─────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(OrgRole.Owner)]
     [InlineData(OrgRole.Admin)]
@@ -60,7 +54,6 @@ public class HostScopeResolverTests
     [InlineData(OrgRole.Accountant, PropertyScope.Selected)]
     public void Decide_ASelectedScopeOnARoleThatIsNotTheCollaborators_IsIgnored_TheRoleReachesTheWholeOrg(OrgRole role, PropertyScope stored)
     {
-        // «Solo alcuni» is the collaborator's. A stale value on another role never narrows, and the writes refuse to set it.
         Assert.True(HostScopeResolver.Decide(Snapshot(role, stored), UserId, NoRoles, OrgId)!.IsOrgWide);
     }
 
@@ -80,8 +73,6 @@ public class HostScopeResolverTests
     [Fact]
     public void Decide_ATokenRoleNeverWidensAMember()
     {
-        // A role left in the token (a former property manager, a PropertyOwner of an org it left, a platform Admin) does not
-        // widen a collaborator «Solo alcuni».
         var scope = HostScopeResolver.Decide(
             Snapshot(OrgRole.Collaborator, PropertyScope.Selected), UserId, Roles("PropertyManager", "Admin", "PropertyOwner"), OrgId);
 
@@ -100,8 +91,6 @@ public class HostScopeResolverTests
     [Fact]
     public void Decide_AnInactiveAccount_HasNoScope() =>
         Assert.Null(HostScopeResolver.Decide(Snapshot(OrgRole.Owner, active: false), UserId, NoRoles, OrgId));
-
-    // ─── an account in no org team: the rule of before the team ───────────────────────────────────────
 
     [Theory]
     [InlineData("PropertyManager")]
@@ -125,8 +114,6 @@ public class HostScopeResolverTests
     public void Decide_NoMembershipAndNoRole_ReachesOnlyTheOnesItCreated() =>
         Assert.Equal(new HostScope(OrgId, OwnerId: UserId), HostScopeResolver.Decide(Snapshot(), UserId, NoRoles, OrgId));
 
-    // ─── the single-resource check ─────────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(OrgRole.Owner)]
     [InlineData(OrgRole.PropertyManager)]
@@ -148,7 +135,6 @@ public class HostScopeResolverTests
 
         Assert.True(HostScopeResolver.Reaches(snapshot, scope, PropertyA, "auth0|creator"));
         Assert.False(HostScopeResolver.Reaches(snapshot, scope, PropertyB, "auth0|creator"));
-        // The creator being the member itself changes nothing: a restricted collaborator is not an owner.
         Assert.False(HostScopeResolver.Reaches(snapshot, scope, PropertyB, UserId));
         Assert.False(HostScopeResolver.Reaches(snapshot, scope, null, "auth0|creator"));
     }
@@ -172,8 +158,6 @@ public class HostScopeResolverTests
         Assert.False(HostScopeResolver.Reaches(snapshot, scope, PropertyA, "auth0|somebody-else"));
         Assert.False(HostScopeResolver.Reaches(snapshot, scope, PropertyA, null));
     }
-
-    // ─── through the store: one snapshot read, and no user id means no scope ───────────────────────────
 
     [Fact]
     public async Task ResolveAsync_ReadsTheSnapshotOfTheUser_AndNeverForAnAnonymousCaller()

@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-13a: what a supplier needs before it publishes its showcase, and when the showcase takes bookings. The bookings are the money
-/// rule (VT-D7: they open only with the payment), so the whole truth table of <see cref="ShowcaseBookings"/> is checked.
-/// </summary>
 public class ShowcaseReadinessTests
 {
     private static ShowcaseReadinessFacts Facts(int services = 1, bool zones = true, bool hours = true, bool verified = true) =>
@@ -50,7 +46,6 @@ public class ShowcaseReadinessTests
     [Fact]
     public void TheBookings_AreOpenOnlyWhenPublishedNotPausedTheSwitchOnThePaymentsOnAndTheAccountReady()
     {
-        // Every combination of the five facts (2^5 = 32).
         for (var mask = 0; mask < 32; mask++)
         {
             var published = (mask & 1) != 0;
@@ -65,7 +60,6 @@ public class ShowcaseReadinessTests
             Assert.Equal(expected, bookings.Open);
             Assert.Equal(expected, bookings.BlockedBy.Count == 0);
 
-            // The value the publication writes is the same rule without the switch itself.
             Assert.Equal(published && !paused && paymentsOn && accountReady, ShowcaseBookings.SwitchValue(published, paused, paymentsOn, accountReady));
         }
     }
@@ -77,7 +71,6 @@ public class ShowcaseReadinessTests
             new[] { ShowcaseBookingBlocks.NotPublished, ShowcaseBookingBlocks.PaymentsOff, ShowcaseBookingBlocks.AccountNotReady },
             ShowcaseBookings.Evaluate(published: false, paused: false, onlineBookingEnabled: false, paymentsFlagOn: false, accountReady: false).BlockedBy);
 
-        // Everything is ready but the switch: the account became ready after the publication ("Riattiva" turns it on).
         Assert.Equal(
             new[] { ShowcaseBookingBlocks.SwitchOff },
             ShowcaseBookings.Evaluate(published: true, paused: false, onlineBookingEnabled: false, paymentsFlagOn: true, accountReady: true).BlockedBy);

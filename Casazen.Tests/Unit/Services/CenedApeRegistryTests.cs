@@ -21,7 +21,6 @@ public class CenedApeRegistryTests
         var entry = await Registry(handler).FindAsync(Monza);
 
         Assert.Equal(new ApeRegistryEntry("12345000067819", "F", new DateOnly(2018, 3, 15)), entry);
-        // Only the comune and the index are sent (open data, Socrata): no document, no person.
         var query = Uri.UnescapeDataString(handler.Requests.Single().Query);
         Assert.Contains("upper(comune)=upper('Monza') AND ep_gl_nren=123.45", query);
         Assert.StartsWith("https://www.dati.lombardia.it/resource/bbky-sde5.json", handler.Requests.Single().GetLeftPart(UriPartial.Path));

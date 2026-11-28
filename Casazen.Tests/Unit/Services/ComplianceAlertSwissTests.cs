@@ -24,11 +24,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E31/F02/US01/T01 (NF-131): the rules of the staged alerts about the notification of the guests of a property in a canton other than Ticino to the cantonal authority. The same three stages as
-/// the 24 hours of Ticino (<see cref="ComplianceAlertSchedule.DueTicinoStep"/>, whose clock, daylight saving and outage rules <c>ComplianceAlertTicinoScheduleTests</c> prove), measured against the
-/// deadline of the regime: the type, the kinds and the key this class proves, and the sequence on the deadline of a regime.
-/// </summary>
 public class ComplianceAlertSwissScheduleTests
 {
     private static readonly Guid PropertyId = Guid.Parse("00000000-0000-0000-0000-0000000000b1");
@@ -45,7 +40,6 @@ public class ComplianceAlertSwissScheduleTests
     [Fact]
     public void DueSwissStep_FollowsTheSequenceAgainstTheDeadlineOfTheRegime_ArrivalDay_SixHoursBefore_Overdue_TwoReminders_ThenNothing()
     {
-        // Schaffhausen: the notification of Thursday 19 November is due on Friday at 02:00 (01:00Z). No expected check-in: the first stage is at 18:00 on the clock of the property (17:00Z).
         const string due = "2026-11-20T01:00:00Z";
 
         (string Now, int? Stage, ComplianceAlertKind? Kind, int Reminder)[] timeline =
@@ -62,7 +56,6 @@ public class ComplianceAlertSwissScheduleTests
             ("2026-11-22T01:00:00Z", ComplianceAlertStage.TicinoOverdueReminder(2), ComplianceAlertKind.SwissNotificationOverdue, 2),
             ("2026-11-22T23:59:59Z", ComplianceAlertStage.TicinoOverdueReminder(2), ComplianceAlertKind.SwissNotificationOverdue, 2),
 
-            // The last stage is dropped a day after its time: never a late message of a day that has been overdue for days.
             ("2026-11-23T01:00:00Z", null, null, 0),
             ("2026-12-01T09:00:00Z", null, null, 0),
         ];
@@ -91,7 +84,6 @@ public class ComplianceAlertSwissScheduleTests
     [Fact]
     public void DueSwissStep_IsTheTicinoSequence_WithTheSwissTypeAndKindsOnly()
     {
-        // The same stage at the same moment for the same deadline: nothing of the clock, the daylight saving or the outage rules is written twice.
         foreach (var now in new[] { "2026-11-19T17:00:00Z", "2026-11-19T19:30:00Z", "2026-11-20T01:00:00Z", "2026-11-21T01:00:00Z", "2026-11-22T01:00:00Z", "2026-11-23T01:00:00Z" })
         {
             var ticino = ComplianceAlertSchedule.DueTicinoStep(PropertyId, Day, Utc("2026-11-20T01:00:00Z"), Zurich, null, _options, Utc(now));
@@ -109,13 +101,11 @@ public class ComplianceAlertSwissScheduleTests
     [Fact]
     public void DueSwissStep_WhereTheDeadlineIsTheArrival_TheFirstAlertOfARecordedArrivalIsTheOverdueOne()
     {
-        // Zug: the notification is due at the arrival. The arrival is recorded at 15:00 (14:00Z): at the first run after it the highest stage due is the overdue one, never stages 1 and 2 as well.
         var step = Step("2026-11-19T14:00:00Z", "2026-11-19T14:05:00Z", expected: new TimeOnly(13, 0));
 
         Assert.Equal(ComplianceAlertStage.TicinoOverdue, step!.Stage);
         Assert.Equal(ComplianceAlertKind.SwissNotificationOverdue, step.Alert.Kind);
 
-        // Before it, with the day not started on the clock of the property, nothing is due.
         Assert.Null(Step("2026-11-19T14:00:00Z", "2026-11-18T23:00:00Z"));
     }
 
@@ -131,11 +121,6 @@ public class ComplianceAlertSwissScheduleTests
     }
 }
 
-/// <summary>
-/// E31/F02/US01/T01 (NF-131): the alerts about the notification of the guests of a property in a canton other than Ticino to the cantonal authority, on the real service (EF InMemory): the days
-/// come from <see cref="SwissNotificationService"/> (the one rule of a closed day), the delivery is the real <see cref="NotificationService"/> over recording queues, the audience a mock that answers
-/// by org. 19 November 2026 is a Thursday, winter time (CET, UTC+1). Schaffhausen is the regime the tests use (verified, so its duty is <c>Required</c> by default; due the night after the arrival at 02:00).
-/// </summary>
 public class ComplianceAlertSwissTests : IDisposable
 {
     private const string GuestFirstName = "Zxqvgfhj";
@@ -159,7 +144,6 @@ public class ComplianceAlertSwissTests : IDisposable
 
     public ComplianceAlertSwissTests()
     {
-        // The alerts of the other cantons share the flag of the Ticino alerts; the traffic light stays off in these tests.
         _world.Flags.Setup(f => f.IsEnabled(FeatureFlags.TicinoNotificationAlerts)).Returns(true);
         _recipients
             .Setup(r => r.ForPropertyAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -205,8 +189,6 @@ public class ComplianceAlertSwissTests : IDisposable
 
     private static string Subject(RecordingEmailQueue queue, int index) => queue.Snapshot()[index].Content.Subject;
 
-    // ─── Each stage once ───
-
     [Fact]
     public async Task SwissAlerts_EachStageOnce_Test()
     {
@@ -222,7 +204,6 @@ public class ComplianceAlertSwissTests : IDisposable
                 sentByHour.Add((at, sent));
         }
 
-        // Five messages in all, one for each stage, each at the first run after its time (the job is hourly): 18:00 on the arrival day, six hours before 02:00 of the next day, the deadline, two reminders.
         Assert.Equal(
             [
                 (new DateTimeOffset(2026, 11, 19, 17, 0, 0, TimeSpan.Zero), 1),
@@ -237,7 +218,6 @@ public class ComplianceAlertSwissTests : IDisposable
             (property.Id, org.Id, ComplianceAlertType.SwissNotification, "2026-11-19", ComplianceAlertStage.TicinoOverdueReminder(2), 5),
             (state.PropertyId, state.OrgId, state.Type, state.ReferenceKey, state.Stage, state.AlertCount));
 
-        // One e-mail to the address of the org and one push to the hosts of the property for each stage, with a key of its own (a device gets one push per key).
         Assert.Equal(5, _emails.Snapshot().Count);
         Assert.All(_emails.Snapshot(), e => Assert.Equal(("a@example.com", EmailTemplates.Names.SwissNotificationAlert), (e.To, e.Template)));
         Assert.StartsWith("Notifica degli ospiti all'autorità da preparare - Casa a", Subject(_emails, 0), StringComparison.Ordinal);
@@ -260,15 +240,12 @@ public class ComplianceAlertSwissTests : IDisposable
             Assert.Null(p.Payload.ServiceRequestId);
         });
 
-        // A Swiss day leaves no «To do» and no popup of the router (the cockpit lists it in its own section).
         _followUp.VerifyNoOtherCalls();
     }
 
     [Fact]
     public async Task SwissAlerts_AskOrNotRequiredOrARegisterOnlyCanton_AreNeverAlerted_Test()
     {
-        // PROOF TEST (data): no false legal alarm. The canton whose sources are partial (Zurich, Nidwalden) is Ask, the host that said NotRequired is not alerted, and a canton that only asks for a
-        // register (Bern) is never alerted, whatever the host says: nothing is read, written, e-mailed or pushed, and nobody is even asked who to tell.
         var ask = Tenant("zh", "ZH");
         var weekly = Tenant("nw", "NW");
         var notRequired = Tenant("sh", "SH", GuestNotificationOverride.NotRequired);
@@ -285,7 +262,6 @@ public class ComplianceAlertSwissTests : IDisposable
         Assert.Empty(await _world.Db.ComplianceAlertStates.ToListAsync());
         _recipients.VerifyNoOtherCalls();
 
-        // The host that answers Required turns on the alerts of its canton: a property of Nidwalden that said so is alerted (its deadline is the Sunday of the week), the other one still is not.
         var chosen = Tenant("nw2", "NW", GuestNotificationOverride.Required);
         _world.AddStay(chosen.Property);
         Assert.Equal(1, await RunAtAsync("2026-11-20T10:00:00Z"));
@@ -302,7 +278,6 @@ public class ComplianceAlertSwissTests : IDisposable
 
         Assert.Equal(2, await RunAtAsync("2026-11-19T17:00:00Z"));
 
-        // One state row of each type, each about its own property; the Ticino stage is the one of E30.
         var states = await _world.Db.ComplianceAlertStates.AsNoTracking().ToListAsync();
         Assert.Equal(ComplianceAlertType.SwissNotification, Assert.Single(states, s => s.PropertyId == swiss.Property.Id).Type);
         Assert.Equal(ComplianceAlertType.TicinoNotification, Assert.Single(states, s => s.PropertyId == ticino.Property.Id).Type);
@@ -320,11 +295,9 @@ public class ComplianceAlertSwissTests : IDisposable
     [InlineData("NE")]
     public async Task SwissAlerts_ARegimeWithNoDeadline_IsNeverAlerted_ADeadlineIsNeverGuessed(string canton)
     {
-        // Fribourg and Zurich have no deadline at all; Basel-Stadt and Neuchâtel say «every day» with no cut-off time: none of them has a moment an alert could be measured against.
         var tenant = Tenant(canton.ToLowerInvariant(), canton, GuestNotificationOverride.Required);
         _world.AddStay(tenant.Property);
 
-        // The day is listed (the host said it is required) but has no deadline: no stage is due, whatever the time (also the midnight that would end the arrival day, and the days after it).
         var listed = Assert.Single(await _world.Service().ListPendingDaysAsync(null, null, Day));
         Assert.Equal((Day, (DateTime?)null), (listed.Day, listed.DueAtUtc));
         Assert.Equal(0, await RunAtAsync("2026-11-19T17:00:00Z"));
@@ -344,14 +317,12 @@ public class ComplianceAlertSwissTests : IDisposable
         _world.AddStay(property);
         Assert.Equal(1, await RunAtAsync("2026-11-19T17:00:00Z"));
 
-        // The host uploaded nothing on the portal of the canton: it declared the day notified. The service of the days says it is closed, so no stage is due any more.
         await _world.Service().DeclareDayAsync(property.Id, Day, "auth0|anna");
         Assert.Equal(0, await RunAtAsync("2026-11-19T19:00:00Z"));
         Assert.Equal(0, await RunAtAsync("2026-11-20T01:00:00Z"));
         Assert.Equal(0, await RunAtAsync("2026-11-21T01:00:00Z"));
         Assert.Single(_emails.Snapshot());
 
-        // A wrong declaration undone: the day is to notify again and the highest stage due goes out once (never the backlog).
         await _world.Service().UndeclareDayAsync(property.Id, Day, "auth0|anna");
         Assert.Equal(1, await RunAtAsync("2026-11-21T02:00:00Z"));
         Assert.Equal(0, await RunAtAsync("2026-11-21T03:00:00Z"));
@@ -381,19 +352,14 @@ public class ComplianceAlertSwissTests : IDisposable
         _world.AddStay(property, expectedArrival: "11:00");
         _world.AddStay(property, expectedArrival: "16:00");
 
-        // 11:00 + 2 hours = 13:00 on the clock of the property, which is UTC: 13:00Z, not the 12:00Z of Zurich. The deadline is 02:00 of the next day on that clock: the day after at 02:00Z.
         Assert.Equal(0, await RunAtAsync("2026-11-19T12:59:00Z"));
         Assert.Equal(1, await RunAtAsync("2026-11-19T13:00:00Z"));
         Assert.Equal(ComplianceAlertStage.TicinoFileToPrepare, (await _world.Db.ComplianceAlertStates.SingleAsync()).Stage);
     }
 
-    // ─── Permission and privacy ───
-
     [Fact]
     public async Task SwissAlerts_OtherOrganizationNeverAlerted_Test()
     {
-        // PROOF TEST (permission/privacy): each org hears about its own properties only. Three orgs with a property of Schaffhausen, two with a stay: each e-mail goes to the address of its own org,
-        // the audience is asked only for the pair (org, its own property), the push names its own property, and the third org (no stay) hears nothing about the days of the two others.
         var a = Tenant("a");
         var b = Tenant("b");
         var c = Tenant("c");
@@ -416,8 +382,6 @@ public class ComplianceAlertSwissTests : IDisposable
     [Fact]
     public async Task SwissAlerts_PayloadHasNoPersonalData_Test()
     {
-        // PROOF TEST (privacy): what leaves the system is the property, the day, the deadline and the TYPES of field that miss: never the name of a guest, a document, an address, a plate, a booking code or
-        // an e-mail. The stay holds all of them, plus a guest whose date of birth and document type are missing, so the types of field are told.
         var (_, property) = Tenant("a");
         var stay = _world.AddStay(property, bookingCode: BookingCode, plate: Plate, guests: 2);
         _world.AddGuest(stay, position: 0, firstName: GuestFirstName, lastName: GuestLastName, documentNumber: DocumentNumber, street: StreetOfTheGuest);
@@ -440,13 +404,10 @@ public class ComplianceAlertSwissTests : IDisposable
             Assert.DoesNotContain(personal, everything, StringComparison.OrdinalIgnoreCase);
         }
 
-        // What it says: the property, the types of field that miss.
         Assert.Contains("Casa a", everything, StringComparison.Ordinal);
         Assert.Contains("data di nascita", everything, StringComparison.Ordinal);
         Assert.Contains("tipo di documento", everything, StringComparison.Ordinal);
     }
-
-    // ─── The flags ───
 
     [Fact]
     public async Task SwissAlerts_FlagOffSendsNothing_Test()
@@ -459,7 +420,6 @@ public class ComplianceAlertSwissTests : IDisposable
         Assert.Equal(0, await RunAtAsync("2026-11-19T17:00:00Z"));
         Assert.Equal(0, await RunAtAsync("2026-11-20T02:00:00Z"));
 
-        // Both flags off: the run does nothing and writes nothing; no e-mail, no push, nobody is asked who to tell.
         Assert.True(result.Skipped);
         Assert.Empty(_emails.Snapshot());
         Assert.Empty(_pushes.Queued);
@@ -500,8 +460,6 @@ public class ComplianceAlertSwissTests : IDisposable
         Assert.Contains(_log.Entries, e => e.Level >= LogLevel.Information && e.Message.Contains("Swiss notification alerts skipped", StringComparison.Ordinal) && e.Message.Contains("not registered", StringComparison.Ordinal));
     }
 
-    // ─── The day is read again before a stage is claimed ───
-
     [Fact]
     public async Task SwissAlerts_ADayThatClosesBetweenTheListAndTheSend_SendsNothing_AndWritesNoState()
     {
@@ -510,7 +468,6 @@ public class ComplianceAlertSwissTests : IDisposable
         IReadOnlyList<SwissPendingDay> listed = [new SwissPendingDay(property.OrgId, property.Id, property.Name, "CH-SH", Day, 1, new DateTime(2026, 11, 20, 1, 0, 0, DateTimeKind.Utc))];
         days.Setup(d => d.ListPendingDaysAsync(null, null, Day, It.IsAny<CancellationToken>())).ReturnsAsync(listed);
 
-        // The detail of the day no longer lists it: a co-host declared it between the two reads. Or the property changed canton: the day is listed under another regime.
         foreach (var regimeOfTheDetail in new string?[] { null, "CH-ZG" })
         {
             IReadOnlyList<SwissPendingDay> pendingDays = regimeOfTheDetail is null
@@ -570,8 +527,6 @@ public class ComplianceAlertSwissTests : IDisposable
         null,
         pendingDays);
 
-    // ─── The bell, the registration, the enumerations ───
-
     [Theory]
     [InlineData(PushTypes.SwissNotificationDue)]
     [InlineData(PushTypes.SwissNotificationOverdue)]
@@ -588,7 +543,6 @@ public class ComplianceAlertSwissTests : IDisposable
         Assert.Equal(propertyId, queued.EntityId);
         Assert.Equal(type, queued.Type);
 
-        // The property is named for the hosts of a property only: another audience (an id that is a booking, not a property) is never turned into it.
         Assert.Null(QueuedInAppNotification.From(PushAudience.BookingHosts(propertyId), payload, new DateTime(2026, 11, 19, 17, 0, 0, DateTimeKind.Utc)).EntityId);
     }
 
@@ -648,7 +602,6 @@ public class ComplianceAlertSwissTests : IDisposable
         using var scope = provider.CreateScope();
         var result = await scope.ServiceProvider.GetRequiredService<IComplianceAlertService>().RunAsync();
 
-        // The Swiss days were read: the optional service was given by the container, not left to its default.
         Assert.Equal(1, result.Sent);
         notifications.Verify(
             n => n.SendComplianceAlertAsync(
@@ -669,8 +622,6 @@ public class ComplianceAlertSwissTests : IDisposable
             [(1, "IstatPeriod"), (2, "TouristTaxPeriod"), (3, "ConnectionInactive"), (4, "TicinoNotification"), (5, "SwissNotification")],
             Enum.GetValues<ComplianceAlertType>().Select(t => ((int)t, t.ToString())).ToArray());
     }
-
-    // ─── The texts ───
 
     [Theory]
     [InlineData("it-IT")]
@@ -710,7 +661,6 @@ public class ComplianceAlertSwissTests : IDisposable
                 Assert.DoesNotContain("someFutureCode", text, StringComparison.Ordinal);
             }
 
-            // A deadline at 01:00Z is 02:00 in Zurich in winter.
             Assert.Contains(culture.TwoLetterISOLanguageName == "en" ? "20 November 2026, 02:00" : "20/11/2026 02:00", email.HtmlBody, StringComparison.Ordinal);
         }
 
@@ -724,7 +674,6 @@ public class ComplianceAlertSwissTests : IDisposable
     [Fact]
     public void TheSwissNotificationTexts_NameNoSupplier_AndExistInBothLanguages()
     {
-        // The authorities may be named, the suppliers of software and of the cantonal systems never: no text of the notification reaches a user with a supplier in it.
         string[] suppliers = ["hoko", "unisys", "u-stay", "ustay", "feratel", "chekin", "stellar", "chargeautomation", "lodgify", "smoobu", "arhon", "tourx", "softec", "octorate", "airbnb", "concordato"];
         var root = new DirectoryInfo(System.AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "Casazen.sln")))

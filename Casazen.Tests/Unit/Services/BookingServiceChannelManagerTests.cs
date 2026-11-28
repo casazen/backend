@@ -72,8 +72,6 @@ public class BookingServiceChannelManagerTests
             dayRules: NoDayRules.Instance);
     }
 
-    // --- The host's manual booking -------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task CreateManualBookingAsync_OctorateSaysNotAvailable_ThrowsTheConflictOfATakenNightAndStoresNothing()
     {
@@ -86,7 +84,6 @@ public class BookingServiceChannelManagerTests
         Assert.Equal(BookingErrorCodes.DatesUnavailable, ex.Code);
         _guests.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
         _repository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
-        // The property, the org and the nights asked are the booking's, and the guests are the ones who come.
         _channelManager.Verify(
             c => c.CheckAsync(
                 booking.PropertyId,
@@ -133,8 +130,6 @@ public class BookingServiceChannelManagerTests
             Times.Never);
     }
 
-    // --- The guest's checkout ------------------------------------------------------------------------------------------------------
-
     [Fact]
     public async Task CreateDirectBookingAsync_OctorateSaysNotAvailable_ThrowsTheConflictBeforeTheHoldIsWritten()
     {
@@ -177,8 +172,6 @@ public class BookingServiceChannelManagerTests
             Times.Never);
     }
 
-    // --- Helpers ------------------------------------------------------------------------------------------------------------------
-
     private void CasaZenSaysFree() =>
         _repository
             .Setup(x => x.IsAvailableAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<int?>()))
@@ -200,7 +193,6 @@ public class BookingServiceChannelManagerTests
         NumberOfGuests = 2,
     };
 
-    /// <summary>A property whose org can take payments, free on CasaZen's side for any dates.</summary>
     private Property ConnectReadyProperty()
     {
         var property = new Property

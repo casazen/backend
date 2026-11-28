@@ -14,10 +14,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.HealthChecks;
 
-/// <summary>
-/// FD-12 (A9-19): settings the API cannot run without stop the startup outside Development/Testing; the commit of
-/// the build is read from the host variables.
-/// </summary>
 public class StartupConfigurationTests
 {
     [Fact]

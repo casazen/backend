@@ -31,8 +31,6 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    // ─── The checks ───
-
     [PostgresTheory]
     [InlineData(0)]
     [InlineData(-1)]
@@ -65,7 +63,6 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             r.Status = ServicePaymentRefundStatus.Succeeded;
             r.CompletedAt = DateTime.UtcNow;
         });
-        // The other states need no date.
         foreach (var status in new[] { ServicePaymentRefundStatus.Pending, ServicePaymentRefundStatus.Failed, ServicePaymentRefundStatus.Canceled, ServicePaymentRefundStatus.RequiresAction })
             await SaveRefundAsync(parents, r => r.Status = status);
     }
@@ -74,7 +71,6 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
     public async Task Checks_TheEndOfACommissionPeriodNeedsTheCommissionItEnds()
     {
         var parents = await MigratedWithPaymentAsync();
-        // A fixed instant: PostgreSQL keeps microseconds, .NET 100 ns, so a computed one would not compare equal after the round trip.
         var until = new DateTime(2031, 6, 30, 12, 0, 0, DateTimeKind.Utc);
 
         await using (var db = _database!.CreateContext())
@@ -100,8 +96,6 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             Assert.Equal(until, stored.CommissionOverrideUntil);
         }
     }
-
-    // ─── Keys and indexes ───
 
     [PostgresFact]
     public async Task Index_OneRefundPerNumberWithinAPayment_TheNextPaymentStartsAgain()
@@ -174,13 +168,10 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
         var status = await db.Database.SqlQuery<int>($"SELECT \"Status\" AS \"Value\" FROM \"ServiceRequestPaymentRefunds\" WHERE \"Id\" = {id}").SingleAsync();
         var origin = await db.Database.SqlQuery<int>($"SELECT \"Origin\" AS \"Value\" FROM \"ServiceRequestPaymentRefunds\" WHERE \"Id\" = {id}").SingleAsync();
 
-        // Pending 0, Succeeded 1, Failed 2, Canceled 3, RequiresAction 4; Admin 0, Stripe 1.
         Assert.Equal(4, status);
         Assert.Equal(1, origin);
         Assert.Equal(1, (int)ServicePaymentRefundStatus.Succeeded);
     }
-
-    // ─── Helpers ───
 
     private sealed record Parents(Guid HostOrg, Guid Property, Guid SupplierOrg, Guid Request, Guid Payment);
 
@@ -192,7 +183,6 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
         return await SeedParentsAsync(db);
     }
 
-    /// <summary>A host, a supplier, a request and a payment that was paid through Stripe: what a refund hangs from.</summary>
     private static async Task<Parents> SeedParentsAsync(AppDbContext db)
     {
         var hostOrg = new OrgEntity
@@ -236,8 +226,6 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             Category = ServiceCategories.Cleaning,
         };
 
-        // Plain SQL for the orgs, the property and the request (LegacyOrgRows, LegacyPropertyRows, LegacyServiceRequestRows): they
-        // name only the columns they need, so a column that a later migration adds to these tables cannot break the tests.
         await LegacyOrgRows.InsertAsync(db, hostOrg);
         await LegacyOrgRows.InsertAsync(db, supplierOrg);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Orgs" SET "OrgType" = {(int)supplierOrg.OrgType} WHERE "Id" = {supplierOrg.Id}""");
@@ -289,7 +277,6 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
         CommissionPercentOverride = overridePercent,
     };
 
-    /// <summary>A valid refund of the payment with the change applied, saved on a context of its own; returns its id.</summary>
     private async Task<Guid> SaveRefundAsync(Parents parents, Action<ServiceRequestPaymentRefund> change)
     {
         await using var db = _database!.CreateContext();

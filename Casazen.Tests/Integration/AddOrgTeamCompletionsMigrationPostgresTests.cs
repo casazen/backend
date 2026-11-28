@@ -47,13 +47,11 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
         Assert.Equal(1L, await ScalarAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'UIX_OrgInvitationProperties_InvitationId_PropertyId'"));
         Assert.Equal(1L, await ScalarAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_OrgInvitationProperties_OrgId'"));
         Assert.Equal(1L, await ScalarAsync("SELECT COUNT(*) FROM pg_indexes WHERE indexname = 'IX_OrgInvitationProperties_PropertyId'"));
-        // The invitation, the org and the property: the rows that mention them go with them.
         Assert.Equal(
             3L,
             await ScalarAsync(
                 """SELECT COUNT(*) FROM pg_constraint WHERE conrelid = '"OrgInvitationProperties"'::regclass AND contype = 'f' AND confdeltype = 'c'"""));
 
-        // The role with the one permission the property manager gets in the account (AM-D12), and every role of the catalog.
         var role = await db.Roles.Include(r => r.Permissions).AsNoTracking().SingleAsync(r => r.Id == OrgManagerRoleId);
         Assert.Equal((AccountContext.Key, AccountContext.RoleKeys.Manager), (role.ContextKey, role.RoleKey));
         Assert.Equal([AccountContext.Permissions.SuppliersManage], role.Permissions.Select(p => p.PermissionKey));
@@ -64,7 +62,6 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
             Assert.Equal(expected.Permissions.Order(), seeded.Permissions.Select(p => p.PermissionKey).Order());
         }
 
-        // The identity sequence moved beyond the seeded id: a role created later without an id does not collide with it.
         var next = await ScalarAsync(
             "INSERT INTO \"Roles\" (\"ContextKey\", \"RoleKey\") VALUES ('short-rent', 'am02c_sequence_probe') RETURNING \"Id\"");
         Assert.True(next > OrgManagerRoleId, $"The next role id is {next}");
@@ -76,8 +73,6 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
         await using var db = _database!.CreateContext();
         var (org, _) = await _kit.SeedOwnerOrgAsync();
 
-        // A property manager as the team wrote it before AM-02c: the rental membership of its role and no account one. (The
-        // migration itself writes no membership: its script has no INSERT into UserContextMemberships, see the SQL test.)
         const string historic = "auth0|pia-storica";
         db.Users.Add(NewUser(historic, org.Id));
         db.OrgMembers.Add(new OrgMember { OrgId = org.Id, UserId = historic, Role = OrgRole.PropertyManager, Status = OrgMemberStatus.Active });
@@ -112,7 +107,6 @@ public class AddOrgTeamCompletionsMigrationPostgresTests : IAsyncLifetime
         IsActive = true,
     };
 
-    /// <summary>Runs a statement that returns one value (a count, or the id of an INSERT ... RETURNING).</summary>
     private async Task<long> ScalarAsync(string sql)
     {
         await using var connection = new NpgsqlConnection(_database!.ConnectionString);

@@ -49,7 +49,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
     private readonly CapturingLogger<BookingNotifier> _notifierLog = new();
     private readonly CapturingLogger<CheckInLinkDeliveryService> _deliveryLog = new();
 
-    /// <summary>The job client of <see cref="BookingConfirmationEmailJob"/>: what it schedules for a temporary failure is what the tests read.</summary>
     private readonly Mock<Hangfire.IBackgroundJobClient> _scheduler = new();
     private readonly GuestCheckInService _checkIn;
     private readonly CheckInLinkDeliveryService _deliveries;
@@ -72,14 +71,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    // ---- The proofs of the brief -------------------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// PROOF TEST: data rule (AC1). A direct booking confirmed with the arrival inside the window gets ONE confirmation that carries a working check-in link, issued the way the job
-    /// issues it (one session, the lifetime of the job). The link is «in attesa» (the session says queued, the delivery record Email / Sending) until the provider accepts the e-mail, and
-    /// then it is sent, on the session and in the delivery record; nothing is queued for the guest but that e-mail, and the next run of the daily job finds a usable link and sends nothing
-    /// more. The link is in no log and in no row.
-    /// </summary>
     [Fact]
     public async Task ConfirmedInsideWindow_LinkInConfirmation_NoDuplicateFromJob_Test()
     {
@@ -93,14 +84,12 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         var token = CheckInLink.Match(html).Groups[1].Value;
         Assert.Equal(64, token.Length);
 
-        // The button «Fai il check-in online», the usual fallback link under it (the raw link, readable and clickable), and until when the link is valid.
         var link = $"https://casazen-app.test/checkin/{token}";
         Assert.Contains($"<a href=\"{link}\" style=", html, StringComparison.Ordinal);
         Assert.Contains("Fai il check-in online</a>", html, StringComparison.Ordinal);
         Assert.Contains($"copia questo link nel browser:<br /><a href=\"{link}\">{link}</a>", html, StringComparison.Ordinal);
         Assert.Contains("Il link è valido fino al 16/10/2026 11:00.", html, StringComparison.Ordinal);
 
-        // A working link: the one session of the booking, open, with the lifetime of the job, and the token of the e-mail opens it.
         var session = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
         Assert.Equal(GuestCheckInService.HashToken(token), session.TokenHash);
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
@@ -117,7 +106,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal(session.Id, waiting.SessionId);
         Assert.Null(waiting.LinkToken);
 
-        // Sent when the provider accepts it: the session says so as the e-mail of the link would, and the delivery record is Email / Sent.
         await RunConfirmationJobAsync(EmailSendResult.Sent());
         var sent = await _db.GuestCheckInSessions.AsNoTracking().SingleAsync(s => s.BookingId == bookingId);
         Assert.Equal(GuestCheckInLinkEmailStatus.Sent, sent.LinkEmailStatus);
@@ -127,7 +115,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal(session.Id, row.SessionId);
         Assert.Null(row.LinkToken);
 
-        // The next run of the daily job: the link is a usable one, so it queues no e-mail and issues no second link.
         var linkEmails = QueuedLinkEmails();
         await Job(linkEmails, _clock).ExecuteAsync();
 
@@ -135,14 +122,9 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Single(await _db.GuestCheckInSessions.AsNoTracking().ToListAsync());
         Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail);
 
-        // Privacy: no address, name or token in what the services logged.
         AssertNoPersonalDataInTheLogs(token);
     }
 
-    /// <summary>
-    /// PROOF TEST (E40/F01/US01/T03, NF-142, AC-NF142-2): an org whose verified domain serves its guest area, with «use my domain for links» on: the confirmation
-    /// carries the booking-area link and the check-in link on the agency's domain, with the same token, which still opens the check-in.
-    /// </summary>
     [Fact]
     public async Task ConfirmedInsideWindow_OrgOnItsOwnDomain_LinksOnTheAgencyDomain_Test()
     {
@@ -171,11 +153,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.NotNull(await _checkIn.GetSessionByTokenAsync(token));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (AC2). A direct booking confirmed with the arrival beyond the window gets a confirmation with NO link that says the day it arrives (the day the check-in
-    /// opens, formatted like the other dates of the e-mail) and that it can be requested from «Le mie prenotazioni» from then; no link is issued and no record is written. The job sends the
-    /// link on that day, as it does today, and not the day before.
-    /// </summary>
     [Fact]
     public async Task ConfirmedBeyondWindow_NoLink_DayStated_Test()
     {
@@ -191,7 +168,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Empty(await _db.GuestCheckInSessions.AsNoTracking().ToListAsync());
         Assert.Empty(await _db.CheckInLinkDeliveries.AsNoTracking().ToListAsync());
 
-        // The day before it opens the job sends nothing; on the day it issues the link and queues its e-mail.
         var linkEmails = QueuedLinkEmails();
         await Job(linkEmails, AtEightUtc(2026, 10, 16)).ExecuteAsync();
         linkEmails.Verify(q => q.QueueAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -202,15 +178,11 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
     }
 
-    // ---- The rules the e-mail keeps ----------------------------------------------------------------------------------------------------
-
-    /// <summary>The same Europe/Rome calendar window as the job, whatever the hour: the last day of the window gets the link, the day after it gets the day.</summary>
     [Theory]
     [InlineData("2026-10-09T12:00:00Z")]
     [InlineData("2026-10-09T23:30:00Z")]
     public async Task ConfirmedOnTheLastDayOfTheWindow_GetsTheLink_AtAnyHourUtc(string utcNow)
     {
-        // At 23:30 UTC Rome is already on the next day: an instant bound (now + 3 days) would drop the last day of the window.
         var clock = new FixedTimeProvider(DateTimeOffset.Parse(utcNow, CultureInfo.InvariantCulture));
         var last = await SeedAsync(daysUntilArrival: 3, clock: clock);
         var beyond = await SeedAsync(daysUntilArrival: 4, clock: clock);
@@ -224,7 +196,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.False(await _db.GuestCheckInSessions.AnyAsync(s => s.BookingId == beyond));
     }
 
-    /// <summary>A check-in that is not needed or already done (the cases where the guest page says «completed» or nothing) is not mentioned: no link, no day, no issued session.</summary>
     [Theory]
     [InlineData(BookingStatus.Confirmed, 1, true)]
     [InlineData(BookingStatus.CheckedOut, -3, false)]
@@ -277,10 +248,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         linkEmails.Verify(q => q.QueueAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    /// <summary>
-    /// A confirmation that cannot be queued (no e-mail provider, a queue that refuses it) leaves no link behind: the session just issued would stop the job from sending one, so it is
-    /// taken back (it expires, it is failed with its code, nothing is recorded as sent) and the job issues and sends a link at its next run.
-    /// </summary>
     [Fact]
     public async Task ConfirmationNotQueued_TheLinkIsTakenBack_AndTheJobSendsIt()
     {
@@ -328,7 +295,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Failed, GuestCheckInLinkEmailErrors.Rejected), (row.Channel, row.State, row.LastErrorCode));
         _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Never);
 
-        // No usable link is left, so the daily job issues one and e-mails it, once: never a second link while the first may still reach the guest.
         var linkEmails = QueuedLinkEmails();
         await Job(linkEmails, _clock).ExecuteAsync();
         linkEmails.Verify(q => q.QueueAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
@@ -338,10 +304,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail);
     }
 
-    /// <summary>
-    /// A temporary provider error is tried again by the job of the confirmation (the next attempt is scheduled and the link stays «in attesa», not sent and not failed), and the last
-    /// attempt that fails gives failed with its own code, not delivered: the link is taken back as for a refusal.
-    /// </summary>
     [Fact]
     public async Task ConfirmationTemporarilyNotDelivered_IsTriedAgain_AndFailsAfterTheLastAttempt()
     {
@@ -371,13 +333,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Once);
     }
 
-    // ---- The confirmation with the brand of the host (E50/F01/US03/T01): the same delivery tracking, through the branded job ------------------------
-
-    /// <summary>
-    /// PROOF TEST: data rule (CO-09, A5-26) with the guest portal on. The confirmation that carries the brand of the host is handed to the provider in the name of the host (the sender's display
-    /// name and the host as reply-to; the address of the sender is not part of it), by the branded job and by no other way, and the provider's acceptance is what makes the check-in link «sent»:
-    /// the session and the delivery record say so exactly as they do for the confirmation of today.
-    /// </summary>
     [Fact]
     public async Task BrandedConfirmation_Delivered_IsSentInTheHostsName_AndTheLinkIsSent_Test()
     {
@@ -439,10 +394,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         _scheduler.Verify(c => c.Create(It.IsAny<Hangfire.Common.Job>(), It.IsAny<Hangfire.States.IState>()), Times.Once);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule (never «sent» when nothing left). A provider that is not configured is no delivery: the branded job writes failed with the code of the cause on the session and on
-    /// the delivery record, never «sent», and tries nothing again.
-    /// </summary>
     [Fact]
     public async Task BrandedConfirmation_ProviderNotConfigured_FailsTheLinkWithItsCode_AndIsNotTriedAgain_Test()
     {
@@ -474,7 +425,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         var orgId = (await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId)).OrgId;
         var afterExpiry = DeliveriesAt(new FixedTimeProvider(Now.AddDays(30)));
 
-        // The link of the confirmation, while it is open: sent by e-mail. Once it expired and nobody issued another: the row is over, it does not say «sent» any more.
         var sent = await _deliveries.GetAsync(orgId, bookingId, includeLink: false);
         Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sent), (sent!.Channel, sent.State));
         Assert.Null(sent.EndedAt);
@@ -482,7 +432,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.NotNull(expired!.EndedAt);
         Assert.Equal(CheckInLinkEndReasons.LinkExpired, expired.EndedReason);
 
-        // Another link of the booking replaces it (the reminder, the guest, the autopilot, the job after an expiry), an hour later: the row follows the e-mail of that one.
         var laterCheckIn = new GuestCheckInService(_db, NullLogger<GuestCheckInService>.Instance, options: _options, timeProvider: new FixedTimeProvider(Now.AddHours(1)));
         var second = await laterCheckIn.IssueLinkAsync(bookingId, orgId);
         var secondSession = await _db.GuestCheckInSessions.SingleAsync(s => s.Id == second.SessionId);
@@ -503,17 +452,11 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal(secondSession.ExpiresAt, sentAgain.ExpiresAt);
         Assert.Null(sentAgain.EndedAt);
 
-        // That link expires too: never «sent» for a link that is over.
         var overToo = await afterExpiry.GetAsync(orgId, bookingId, includeLink: false);
         Assert.NotNull(overToo!.EndedAt);
         Assert.Equal(CheckInLinkEndReasons.LinkExpired, overToo.EndedReason);
     }
 
-    /// <summary>
-    /// A request that is cancelled right after the confirmation of the guest was queued (a guest who closes the page, a job that stops with the application) must not make the host
-    /// lose the alert of the new booking: the e-mail to the host and the push are queued before anything of the link is settled, and nothing of the link is awaited with the token of
-    /// the request.
-    /// </summary>
     [Fact]
     public async Task RequestCancelledAfterTheConfirmationIsQueued_TheHostIsStillTold()
     {
@@ -532,9 +475,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         Assert.Equal((CheckInLinkChannel.Email, CheckInLinkDeliveryState.Sending), (row.Channel, row.State));
     }
 
-    // ---- The data every test runs on ---------------------------------------------------------------------------------------------------
-
-    /// <summary>The queue of the e-mails that cancels the request the moment it takes the e-mail to the guest.</summary>
     private sealed class CancellingEmailQueue(IEmailQueue inner, CancellationTokenSource cancellation, string guestEmail) : IEmailQueue
     {
         public bool Enqueue(string? to, EmailContent content, string template)
@@ -547,7 +487,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         }
     }
 
-    /// <summary>The service of the delivery on another clock: what the host would read after the links expired.</summary>
     private CheckInLinkDeliveryService DeliveriesAt(TimeProvider clock) =>
         new(
             _db,
@@ -561,7 +500,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
             _deliveryLog,
             clock);
 
-    /// <summary>The links of E40/F01/US01/T03 over the test database, with <c>WhiteLabelHost</c> on and the stored tier taken as paid for.</summary>
     private AgencyDomainLinks AgencyLinksOverTheDb()
     {
         var entitlements = new Mock<IEntitlementService>();
@@ -574,10 +512,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
     private BookingNotifier Notifier(IGuestCheckInService? checkIn = null) =>
         new(_db, _emails, EmailTestHelpers.Links(), _pushes, _notifierLog, checkIn ?? _checkIn, _deliveries, _options, _clock);
 
-    /// <summary>
-    /// What the Hangfire worker does with the confirmation that was queued for the guest: the job of the confirmation runs it with the arguments the queue gave it, the provider
-    /// answering <paramref name="result"/>.
-    /// </summary>
     private async Task RunConfirmationJobAsync(EmailSendResult result, int attempt = 1)
     {
         var (to, content, template) = Assert.Single(_emails.Snapshot(), e => e.To == GuestEmail);
@@ -589,7 +523,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         await job.SendAsync(to!, content.Subject, content.HtmlBody, template, link.BookingId, link.SessionId, attempt);
     }
 
-    /// <summary>The notifier of the guest portal on: the confirmation carries the brand of the host (its name as the sender, the host as reply-to).</summary>
     private BookingNotifier BrandedNotifier() =>
         new(
             _db,
@@ -622,7 +555,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         return emailService;
     }
 
-    /// <summary>The real daily job over the same database, with the queue of the link e-mails watched: its calls are what a duplicate would be.</summary>
     private GuestCheckInSendJob Job(Mock<IGuestCheckInLinkEmailQueue> linkEmails, TimeProvider clock) =>
         new(
             _db,
@@ -644,7 +576,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         return linkEmails;
     }
 
-    /// <summary>08:00 UTC of a day: the time of the daily run.</summary>
     private static FixedTimeProvider AtEightUtc(int year, int month, int day) => new(new DateTimeOffset(year, month, day, 8, 0, 0, TimeSpan.Zero));
 
     private void AssertNoPersonalDataInTheLogs(string? token)
@@ -694,7 +625,6 @@ public sealed class BookingConfirmedCheckInLinkTests : IDisposable
         return booking.Id;
     }
 
-    /// <summary>Keeps what a service logged, as the text a person would read in the log (the exception is not part of it).</summary>
     private sealed class CapturingLogger<T> : ILogger<T>
     {
         public List<string> Messages { get; } = [];

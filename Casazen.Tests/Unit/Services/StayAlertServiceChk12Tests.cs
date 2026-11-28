@@ -14,14 +14,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E03/F02/US02/T01 (NF-52, NF-48, CHK-12, AC-NF52-6, AC-NF52-15): the new stay stages of the hourly job and what every stage leaves behind. Each stage is sent
-/// once, the receipt that is missing is the engine's word, the short stay and the stay over 30 nights are alerted only for a property the channel manager sends
-/// for, the "To do" is opened and closed with the condition, and with the module's flag off nothing of it happens. EF InMemory; the rest are mocks.
-/// </summary>
 public class StayAlertServiceChk12Tests : IDisposable
 {
-    // 6 November 2026, 10:00 in Rome (winter time, UTC+1): the hour of the receipt alert. The stay arrives on the 5th.
     private static readonly DateTimeOffset Start = new(2026, 11, 6, 9, 0, 0, TimeSpan.Zero);
     private static readonly DateTime CheckIn = new(2026, 11, 5, 0, 0, 0, DateTimeKind.Utc);
 
@@ -151,8 +145,6 @@ public class StayAlertServiceChk12Tests : IDisposable
     private Task<List<StayAlertState>> StatesAsync(StayAlertType type) =>
         _db.StayAlertStates.AsNoTracking().Where(s => s.Type == type).ToListAsync();
 
-    // ─── The receipt that is missing ───
-
     [Fact]
     public async Task RunAsync_TheCommunicationWasDeclaredAndNoReceiptIsArchived_TheHostIsToldTheDayAfterAt10_OnceOnly()
     {
@@ -179,7 +171,6 @@ public class StayAlertServiceChk12Tests : IDisposable
                     && r.Reason == ComplianceReasonCodes.ReceiptMissing),
                 It.IsAny<CancellationToken>()),
             Times.Once);
-        // A receipt is not a deadline: no popup.
         _followUp.Verify(f => f.PopupAsync(It.IsAny<ComplianceAlertPopup>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -202,14 +193,12 @@ public class StayAlertServiceChk12Tests : IDisposable
     {
         var booking = await SeedStayAsync();
         Status(booking, AlloggiatiWebStatus.InviatoManualmente, reportedAt: CheckIn);
-        // The proof is archived: the engine says green, whatever the report says.
         EngineSays(booking, AlloggiatiWebStatus.InviatoManualmente, CheckIn, new ComplianceProof("manual-proof:1", ComplianceEvidenceSources.ManualUpload));
 
         var result = await Service().RunAsync();
 
         Assert.Equal(0, result.Sent);
         VerifySent(booking, StayAlertKind.ReceiptMissing, Times.Never());
-        // And the "To do" of the receipt and of the communication of a stay whose proof is archived is closed.
         _followUp.Verify(
             f => f.CloseTodosAsync(
                 It.Is<IReadOnlyCollection<ActivityType>>(t => t.Contains(ActivityType.ReceiptToRetrieve) && t.Contains(ActivityType.AlloggiatiDeadline)),
@@ -233,14 +222,11 @@ public class StayAlertServiceChk12Tests : IDisposable
         VerifySent(booking, StayAlertKind.ReceiptMissing, Times.Never());
     }
 
-    // ─── The short stay and the stay over 30 nights ───
-
     [Fact]
     public async Task RunAsync_AShortStayNotEntrustedToTheChannelManager_IsAlertedSixHoursBeforeTheArrival_Once()
     {
         var booking = await SeedStayAsync(checkOut: CheckIn.AddDays(1));
         Status(booking, AlloggiatiWebStatus.DaInviare);
-        // The arrival day starts at 23:00 UTC of the 4th (Rome, winter time): six hours before it is 17:00.
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 4, 17, 0, 0, TimeSpan.Zero));
 
         var first = await Service().RunAsync();
@@ -260,7 +246,6 @@ public class StayAlertServiceChk12Tests : IDisposable
                     && r.Reason == ComplianceReasonCodes.ShortStayAtRisk),
                 It.IsAny<CancellationToken>()),
             Times.Once);
-        // It has a legal deadline: the follow-up decides, with the clock, whether it is within 24 hours, and raises the popup for the booking.
         _followUp.Verify(
             f => f.PopupAsync(
                 It.Is<ComplianceAlertPopup>(p => p.Type == AlertType.AlloggiatiDeadline && p.EntityType == "Booking" && p.EntityId == booking.Id && p.PropertyId == booking.PropertyId),
@@ -303,7 +288,6 @@ public class StayAlertServiceChk12Tests : IDisposable
         foreach (var position in new[] { 0, 1 })
             _db.StayGuests.Add(new StayGuest { OrgId = booking.OrgId, BookingId = booking.Id, Position = position, FirstName = "Ospite", LastName = $"{position}" });
 
-        // Only the first guest is on the channel manager for good; the second was sent as a draft.
         foreach (var (position, draft) in new[] { (0, false), (1, true) })
         {
             _db.StayGuestOctorateLinks.Add(new StayGuestOctorateLink
@@ -346,7 +330,6 @@ public class StayAlertServiceChk12Tests : IDisposable
     {
         var booking = await SeedStayAsync(checkOut: CheckIn.AddDays(31));
         Status(booking, AlloggiatiWebStatus.DaInviare);
-        // The 4th at 09:00 in Rome (UTC+1) is 08:00 UTC.
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 4, 8, 0, 0, TimeSpan.Zero));
 
         var first = await Service().RunAsync();
@@ -376,15 +359,12 @@ public class StayAlertServiceChk12Tests : IDisposable
         Assert.Equal(0, (await Service().RunAsync()).Sent);
     }
 
-    // ─── The module's flag ───
-
     [Fact]
     public async Task RunAsync_WithTheModuleOff_NoNewStageAndNothingLeftBehind_AndTheOldStagesSendWhatTheySent()
     {
         var booking = await SeedStayAsync(checkOut: CheckIn.AddDays(1));
         Status(booking, AlloggiatiWebStatus.DaInviare, dataComplete: false);
         _flags.Setup(f => f.IsEnabled(FeatureFlags.ComplianceTrafficLight)).Returns(false);
-        // The day before the arrival at 10:00 in Rome: the old stage «guest data missing» is due, and so is nothing new.
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 4, 9, 0, 0, TimeSpan.Zero));
 
         var result = await Service().RunAsync();
@@ -436,8 +416,6 @@ public class StayAlertServiceChk12Tests : IDisposable
         VerifySent(booking, StayAlertKind.GuestDataMissing, Times.Once());
     }
 
-    // ─── What the old stages leave behind ───
-
     [Fact]
     public async Task RunAsync_TheDataOfTheGuestsAreMissingTheDayBefore_OpensTheCheckInTodo_WithTheArrivalAsItsDeadline()
     {
@@ -466,7 +444,6 @@ public class StayAlertServiceChk12Tests : IDisposable
     {
         var booking = await SeedStayAsync();
         Status(booking, AlloggiatiWebStatus.DaInviareManualmente);
-        // Noon of the arrival day in Rome (the unregistered arrival's deadline is the end of the day).
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 5, 11, 0, 0, TimeSpan.Zero));
 
         var result = await Service().RunAsync();
@@ -496,7 +473,6 @@ public class StayAlertServiceChk12Tests : IDisposable
     {
         var booking = await SeedStayAsync(checkIn: new DateTime(2026, 11, 4, 0, 0, 0, DateTimeKind.Utc), checkOut: CheckIn.Date);
         Status(booking, AlloggiatiWebStatus.InviatoManualmente, reportedAt: CheckIn);
-        // The check-out day of the stay (the 5th) at 20:00 in Rome (UTC+1).
         _clock.SetUtcNow(new DateTimeOffset(2026, 11, 5, 19, 0, 0, TimeSpan.Zero));
 
         var result = await Service().RunAsync();
@@ -506,8 +482,6 @@ public class StayAlertServiceChk12Tests : IDisposable
         _followUp.Verify(f => f.OpenTodoAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
         _followUp.Verify(f => f.PopupAsync(It.IsAny<ComplianceAlertPopup>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()), Times.Never);
     }
-
-    // ─── What clears the condition ───
 
     [Fact]
     public async Task RunAsync_TheCommunicationWasSent_AndTheDataAreComplete_TheirTodoAreClosed_AndTheStaysThatOweNothingAreSwept()
@@ -557,8 +531,6 @@ public class StayAlertServiceChk12Tests : IDisposable
         Assert.Equal(0, result.Sent);
         _notifications.VerifyNoOtherCalls();
     }
-
-    // ─── Add-only registrations ───
 
     [Fact]
     public async Task TheStayAlertsJob_RunsTheComplianceAlertsOnlyWhenTheStayAlertsWereNotSkipped()

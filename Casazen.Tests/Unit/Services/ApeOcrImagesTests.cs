@@ -9,7 +9,6 @@ public class ApeOcrImagesTests
     [Fact]
     public void GrayImage_ReadsThePgmOfPdftoppm_NegatesAndCutsIt()
     {
-        // 4 x 3 pixels, with a comment line as pdftoppm may write one.
         var pixels = new byte[] { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110 };
         var pgm = Encoding.ASCII.GetBytes("P5\n# poppler\n4 3\n255\n").Concat(pixels).ToArray();
 
@@ -18,7 +17,7 @@ public class ApeOcrImagesTests
         Assert.Equal((4, 3), (image.Width, image.Height));
         Assert.Equal(new byte[] { 255, 245, 235, 225 }, image.Negated().Pixels[..4]);
         Assert.Equal(pixels, GrayImage.Read(image.ToPgm()).Pixels);
-        Assert.Null(image.Crop(1, 1, 3, 3)); // smaller than a letter: nothing to read
+        Assert.Null(image.Crop(1, 1, 3, 3));
     }
 
     [Fact]

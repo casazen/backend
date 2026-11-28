@@ -29,7 +29,6 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
     {
         await using var db = _database!.CreateContext();
 
-        // A role created later without an explicit id must not collide with the seeded ones (4 to 12).
         var id = await ScalarAsync("INSERT INTO \"Roles\" (\"ContextKey\", \"RoleKey\") VALUES ('short-rent', 'am01_sequence_probe') RETURNING \"Id\"");
 
         Assert.True(id > 12, $"The next role id is {id}");
@@ -50,7 +49,6 @@ public class AddOrgMembershipMigrationPostgresTests : IAsyncLifetime
         }
     }
 
-    /// <summary>Runs a statement that returns one value (a count, or the id of an INSERT ... RETURNING).</summary>
     private async Task<long> ScalarAsync(string sql)
     {
         await using var connection = new NpgsqlConnection(_database!.ConnectionString);

@@ -4,9 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// BK-07 (A3-15): the outcome page reads the real state of the checkout, never "confirmed" before the confirmation.
-/// </summary>
 public class CheckoutOutcomesTests
 {
     private const int TtlMinutes = 30;
@@ -39,7 +36,6 @@ public class CheckoutOutcomesTests
     [Fact]
     public void StateOf_PaymentSucceededButWebhookNotConfirmedYet_IsProcessingNotConfirmed()
     {
-        // The webhook confirms the booking; until then the guest must not read "Prenotazione confermata".
         Assert.Equal(
             CheckoutOutcomeState.PaymentProcessing,
             CheckoutOutcomes.StateOf(PaymentHold(PaymentStatus.Completed), Cutoff));

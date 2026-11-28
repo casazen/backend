@@ -68,7 +68,7 @@ public class StripeRefundPostgresTests : IAsyncLifetime
         var chargeRefunded = ChargeRefunded(seed.PaymentIntentId, Account);
 
         await HandleAsync(chargeRefunded, WebhookSource.Connected);
-        await HandleAsync(chargeRefunded, WebhookSource.Connected); // duplicate delivery
+        await HandleAsync(chargeRefunded, WebhookSource.Connected);
 
         await using var db = NewContext();
         var payment = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);

@@ -64,7 +64,6 @@ public class OrgActivityArchitectureTests
     [Fact]
     public void EveryEventThatIsNotReserved_IsRecordedBySomeService_AndNoReservedOneIs()
     {
-        // One pass over the services and the web project: every `OrgActivityType.Name` they spell out.
         var named = Scan(["Casazen.Infrastructure", "Casazen.Web"], new Regex(@"\bOrgActivityType\.[A-Za-z]+\b"))
             .Where(hit => !hit.StartsWith(ActivityLogFile, StringComparison.Ordinal))
             .SelectMany(hit => Regex.Matches(hit, @"\bOrgActivityType\.(?<name>[A-Za-z]+)\b").Select(m => m.Groups["name"].Value))

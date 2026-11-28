@@ -46,7 +46,6 @@ public class BackfillDefaultOrgsPostgresIntegrationTests : IAsyncLifetime
         var bookingB = Guid.NewGuid();
         var paymentA = Guid.NewGuid();
 
-        // Raw SQL matches the schema at AddOrgIdNullable (pre-Alloggiati columns).
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO "Users" ("Id", "Email", "FirstName", "LastName", "PhoneNumber", "Role", "IsActive", "CreatedAt", "UpdatedAt")
             VALUES

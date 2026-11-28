@@ -29,8 +29,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
 {
     private static DateOnly Today => TimeProvider.System.TodayInRomeAsDateOnly();
 
-    // ─── Who may call it ─────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData("GET", "/api/supplier/calendar/conflicts")]
     [InlineData("GET", "/api/supplier/preview/slots?service=00000000-0000-0000-0000-000000000001")]
@@ -74,7 +72,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
             Assert.Equal("not_found", (await ReadAsync(response)).GetProperty("code").GetString());
         }
 
-        // The calendar sync that already existed provisions an org on its first call; the new routes never do.
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.False(await db.Users.AnyAsync(u => u.Id == userId));
@@ -97,13 +94,10 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
             Assert.Equal("RequireSupplier", policy);
             Assert.Empty(action.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
             Assert.Empty(controller.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true));
-            // The console works with every flag off: neither the action nor its controller is gated.
             Assert.Empty(action.GetCustomAttributes<FeatureGateAttribute>(inherit: true));
             Assert.Empty(controller.GetCustomAttributes<FeatureGateAttribute>(inherit: true));
         }
     }
-
-    // ─── The calendar with titles ────────────────────────────────────────────────
 
     [Fact]
     public async Task Calendar_ARequestKeepsItsOldFieldsAsTheyWere_AndGainsTheTitles()
@@ -120,14 +114,12 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         var text = await response.Content.ReadAsStringAsync();
         var item = Assert.Single(JsonDocument.Parse(text).RootElement.GetProperty("requests").EnumerateArray());
 
-        // What was there before the task: the same names, the same values.
         Assert.Equal(requestId, item.GetProperty("id").GetGuid());
         Assert.Equal(day.ToString("yyyy-MM-dd"), item.GetProperty("date").GetString());
         Assert.Equal(start, item.GetProperty("startUtc").GetDateTime().ToUniversalTime());
         Assert.Equal(start.AddMinutes(90), item.GetProperty("endUtc").GetDateTime().ToUniversalTime());
         Assert.Equal("PresoInCarico", item.GetProperty("status").GetString());
         Assert.Equal("cleaning", item.GetProperty("category").GetString());
-        // What is new, and only that.
         Assert.Equal("Pulizia profonda", item.GetProperty("serviceName").GetString());
         Assert.Equal("Casa Aperta", item.GetProperty("clientLabel").GetString());
         Assert.Equal("Roma", item.GetProperty("comune").GetString());
@@ -137,15 +129,12 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
             ["category", "clientLabel", "comune", "date", "endUtc", "id", "phase", "serviceName", "source", "startUtc", "status"],
             item.EnumerateObject().Select(property => property.Name).Order());
 
-        // Nothing of the property, the host or the guest.
         Assert.DoesNotContain("Segretissima", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Montecchi", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Casa Riservata", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Note riservate", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("00184", text, StringComparison.OrdinalIgnoreCase);
     }
-
-    // ─── Conflicts ───────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Conflicts_AJobWaitingOverABlock_AndAJobTakenOnALeave_AreListedWithCodesIdsAndASuggestion()
@@ -174,7 +163,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal(2, body.GetProperty("total").GetInt32());
         var items = body.GetProperty("items").EnumerateArray().ToList();
 
-        // By start: the job waiting over the block, then the job taken on the day of the leave.
         var waiting = items[0];
         Assert.Equal(waitingId, waiting.GetProperty("requestId").GetGuid());
         Assert.Equal("Richiesto", waiting.GetProperty("status").GetString());
@@ -183,8 +171,7 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal("block", blockConflict.GetProperty("code").GetString());
         Assert.Equal("danger", blockConflict.GetProperty("severity").GetString());
         Assert.Equal(blockId, blockConflict.GetProperty("windowId").GetGuid());
-        Assert.False(blockConflict.TryGetProperty("otherRequestId", out _)); // not about another request: the property is left out
-        // The first free slot of its own day as long as the job: 08:00, before the block.
+        Assert.False(blockConflict.TryGetProperty("otherRequestId", out _));
         var suggestion = waiting.GetProperty("suggestedSlot");
         Assert.Equal(RomeCalendar.ToUtc(waitingDay, new TimeOnly(8, 0)), suggestion.GetProperty("startUtc").GetDateTime().ToUniversalTime());
         Assert.Equal(RomeCalendar.ToUtc(waitingDay, new TimeOnly(9, 0)), suggestion.GetProperty("endUtc").GetDateTime().ToUniversalTime());
@@ -193,7 +180,7 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         var taken = items[1];
         Assert.Equal(takenId, taken.GetProperty("requestId").GetGuid());
         Assert.Equal("time_off", Assert.Single(taken.GetProperty("conflicts").EnumerateArray()).GetProperty("code").GetString());
-        Assert.Equal(JsonValueKind.Null, taken.GetProperty("suggestedSlot").ValueKind); // a job taken is not moved by proposing a time
+        Assert.Equal(JsonValueKind.Null, taken.GetProperty("suggestedSlot").ValueKind);
     }
 
     [Fact]
@@ -208,7 +195,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
 
         var text = await (await client.GetAsync("/api/supplier/calendar/conflicts")).Content.ReadAsStringAsync();
 
-        // Every name in the answer is one of these: nothing that reads like a message, a title or a label.
         var names = new HashSet<string>();
         Collect(JsonDocument.Parse(text).RootElement, names);
         Assert.Subset(
@@ -218,7 +204,7 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
                 "conflicts", "code", "severity", "otherRequestId", "windowId", "suggestedSlot", "startLocal", "endLocal",
             },
             names);
-        Assert.DoesNotContain("Dentista", text, StringComparison.Ordinal); // the title of a block is in the calendar, not here
+        Assert.DoesNotContain("Dentista", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Pulizia", text, StringComparison.Ordinal);
         Assert.DoesNotContain("Segretissima", text, StringComparison.OrdinalIgnoreCase);
     }
@@ -290,7 +276,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
 
         var response = await client.GetAsync($"/api/supplier/calendar?{query}");
 
-        // The same dates that overflowed the arithmetic on days (a 500) are a 400 now, as they are for the conflicts.
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("validation_error", (await ReadAsync(response)).GetProperty("code").GetString());
     }
@@ -307,7 +292,7 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         var reversed = await client.GetAsync($"/api/supplier/calendar?from={Today.AddDays(5):yyyy-MM-dd}&to={Today:yyyy-MM-dd}");
 
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, past.StatusCode); // the calendar is not limited to the recent past: only the ends of the calendar are refused
+        Assert.Equal(HttpStatusCode.OK, past.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, reversed.StatusCode);
     }
@@ -347,8 +332,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal(0, theirs.GetProperty("total").GetInt32());
     }
 
-    // ─── The preview ─────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Preview_ADraftService_IsAnsweredWithTheShowFlagOff_Uncached_InTheShapeOfThePublicPage()
     {
@@ -372,12 +355,12 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         var days = body.GetProperty("days").EnumerateArray().ToList();
         Assert.Equal(5, days.Count);
         Assert.Equal(Today.ToString("yyyy-MM-dd"), days[0].GetProperty("date").GetString());
-        Assert.Contains(days, day => day.GetProperty("available").GetBoolean()); // the hours of ConfigureAsync, every day
+        Assert.Contains(days, day => day.GetProperty("available").GetBoolean());
         var slot = days.SelectMany(day => day.GetProperty("slots").EnumerateArray()).First();
         Assert.Equal(
             ["endLocal", "endUtc", "startLocal", "startUtc"],
             slot.EnumerateObject().Select(property => property.Name).Order());
-        Assert.False(body.TryGetProperty("coverage", out _)); // none asked
+        Assert.False(body.TryGetProperty("coverage", out _));
     }
 
     [Fact]
@@ -404,7 +387,7 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
     [Fact]
     public async Task Preview_WithAComune_SaysInsideOrOutside_AndUrgentOnAServiceThatDoesNotOfferItHasNoDays()
     {
-        var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(factory); // works in H501
+        var (userId, orgId) = await SupplierCatalogTestData.SeedSupplierAsync(factory);
         using var client = SupplierClient(userId);
         await ConfigureAsync(client);
         var service = await SeedServiceAsync(orgId, SupplierServiceListingStatus.Active);
@@ -417,8 +400,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal("inside", inside.GetProperty("coverage").GetProperty("outcome").GetString());
         Assert.Equal("H501", inside.GetProperty("coverage").GetProperty("comune").GetString());
         Assert.Equal("outside", outside.GetProperty("coverage").GetProperty("outcome").GetString());
-        // SP-04c: the service (and the supplier) never accepted urgent requests, so there is nothing urgent to preview; a normal
-        // preview is still the one it always was.
         Assert.True(withUrgent.GetProperty("urgent").GetBoolean());
         Assert.Equal(0, withUrgent.GetProperty("days").GetArrayLength());
         Assert.NotEqual(0, plain.GetProperty("days").GetArrayLength());
@@ -443,7 +424,7 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
     }
 
     [Theory]
-    [InlineData("")] // no service
+    [InlineData("")]
     [InlineData("?service=not-an-id")]
     [InlineData("?service=00000000-0000-0000-0000-000000000000")]
     public async Task Preview_AMissingOrMalformedService_Is400(string query)
@@ -488,8 +469,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
     }
 
-    // ─── Unlinking the calendar ──────────────────────────────────────────────────
-
     [Fact]
     public async Task Disconnect_Is204_RemovesWhatTheFeedWrote_KeepsWhatTheSupplierSetByHand_AndIsIdempotent()
     {
@@ -500,7 +479,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         await LinkFeedAsync(otherOrg);
         var day = Today.AddDays(5);
         var start = RomeCalendar.ToUtc(day, new TimeOnly(10, 0));
-        // What the feed wrote (and what a supplier with a feed of its own has).
         foreach (var org in new[] { orgId, otherOrg })
         {
             await SupplierAgendaTestData.SeedDayAsync(factory, org, Today.AddDays(2), available: false, SupplierAvailabilitySource.ICalFeed);
@@ -508,7 +486,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
             await SeedFreeEventAsync(org);
         }
 
-        // What the supplier set by hand.
         await SupplierAgendaTestData.SeedDayAsync(factory, orgId, Today.AddDays(3), available: false);
         await SupplierAgendaTestData.SeedWindowAsync(factory, orgId, start.AddHours(3), start.AddHours(4), SupplierBusyWindowKind.Block);
         var before = await client.GetAsync("/api/supplier/calendar/status");
@@ -531,7 +508,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal("Block", Assert.Single(blocks).GetProperty("kind").GetString());
         Assert.Equal("Manual", blocks[0].GetProperty("source").GetString());
 
-        // The other supplier, with a feed of its own, did not feel it.
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(1, await db.SupplierBusyWindows.CountAsync(w => w.OrgId == otherOrg && w.Source == SupplierBusyWindowSource.ICalFeed));
@@ -553,8 +529,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(1, (await SupplierAgendaTestData.CountsAsync(factory, orgId)).Windows);
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private HttpClient SupplierClient(string userId) => factory.CreateAuthenticatedClient(userId, roles: "Supplier");
 
@@ -580,7 +554,6 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
         }
     }
 
-    /// <summary>Hours every day of the week 08:00-18:00, and rules with no notice, so any day ahead can be used by a test.</summary>
     private static async Task ConfigureAsync(HttpClient client)
     {
         var days = new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
@@ -634,13 +607,8 @@ public class SupplierAgendaReadsIntegrationTests(CasazenWebApplicationFactory fa
     }
 }
 
-/// <summary>Seeds for the tests of the Portal's agenda reads (SP-03b): a request with hours, written straight to the database.</summary>
 internal static class SupplierAgendaReadsTestData
 {
-    /// <summary>
-    /// A request of the supplier <paramref name="supplierOrgId"/> with hours (<paramref name="startUtc"/> for <paramref name="minutes"/>),
-    /// for a host with a property, an address and a guest that must never reach the supplier's console. Returns the request's id.
-    /// </summary>
     public static async Task<Guid> SeedRequestAsync(
         CasazenWebApplicationFactory factory,
         Guid supplierOrgId,
@@ -660,7 +628,6 @@ internal static class SupplierAgendaReadsTestData
         request.ServiceNameSnapshot = serviceName;
         request.CreatedAt = DateTime.UtcNow.AddDays(-1);
         request.UpdatedAt = request.CreatedAt;
-        // The host's org: the name the supplier may see before the take.
         var host = await db.Orgs.IgnoreQueryFilters().SingleAsync(o => o.Id == request.OrgId);
         host.DisplayName = "Casa Aperta";
         await db.SaveChangesAsync();

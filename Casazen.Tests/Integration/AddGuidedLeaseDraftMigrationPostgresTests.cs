@@ -36,7 +36,6 @@ public class AddGuidedLeaseDraftMigrationPostgresTests : IAsyncLifetime
             .SqlQuery<string>($"""SELECT data_type::text AS "Value" FROM information_schema.columns WHERE table_name = 'LeaseContracts' AND column_name = 'DraftData'""")
             .SingleAsync();
         Assert.Equal(64, fingerprint);
-        // An encrypted payload is longer than the text it protects: no length on these two.
         Assert.Equal("text", residence);
         Assert.Equal("text", draft);
     }

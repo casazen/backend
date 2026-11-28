@@ -68,7 +68,6 @@ public class StripeServiceRefundTests
         Assert.Equal(PaymentIntentId, options.PaymentIntent);
         Assert.Equal(12_345, options.Amount);
         Assert.Equal("abc", options.Metadata["paymentRefundId"]);
-        // Direct charge without application fee: nothing to reverse or give back on the platform side.
         Assert.Null(options.ReverseTransfer);
         Assert.Null(options.RefundApplicationFee);
     }

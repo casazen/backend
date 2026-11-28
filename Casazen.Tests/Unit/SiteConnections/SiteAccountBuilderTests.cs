@@ -12,12 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.SiteConnections;
 
-/// <summary>
-/// S023 (PLG-BE-SITEAPI, site integration plan §10.3, AC 1 and 5): the account of a connected plugin is made once, from the services of the console. For an org with a
-/// verified custom domain it paid for the address is that domain's origin and the kind <c>customDomain</c>; for any other (no domain, a pending one, a lapsed plan, a
-/// platform subdomain) it is the address of CasaZen and the kind <c>casazen</c>; <c>embedEnabled</c> is what <c>resolve-host</c> answers; the domain is the console's, and
-/// nothing of another org is ever read.
-/// </summary>
 public sealed class SiteAccountBuilderTests : IDisposable
 {
     private const string OwnDomain = "prenota.quokka360.com";
@@ -41,7 +35,6 @@ public sealed class SiteAccountBuilderTests : IDisposable
         Assert.Equal((site.ConnectionId, org.Id, "quokka360", "Quokka360"), (account.ConnectionId, account.Org.Id, account.Org.Slug, account.Org.DisplayName));
         Assert.True(account.EmbedEnabled);
 
-        // The domain is the one the console reads, member by member.
         var consoleConfig = await _harness.OrgDomain.GetDomainConfigAsync(org.Id);
         Assert.Equal(
             SiteApiHarness.Serialize(OrgDomainMapper.ToDto(consoleConfig!, _harness.Localizer)),
@@ -68,7 +61,6 @@ public sealed class SiteAccountBuilderTests : IDisposable
     [InlineData(DomainVerificationStatus.Verified, false)]
     public async Task Build_ADomainThatIsNotServedNow_IsStillTheCasazenAddress(DomainVerificationStatus status, bool paid)
     {
-        // Not verified yet, or verified but the plan no longer pays for it: resolve-host does not serve it, so the plugin must not be told to use it.
         var org = _harness.SeedOrgWithDomain("quokka360", "Quokka360", OwnDomain, paid, status);
 
         var result = await _harness.Accounts.BuildAsync(SiteApiHarness.Site(org.Id));
@@ -76,7 +68,6 @@ public sealed class SiteAccountBuilderTests : IDisposable
         var account = Assert.IsType<SiteAccount>(result.Account);
         Assert.Equal(SiteApiHarness.CasazenAddress, account.PublicAddress);
         Assert.Equal(SitePublicAddressKind.Casazen, account.PublicAddressKind);
-        // The domain block still tells the whole story to the plugin: the domain, its state and the records.
         Assert.Equal(OwnDomain, account.Domain.CustomDomain);
         Assert.Null(account.Domain.PublicUrls.CustomDomainUrl);
     }
@@ -109,7 +100,6 @@ public sealed class SiteAccountBuilderTests : IDisposable
         var withDomain = harness.SeedOrgWithDomain("quokka360", "Quokka360", OwnDomain);
         var withoutDomain = harness.SeedOrg("altra-agenzia", "Altra Agenzia");
 
-        // The real resolver, on the same org, flags and plan: the answer of resolve-host for the agency's host.
         var orgs = new Mock<IOrgService>();
         orgs.Setup(o => o.GetByVerifiedCustomDomainAsync(OwnDomain, It.IsAny<CancellationToken>())).ReturnsAsync(withDomain);
         using var cache = new MemoryCache(new MemoryCacheOptions());
@@ -127,7 +117,6 @@ public sealed class SiteAccountBuilderTests : IDisposable
 
         Assert.Equal(resolved.EmbedEnabled, accountWithDomain.EmbedEnabled);
         Assert.Equal(siteEmbed, accountWithDomain.EmbedEnabled);
-        // An org on the CasaZen address has no host of its own to ask: it is what the flag gives every host.
         Assert.Equal(resolved.EmbedEnabled, accountWithoutDomain.EmbedEnabled);
     }
 
@@ -158,7 +147,6 @@ public sealed class SiteAccountBuilderTests : IDisposable
 
         var account = Assert.IsType<SiteAccount>(result.Account);
         Assert.Same(saved.Config, account.Domain);
-        // A domain just saved waits for its records: not served yet, so the address is still CasaZen's.
         Assert.Equal(SitePublicAddressKind.Casazen, account.PublicAddressKind);
         Assert.Equal(DomainVerificationStatus.Pending, account.Domain.DomainVerificationStatus);
     }
@@ -189,7 +177,6 @@ public sealed class SiteAccountBuilderTests : IDisposable
 
         Assert.Equal(SiteAccountOutcome.PublicAddressNotConfigured, refused.Outcome);
         Assert.Null(refused.Account);
-        // The org that is served on its own domain does not need the address of CasaZen.
         Assert.Equal(SiteAccountOutcome.Success, served.Outcome);
         Assert.Equal($"https://{OwnDomain}", served.Account!.PublicAddress);
     }

@@ -9,11 +9,6 @@ using static Casazen.Tests.Unit.Services.PropertyModeHarness;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// PC-05 and PM-02 (D16): the leases that tie a property up are defined once, <see cref="LeaseOccupancy"/>. The rule that
-/// refuses to delete a property (<see cref="PropertyRepository.SoftDeleteAsync"/>, asked from today) and the one that
-/// refuses to bring a long-term property back to short stays (asked from the day chosen) give the same answers.
-/// </summary>
 public class LeaseOccupancyTests : IDisposable
 {
     private readonly PropertyModeHarness _h = new();
@@ -29,7 +24,6 @@ public class LeaseOccupancyTests : IDisposable
     [InlineData(LeaseStatus.RegistrationPending, 5, true)]
     [InlineData(LeaseStatus.SentToProvider, 5, true)]
     [InlineData(LeaseStatus.Registered, 5, true)]
-    // The last day counts: a lease that ends on the day asked for still ties the property that day.
     [InlineData(LeaseStatus.Registered, 0, true)]
     [InlineData(LeaseStatus.Registered, -1, false)]
     [InlineData(LeaseStatus.Registered, -300, false)]

@@ -12,10 +12,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// The linked-account debit is SEPA in EUR. The session asks for Italian banks. A full IBAN is not kept on the account
-/// CasaZen stores; a token is sent to Stripe only to create the PaymentMethod.
-/// </summary>
 public class StripeBankLinkGatewayTests
 {
     private const string Iban = "IT60X0542811101000000123456";

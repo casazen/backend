@@ -20,8 +20,6 @@ namespace Casazen.Tests.Unit.Services;
 /// </summary>
 public class SupplierPaymentSessionTests
 {
-    // ─── The page of the link ───
-
     [Fact]
     public async Task GetPublic_TheLink_ShowsWhoAsksForWhatAndHowMuch_AndNothingAboutTheCommission()
     {
@@ -41,9 +39,7 @@ public class SupplierPaymentSessionTests
         Assert.NotNull(page.CompletedAt);
         var line = Assert.Single(page.Lines);
         Assert.Equal(6_000, line.AmountCents);
-        // The link is valid for 30 days from the email.
         Assert.Equal(ServiceRequestScenario.Instant.UtcDateTime.AddDays(30), page.ValidUntil);
-        // The payer never sees the commission, a name, an address or a contact: the type has no such member.
         var members = typeof(PublicServicePayment).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name).ToList();
         Assert.DoesNotContain(members, name => name.Contains("Fee", StringComparison.OrdinalIgnoreCase)
             || name.Contains("Commission", StringComparison.OrdinalIgnoreCase)
@@ -71,7 +67,6 @@ public class SupplierPaymentSessionTests
 
         foreach (var ex in new[] { wrongToken, wrongId, emptyToken, oversized, crossed })
         {
-            // Nothing tells a payment that exists from one that does not.
             Assert.Equal(ServicePaymentErrors.LinkInvalid, ex.Code);
             Assert.Equal("service_payment_link_invalid", ex.Code);
             Assert.Equal(ServicePaymentErrors.LinkInvalidMessageKey, ex.MessageKey);
@@ -169,8 +164,6 @@ public class SupplierPaymentSessionTests
         Assert.Null(page.ValidUntil);
     }
 
-    // ─── The session: a direct charge with the commission ───
-
     [Fact]
     public async Task CreatePublicSession_CreatesTheDirectChargeOnTheSupplierAccountWithTheSnapshotCommission()
     {
@@ -189,7 +182,6 @@ public class SupplierPaymentSessionTests
         Assert.Equal(payment.Id.ToString(), request.Metadata[ServiceCharges.PaymentMetadataKey]);
         Assert.Equal(payment.ServiceRequestId.ToString(), request.Metadata[ServiceCharges.RequestMetadataKey]);
         Assert.Equal(s.SupplierOrgId.ToString(), request.Metadata[ServiceCharges.SupplierMetadataKey]);
-        // No name, address or email goes to Stripe: ids only.
         Assert.DoesNotContain(request.Metadata.Values, value => value.Contains('@') || value.Contains("Casa"));
         Assert.DoesNotContain("Casa", request.Description ?? string.Empty);
 
@@ -201,7 +193,6 @@ public class SupplierPaymentSessionTests
         Assert.Equal(6_000, session.AmountCents);
         Assert.Equal("EUR", session.Currency);
 
-        // The payment keeps the PaymentIntent and the account it was created on; it is still waiting for the payer.
         var saved = await s.OnlyPaymentOfAsync(payment.ServiceRequestId);
         Assert.Equal(ServicePaymentStatus.Requested, saved.Status);
         Assert.Equal(intent.Id, saved.StripePaymentIntentId);
@@ -233,7 +224,6 @@ public class SupplierPaymentSessionTests
 
         await s.Payments.CreatePublicSessionAsync(payment.Id, token);
 
-        // Null, not 0: the parameter is left out of the request (A3-40).
         Assert.Null(Assert.Single(s.Gateway.Created).ApplicationFeeCents);
         Assert.Null(Assert.Single(s.Gateway.Intents).ApplicationFeeCents);
     }
@@ -254,7 +244,6 @@ public class SupplierPaymentSessionTests
 
         var session = await s.Payments.CreatePublicSessionAsync(payment.Id, token);
 
-        // The old one is canceled (it could still be paid for the old amount) and a new one is created with the next key.
         var canceled = Assert.Single(s.Gateway.Canceled);
         Assert.Equal(firstIntent, canceled.PaymentIntentId);
         Assert.Equal(ServiceCharges.CancellationIdempotencyKey(payment.Id, firstIntent), canceled.IdempotencyKey);
@@ -315,13 +304,11 @@ public class SupplierPaymentSessionTests
         var (payment, token) = await CompletedOnlineAsync(s);
         await s.Payments.CreatePublicSessionAsync(payment.Id, token);
         var oldIntent = Assert.Single(s.Gateway.Intents).Id;
-        // SP-14 replaces a supplier's Stripe account only when Stripe says the old one is gone: its PaymentIntent cannot be read.
         s.Gateway.DeleteAccount(ServiceRequestScenario.SupplierAccountId);
         await s.ConnectSupplierAsync(ready: true, accountId: "acct_supplier_new");
 
         var session = await s.Payments.CreatePublicSessionAsync(payment.Id, token);
 
-        // Nothing to cancel on an account that does not exist; the payer is not left with a payment that can never be paid.
         Assert.Empty(s.Gateway.Canceled);
         Assert.Equal(2, s.Gateway.Created.Count);
         Assert.Equal("acct_supplier_new", s.Gateway.Created[1].ConnectedAccountId);
@@ -342,8 +329,6 @@ public class SupplierPaymentSessionTests
         var firstIntent = Assert.Single(s.Gateway.Intents).Id;
         s.Gateway.FailNextGet(new StripeException(System.Net.HttpStatusCode.ServiceUnavailable, new StripeError { Type = "api_error" }, "down"));
 
-        // Only a certain "gone" (resource_missing, account_invalid) lets a new PaymentIntent be made: an outage is a 503 and the
-        // payment keeps the one it has, which the payer may be paying right now.
         await Assert.ThrowsAsync<StripeException>(() => s.Payments.CreatePublicSessionAsync(payment.Id, token));
         s.Db.ChangeTracker.Clear();
 
@@ -367,7 +352,6 @@ public class SupplierPaymentSessionTests
         Assert.Equal(ServicePaymentErrors.InFlight, ex.Code);
         Assert.Single(s.Gateway.Created);
         Assert.Empty(s.Gateway.Canceled);
-        // The payment is shown as in progress while the webhook (SP-15b) settles it; the payer is not offered a second charge.
         var saved = await s.OnlyPaymentOfAsync(payment.ServiceRequestId);
         Assert.Equal(ServicePaymentStatus.Processing, saved.Status);
         var page = await s.Payments.GetPublicAsync(payment.Id, token);
@@ -386,7 +370,7 @@ public class SupplierPaymentSessionTests
         var session = await s.Payments.CreatePublicSessionAsync(payment.Id, token);
 
         Assert.Equal(2, s.Gateway.Created.Count);
-        Assert.Empty(s.Gateway.Canceled); // already canceled: nothing to cancel
+        Assert.Empty(s.Gateway.Canceled);
         var saved = await s.OnlyPaymentOfAsync(payment.ServiceRequestId);
         Assert.Equal(2, saved.PaymentIntentCount);
         Assert.NotEqual(firstIntent, saved.StripePaymentIntentId);
@@ -399,7 +383,6 @@ public class SupplierPaymentSessionTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var (payment, token) = await CompletedOnlineAsync(s);
         var first = await s.Payments.CreatePublicSessionAsync(payment.Id, token);
-        // The card was declined: Stripe leaves the PaymentIntent payable (requires_payment_method) with the error.
         s.Gateway.SetStatus(Assert.Single(s.Gateway.Intents).Id, "requires_payment_method", "card_declined");
         await SupplierPaymentRequestTests.ChangePaymentAsync(s, payment.ServiceRequestId, p =>
         {
@@ -493,7 +476,6 @@ public class SupplierPaymentSessionTests
         s.Gateway.FailNextCreate(new StripeException(System.Net.HttpStatusCode.ServiceUnavailable, new StripeError { Type = "api_error" }, "down"));
 
         await Assert.ThrowsAsync<StripeException>(() => s.Payments.CreatePublicSessionAsync(payment.Id, token));
-        // The count was not kept: the PaymentIntent did not exist, so the next attempt is still the first one.
         var afterFailure = await s.OnlyPaymentOfAsync(payment.ServiceRequestId);
         Assert.Equal(0, afterFailure.PaymentIntentCount);
         Assert.Null(afterFailure.StripePaymentIntentId);
@@ -522,8 +504,6 @@ public class SupplierPaymentSessionTests
         Assert.Single(gateway.Intents);
     }
 
-    // ─── The host's own session ───
-
     [Fact]
     public async Task CreateHostSession_TheHostThatPays_GetsTheSameSessionWithoutTheLink()
     {
@@ -536,7 +516,6 @@ public class SupplierPaymentSessionTests
         var request = Assert.Single(s.Gateway.Created);
         Assert.Equal(600, request.ApplicationFeeCents);
         Assert.Equal(ServiceRequestScenario.SupplierAccountId, session.StripeAccountId);
-        // The same PaymentIntent whoever opens it: the link and the console never make two payable.
         var token = ServicePaymentTestSupport.LinkOf(Assert.Single(s.Emails.RequestEmails()).Content).Token;
         var viaLink = await s.Payments.CreatePublicSessionAsync(payment.Id, token);
         Assert.Equal(session.ClientSecret, viaLink.ClientSecret);
@@ -564,7 +543,7 @@ public class SupplierPaymentSessionTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var (payment, _) = await CompletedOnlineAsync(s);
-        var taken = await s.TakenAsync(); // taken, not completed: no payment
+        var taken = await s.TakenAsync();
 
         var otherOrg = await Assert.ThrowsAsync<NotFoundException>(() => s.Payments.CreateHostSessionAsync(payment.ServiceRequestId, Guid.NewGuid()));
         var noPayment = await Assert.ThrowsAsync<NotFoundException>(() => s.Payments.CreateHostSessionAsync(taken.Id, s.HostOrgId));
@@ -592,7 +571,6 @@ public class SupplierPaymentSessionTests
         Assert.Equal(ServicePaymentErrors.AlreadyPaidMessageKey, ex.MessageKey);
     }
 
-    /// <summary>A request completed inside CasaZen, and the payment with the raw token of the link the host was sent.</summary>
     private static async Task<(ServiceRequestPayment Payment, string Token)> CompletedOnlineAsync(ServiceRequestScenario s)
     {
         var completed = await s.CompletedOnlineAsync();

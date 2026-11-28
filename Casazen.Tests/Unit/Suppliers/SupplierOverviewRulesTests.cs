@@ -3,10 +3,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>
-/// SP-04e: the arithmetic behind two of the three numbers of the console home (SP-D13): how often the supplier says yes, and how long it
-/// takes to answer. The numbers on real requests are in <c>SupplierOverviewMetricsTests</c>.
-/// </summary>
 public class SupplierOverviewRulesTests
 {
     [Theory]
@@ -38,9 +34,9 @@ public class SupplierOverviewRulesTests
     [Fact]
     public void AverageMinutes_IsTheMeanInWholeMinutes()
     {
-        Assert.Equal(18, SupplierResponseTimes.AverageMinutes([10, 20, 25])); // 18.33
+        Assert.Equal(18, SupplierResponseTimes.AverageMinutes([10, 20, 25]));
         Assert.Equal(20, SupplierResponseTimes.AverageMinutes([20]));
-        Assert.Equal(0, SupplierResponseTimes.AverageMinutes([0.2, 0.4])); // under half a minute
+        Assert.Equal(0, SupplierResponseTimes.AverageMinutes([0.2, 0.4]));
     }
 
     [Fact]
@@ -52,7 +48,6 @@ public class SupplierOverviewRulesTests
     [Fact]
     public void AverageMinutes_IsNotTheMedianOfTheShowcase()
     {
-        // One request left for a weekend moves the home's average (the supplier's own view), not the public median (SP-09).
         double[] minutes = [5, 6, 7, 8, 3000];
 
         Assert.Equal(605, SupplierResponseTimes.AverageMinutes(minutes));

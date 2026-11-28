@@ -40,7 +40,6 @@ public class CleaningVatTests
     private static readonly Guid OtherOrgId = Guid.NewGuid();
     private static readonly HostScope OrgWide = new(OrgId);
 
-    /// <summary>The instant a cleaning was completed: 9:00 UTC, the same Europe/Rome day.</summary>
     private static DateTime At(int month, int day) => new(2026, month, day, 9, 0, 0, DateTimeKind.Utc);
 
     /// <summary>
@@ -58,7 +57,6 @@ public class CleaningVatTests
         Assert.Equal(22m, VatRates.Find("it", VatRateKind.Standard, day)!.Percent);
         Assert.Equal(10m, VatRates.Find("IT", VatRateKind.Lodging, day)!.Percent);
 
-        // Outside the validity of every row of the kind there is no rate.
         Assert.Null(VatRates.Find("CH", VatRateKind.Lodging, new DateOnly(2028, 1, 1)));
         Assert.Null(VatRates.Find("CH", VatRateKind.Standard, new DateOnly(2023, 12, 31)));
         Assert.Null(VatRates.Find("IT", VatRateKind.Standard, new DateOnly(2023, 12, 31)));
@@ -66,7 +64,6 @@ public class CleaningVatTests
         Assert.Null(VatRates.Find("FR", VatRateKind.Standard, day));
         Assert.Null(VatRates.Find(null, VatRateKind.Standard, day));
 
-        // Every row is dated and has its source; two rows of one country and kind never overlap, so a day has one rate or none.
         Assert.All(VatRates.Table, rate => Assert.True(rate.ValidTo is not { } to || to >= rate.ValidFrom));
         Assert.All(VatRates.Table, rate => Assert.False(string.IsNullOrWhiteSpace(rate.Source)));
         foreach (var group in VatRates.Table.GroupBy(rate => (rate.Country, rate.Kind)))
@@ -76,7 +73,6 @@ public class CleaningVatTests
                 Assert.True(rows[i - 1].ValidTo is { } end && end < rows[i].ValidFrom, $"{group.Key}: two rows overlap");
         }
 
-        // The question reads the table on the day of the cleaning.
         var world = World.Create();
         var owner = await world.OwnerAsync();
         var property = await world.PropertyAsync(owner, "TEST Casa Lago");
@@ -128,7 +124,6 @@ public class CleaningVatTests
         var no = RowOf(draft, notApplied);
         Assert.Equal((0m, 0m, 100.00m, (string?)null), (no.VatRatePercent, no.VatAmount ?? 0m, no.TotalPrice, no.VatNatureCode));
 
-        // «Non lo so», and nobody answered: exactly as before the question, the rate of a recharge added on top of the 100.00.
         Assert.All(
             new[] { RowOf(draft, unknown), RowOf(draft, unanswered) },
             row => Assert.Equal((8.1m, (decimal?)8.10m, 100.00m), (row.VatRatePercent, row.VatAmount, row.TotalPrice)));
@@ -143,7 +138,6 @@ public class CleaningVatTests
         Assert.Equal((-1400.00m, -1497.20m), (before, before + vat.Amount));
         Assert.Equal(issued.Total, -(before + vat.Amount));
 
-        // The ledger stays gross and not decomposed: each cleaning is still its 100.00.
         var cleanings = await rig.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.SourceType == OwnerLedgerSourceType.CleaningRequest).ToListAsync();
         Assert.Equal(4, cleanings.Count);
         Assert.All(cleanings, e => Assert.Equal(-100.00m, e.Amount));
@@ -218,7 +212,6 @@ public class CleaningVatTests
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Equal(5, (await world.TodosAsync()).Count);
 
-        // «Sì» for a1, remembered for the company: stored on the request with the rate it used, who and when; kept for company A; the items of a1 and a2 are closed.
         var answeredAt = world.Clock.GetUtcNow().UtcDateTime;
         var yes = await world.Vat.AnswerAsync(OrgWide, a1, CleaningSupplierVat.Applied, remember: true, Agency);
         Assert.Equal(
@@ -235,11 +228,9 @@ public class CleaningVatTests
         Assert.Equal(Agency, todos.Single(t => t.EntityId == a2).ClosedBy);
         Assert.Null(todos.Single(t => t.EntityId == b2).CompletedAt);
 
-        // a2 has no answer of its own: the company's states it, with the rate of the table on its own day.
         var byCompany = await world.Vat.GetAsync(OrgWide, a2);
         Assert.Equal(((CleaningSupplierVat?)null, (decimal?)8.1m, true), (byCompany.Answer, byCompany.Stated!.RatePercent, byCompany.Stated.FromCompany));
 
-        // The same answer again changes nothing; another one replaces it, once.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Vat.AnswerAsync(OrgWide, a1, CleaningSupplierVat.Applied, remember: true, Agency);
         Assert.Equal(answeredAt, (await world.RequestRowAsync(a1)).SupplierVatAnsweredAt);
@@ -255,21 +246,18 @@ public class CleaningVatTests
         await world.Vat.AnswerAsync(OrgWide, a1, CleaningSupplierVat.NotApplied, remember: false, Agency);
         Assert.Equal(replacedAt, (await world.RequestRowAsync(a1)).SupplierVatAnsweredAt);
 
-        // «Non lo so» is never remembered: refused, nothing written.
         var unknownRemembered = await Assert.ThrowsAsync<DomainRuleException>(() => world.Vat.AnswerAsync(OrgWide, b, CleaningSupplierVat.Unknown, remember: true, Agency));
         Assert.Equal(CleaningVatErrors.RememberUnknown, unknownRemembered.Code);
         Assert.Null((await world.RequestRowAsync(b)).SupplierVat);
         var missing = await Assert.ThrowsAsync<DomainRuleException>(() => world.Vat.AnswerAsync(OrgWide, b, null, remember: false, Agency));
         Assert.Equal(CleaningVatErrors.AnswerInvalid, missing.Code);
 
-        // «Non lo so» for b closes its item; the posting asks nothing again.
         await world.Vat.AnswerAsync(OrgWide, b, CleaningSupplierVat.Unknown, remember: false, Agency);
         Assert.Equal(Agency, (await world.TodosAsync()).Single(t => t.EntityId == b).ClosedBy);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Equal(5, (await world.TodosAsync()).Count);
 
-        // The close of the first owner's month: «Non lo so» never blocks it, and the question of b comes back once (b2's item is still open: not proposed again).
         await world.ApprovedVersionAsync(first);
         await world.ApprovedVersionAsync(second);
         var closed = await world.Accounting.CloseAsync(OrgId, first, 2026, 10, new OwnerCloseCommand { WaiverReason = "TEST" }, mayWaive: true, Agency);
@@ -282,19 +270,16 @@ public class CleaningVatTests
         Assert.Null((await world.RequestRowAsync(a2)).SupplierVatAskedAgainAt);
         Assert.Null((await world.RequestRowAsync(b2)).SupplierVatAskedAgainAt);
 
-        // «Non lo so» states nothing: a posting of the month while the co-owner's month is still open leaves the item proposed again open.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Null((await world.TodosAsync()).Single(t => t.Id == again.Id).CompletedAt);
 
-        // «Ricorda» on another cleaning of the same company states the company, not b (its own «Non lo so» wins): b's item stays open, b2's is closed by its answer.
         await world.Vat.AnswerAsync(OrgWide, b2, CleaningSupplierVat.NotApplied, remember: true, Agency);
         todos = await world.TodosAsync();
         Assert.Null(todos.Single(t => t.Id == again.Id).CompletedAt);
         Assert.Equal(Agency, todos.Single(t => t.EntityId == b2).ClosedBy);
         Assert.Equal((CleaningSupplierVat.Unknown, false), ((await world.Vat.GetAsync(OrgWide, b)).Stated!.Answer, (await world.Vat.GetAsync(OrgWide, b)).Stated!.FromCompany));
 
-        // «Non lo so» again closes it; the close of the second owner, who shares the cleaning, does not propose it a third time.
         await world.Vat.AnswerAsync(OrgWide, b, CleaningSupplierVat.Unknown, remember: false, Agency);
         Assert.Equal(Agency, (await world.TodosAsync()).Single(t => t.Id == again.Id).ClosedBy);
         await world.Accounting.CloseAsync(OrgId, second, 2026, 10, new OwnerCloseCommand { WaiverReason = "TEST" }, mayWaive: true, Agency);
@@ -319,7 +304,6 @@ public class CleaningVatTests
         var inSwitzerland = await world.RequestAsync(swiss, company, At(10, 20), 10000);
         var inItaly = await world.RequestAsync(italian, company, At(10, 21), 10000);
 
-        // No issuer profile: no owner invoice, nothing asked.
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, Agency);
         Assert.Empty(await world.TodosAsync());
 
@@ -337,7 +321,6 @@ public class CleaningVatTests
         Assert.Equal((inSwitzerland, (DateTime?)null), (asked.EntityId!.Value, asked.CompletedAt));
         Assert.DoesNotContain(await world.TodosAsync(), t => t.EntityId == inItaly);
 
-        // Not registered again: the item nobody can use is closed by the system, and the close of the month proposes nothing.
         await world.IssuerAsync(DocumentRegime.SwissNotRegistered);
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
@@ -384,7 +367,6 @@ public class CleaningVatTests
         Assert.All(fresh, t => Assert.Equal(((string?)CleaningVatRules.TodoEntityType, (DateTime?)null), (t.EntityType, t.CompletedAt)));
         Assert.DoesNotContain(todos, t => t.EntityId == ofClosedStay);
 
-        // Posting again changes nothing.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Accounting.PostPeriodAsync(OrgId, 2026, 10, null);
         Assert.Equal(todos.Count, (await world.TodosAsync()).Count);
@@ -409,7 +391,6 @@ public class CleaningVatTests
         var otherProperty = await world.PropertyAsync(owner, "TEST Casa altrui", OtherOrgId);
         var theirs = await world.RequestAsync(otherProperty, company, At(10, 20), 10000, orgId: OtherOrgId);
 
-        // Another organization's request, and a request of another category: not found, nothing written.
         foreach (var id in new[] { theirs, maintenance })
         {
             var read = await Assert.ThrowsAsync<NotFoundException>(() => world.Vat.GetAsync(OrgWide, id));
@@ -421,7 +402,6 @@ public class CleaningVatTests
         Assert.Null((await world.RequestRowAsync(theirs)).SupplierVat);
         Assert.Empty(await world.Db.SupplierVatDefaults.AsNoTracking().ToListAsync());
 
-        // A collaborator «Solo alcuni» reaches the requests of the properties it was given, and only those.
         world.Db.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = OrgId, UserId = "auth0|member", PropertyId = reached });
         await world.Db.SaveChangesAsync();
         var member = new HostScope(OrgId, GrantedToUserId: "auth0|member");
@@ -430,12 +410,10 @@ public class CleaningVatTests
         Assert.Equal(ServiceRequestErrorCodes.NotFound, outOfScope.Code);
         Assert.Null((await world.RequestRowAsync(outOfReach)).SupplierVat);
 
-        // The other organization remembers «No» for the same company: it states nothing of this organization's requests.
         await world.Vat.AnswerAsync(new HostScope(OtherOrgId), theirs, CleaningSupplierVat.NotApplied, remember: true, "auth0|other-agency");
         var ours = await world.Vat.GetAsync(OrgWide, mine);
         Assert.Equal(((bool?)null, (StatedCleaningVat?)null), (ours.CompanyAppliesVat, ours.Stated));
 
-        // The endpoint: the permission on the property of the request decides (403, nothing stored), and only the whole organization remembers for the company.
         var refused = Controller(world, member, mayWrite: false);
         Assert.IsType<ForbidResult>((await refused.Answer(mine, new CleaningVatAnswerRequest { Answer = CleaningSupplierVat.Applied }, CancellationToken.None)).Result);
         Assert.Null((await world.RequestRowAsync(mine)).SupplierVat);
@@ -452,12 +430,9 @@ public class CleaningVatTests
         Assert.Equal((CleaningSupplierVat.Applied, (decimal?)8.1m, false), (dto.Answer!.Value, dto.AnswerRatePercent, dto.CanRemember));
         Assert.True(Assert.IsType<CleaningVatDto>(Assert.IsType<OkObjectResult>((await Controller(world, OrgWide, mayWrite: true).Get(mine, CancellationToken.None)).Result).Value).CanRemember);
 
-        // The doors of the endpoint: property.read to read, property.write to answer (in either rental context: the request's own decides on the resource).
         Assert.Equal(CasazenPolicies.SharedPropertyRead, PolicyOf(nameof(ServiceRequestCleaningVatController.Get)));
         Assert.Equal(CasazenPolicies.SharedPropertyWrite, PolicyOf(nameof(ServiceRequestCleaningVatController.Answer)));
     }
-
-    // ---------------------------------------------------------------- the owner invoice rig
 
     /// <summary>The properties of the rig in <paramref name="country"/>: the country of the VAT of their cleanings.</summary>
     private static async Task InCountryAsync(OwnerInvoiceRig rig, string country)
@@ -468,7 +443,6 @@ public class CleaningVatTests
         rig.Db.ChangeTracker.Clear();
     }
 
-    /// <summary>The agency of the rig as an Italian issuer of the ordinary regime, its owner and properties in Italy (the data of an Italian invoice).</summary>
     private static async Task ItalianIssuerAsync(OwnerInvoiceRig rig)
     {
         var org = await rig.Db.Orgs.SingleAsync(o => o.Id == rig.OrgId);
@@ -497,7 +471,6 @@ public class CleaningVatTests
         await InCountryAsync(rig, "IT");
     }
 
-    /// <summary>A completed cleaning request of the lake house of the rig, with the answer and the rate given.</summary>
     private static async Task<Guid> AnsweredRequestAsync(OwnerInvoiceRig rig, CleaningSupplierVat? answer, decimal? rate)
     {
         var request = new ServiceRequest
@@ -523,7 +496,6 @@ public class CleaningVatTests
         return request.Id;
     }
 
-    /// <summary>The ledger line of the recharge of a cleaning request of 100.00, as the posting writes it.</summary>
     private static OwnerLedgerEntry CleaningLine(OwnerInvoiceRig rig, Guid request) =>
         rig.Line(
             OwnerLedgerEntryType.OwnerCharge,
@@ -534,13 +506,9 @@ public class CleaningVatTests
             OwnerLedgerCleaningRecharges.ReferenceOf(request),
             "Pulizia del 20/10/2026");
 
-    /// <summary>The row of the invoice of a cleaning request (its description names the reference of the request).</summary>
     private static FiscalDocumentLine RowOf(FiscalDocument invoice, Guid request) =>
         Assert.Single(invoice.Lines, l => l.Description.Contains(OwnerLedgerCleaningRecharges.ReferenceOf(request), StringComparison.Ordinal));
 
-    // ---------------------------------------------------------------- the endpoint
-
-    /// <summary>The endpoint over the world, for a caller of <paramref name="scope"/> who may (or may not) write the property of the request.</summary>
     private static ServiceRequestCleaningVatController Controller(World world, HostScope scope, bool mayWrite)
     {
         var userId = scope.GrantedToUserId ?? Agency;
@@ -619,7 +587,6 @@ public class CleaningVatTests
                 new CleaningVatTenant(),
                 TestDataProtection.Shared));
 
-        /// <summary>A Swiss owner paid in francs, with a complete profile from January and the approved Swiss rule set (created once).</summary>
         public async Task<Guid> OwnerAsync()
         {
             var owner = new PropertyOwner { OrgId = OrgId, FirstName = "TEST", LastName = "Proprietario", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -711,7 +678,6 @@ public class CleaningVatTests
             return property.Id;
         }
 
-        /// <summary>A Ticino property in francs owned from January by two owners, each in the share given.</summary>
         public async Task<Guid> CoOwnedPropertyAsync(string name, (Guid Owner, decimal Share) first, (Guid Owner, decimal Share) second)
         {
             var property = new Property { OrgId = OrgId, OwnerId = Agency, Name = name, Address = "Via 1", City = "Lugano", Country = "CH", Currency = "CHF" };
@@ -732,7 +698,6 @@ public class CleaningVatTests
             return property.Id;
         }
 
-        /// <summary>A mandate of the owner from January: no commission, the cleaning recharged at its cost.</summary>
         public Task<OwnerMandate> MandateAsync(Guid owner) =>
             Mandates.CreateVersionAsync(
                 OrgWide,
@@ -740,7 +705,6 @@ public class CleaningVatTests
                 new OwnerMandateCommand { ValidFrom = new DateOnly(2026, 1, 1), CommissionPercent = 0m, CleaningRechargeMode = CleaningRechargeMode.ActualCost },
                 null);
 
-        /// <summary>A confirmed stay of the property, priced by hand.</summary>
         public async Task<Guid> StayAsync(Guid property, DateTime checkIn, DateTime checkOut)
         {
             var guest = new Guest { OrgId = OrgId, FirstName = "Test", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -763,7 +727,6 @@ public class CleaningVatTests
             return booking.Id;
         }
 
-        /// <summary>A completed cleaning request of the company for the property, with its final amount, written straight to the table as the cost source reads it.</summary>
         public async Task<Guid> RequestAsync(
             Guid property,
             Guid company,
@@ -794,10 +757,8 @@ public class CleaningVatTests
             return request.Id;
         }
 
-        /// <summary>The request as it is stored.</summary>
         public Task<ServiceRequest> RequestRowAsync(Guid id) => Db.ServiceRequests.AsNoTracking().SingleAsync(r => r.Id == id);
 
-        /// <summary>The version of October of the owner, generated and approved.</summary>
         public async Task ApprovedVersionAsync(Guid owner)
         {
             Clock.Advance(TimeSpan.FromMinutes(1));
@@ -807,7 +768,6 @@ public class CleaningVatTests
             Db.ChangeTracker.Clear();
         }
 
-        /// <summary>The «Da fare» rows (the closed ones too), oldest first.</summary>
         public async Task<List<InternalActivity>> TodosAsync() =>
             await Db.InternalActivities.AsNoTracking().Where(a => a.Action != null).OrderBy(a => a.CreatedAt).ToListAsync();
     }

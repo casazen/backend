@@ -19,7 +19,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class ShowcaseInquiryTenancyTests
 {
-    /// <summary>The files that may read or write the tables, each with the reason.</summary>
     private static readonly IReadOnlyDictionary<string, string> AllowedFiles = new Dictionary<string, string>
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSets and the model.",
@@ -38,8 +37,6 @@ public class ShowcaseInquiryTenancyTests
         @"db\.(?<set>ShowcaseInquiries|ServiceRequestMessages)(?<rest>[\s\S]{0,90})",
         RegexOptions.Compiled);
 
-    // What may follow "db.<DbSet>" (whitespace removed): the org predicate, an insert, or the removal of a row loaded that way. The expiry
-    // job removes by key from a stub (RemoveRange of ids it listed itself).
     private static readonly Regex AllowedContinuation = new(
         @"^(\.AsNoTracking\(\))?\.Where\((?<x>\w+)=>\k<x>\.OrgId==|^\.Add\(|^\.Remove\(|^\.RemoveRange\(|^\.AsNoTracking\(\)\.Where\((?<y>\w+)=>\k<y>\.ExpiresAt<=",
         RegexOptions.Compiled);
@@ -125,8 +122,6 @@ public class ShowcaseInquiryTenancyTests
 
         var expired = ServiceRequestExpiryService.ExpiredInquiryIdsOf(db, now).ToQueryString();
 
-        // Only the ids of the inquiries that lapsed, oldest first, a bounded batch: no payload, no e-mail index, no token, no tenant
-        // predicate (the job works across every supplier).
         Assert.Matches("\"ExpiresAt\" <= @", expired);
         Assert.Matches("SELECT \\w+\\.\"Id\"\\s+FROM \"ShowcaseInquiries\"", expired);
         Assert.Contains("LIMIT @p", expired, StringComparison.Ordinal);
@@ -154,13 +149,10 @@ public class ShowcaseInquiryTenancyTests
             "explicit OrgId predicate: " + string.Join(", ", offenders));
     }
 
-    // The retention is a system job: its statements on the messages are across suppliers on purpose, and read ids only.
     private static readonly Regex RetentionContinuation = new(
         @"^\.Any\((?<x>\w+)=>\k<x>\.ServiceRequestId==|^\.AsNoTracking\(\)\.Where\((?<y>\w+)=>\w+\.Contains\(\k<y>\.ServiceRequestId\)\)\.Select\(\w+=>\w+\.Id\)|^\.RemoveRange\(",
         RegexOptions.Compiled);
 
-    // The listing of the ids is laid out over four lines (about 130 characters with the indentation), more than the window of DbSetUse, which
-    // would cut it before its Select. Read through a lookahead, so two statements close to each other are both examined.
     private static readonly Regex RetentionDbSetUse = new(
         @"db\.(?<set>ShowcaseInquiries|ServiceRequestMessages)(?=(?<rest>[\s\S]{0,200}))",
         RegexOptions.Compiled);
@@ -184,7 +176,6 @@ public class ShowcaseInquiryTenancyTests
             "The retention may only look for the requests that have messages, list the ids of the messages of the requests that are due and "
             + "delete them by key: " + string.Join(" | ", offenders));
 
-        // The candidates are read from the requests, with no text and no tenant predicate (the job works across every supplier).
         using var db = NewNpgsqlContext();
         var sql = ServiceCustomerPrivacyService.CandidateThreadsOf(db, new DateTime(2024, 10, 30, 0, 0, 0, DateTimeKind.Utc)).ToQueryString();
         Assert.Contains("EXISTS", sql, StringComparison.Ordinal);

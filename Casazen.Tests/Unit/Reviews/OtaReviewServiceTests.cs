@@ -67,8 +67,6 @@ public class OtaReviewServiceTests
             c => c.SendHostReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             times);
 
-    // ─── The read ───
-
     [Fact]
     public async Task SyncBooking_APublishedReview_IsStoredOnceWithOneEventOfIdsOnly_AndNoWordOfItInTheLog()
     {
@@ -80,7 +78,6 @@ public class OtaReviewServiceTests
         await using (var db = h.NewDb())
         using (h.Scope.Use(h.Granted.OrgId))
         {
-            // One service for both reads, as a run of the job holds it: the row of the first read is tracked when the second comes.
             var service = h.Service(db);
             first = await service.SyncBookingAsync(h.Granted.BookingId);
             second = await service.SyncBookingAsync(h.Granted.BookingId);
@@ -101,7 +98,6 @@ public class OtaReviewServiceTests
         Assert.Equal(HostReviewWindow.Open, row.HostReviewWindow);
         Assert.Equal(OtaReviewHarness.Now.UtcDateTime.AddHours(6), row.NextPollAt);
 
-        // One event for the review, the first time it is seen, with ids only: the routines of the host that wait for a review start from it.
         var events = await h.ReadAsync(db => db.OutboxEvents.Where(e => e.EventType == DomainEventType.ReviewReceived).ToListAsync());
         var published = Assert.Single(events);
         Assert.Equal(row.Id, published.EntityId);
@@ -110,7 +106,6 @@ public class OtaReviewServiceTests
         Assert.DoesNotContain("bellissimo", published.PayloadJson, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(h.Granted.BookingId.ToString(), published.PayloadJson, StringComparison.OrdinalIgnoreCase);
 
-        // The log keeps ids and states: never the words of the guest or the reference of the booking on the channel manager.
         Assert.DoesNotContain("bellissimo", h.Log.AllOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(OtaReviewHarness.GrantedRefer, h.Log.AllOutput, StringComparison.Ordinal);
         Assert.DoesNotContain("Giulietta", h.Log.AllOutput, StringComparison.Ordinal);
@@ -186,7 +181,6 @@ public class OtaReviewServiceTests
 
         h.WithdrawListing(h.Hidden.OrgId, OtaReviewHarness.HiddenAccommodation);
 
-        // A stay that does not happen, or that has no reservation on the channel manager, has nothing to review; a house whose listing nobody confirmed cannot be read.
         foreach (var (stay, outcome) in new[]
                  {
                      (cancelled, OtaReviewSyncOutcome.NotReviewable),
@@ -246,7 +240,6 @@ public class OtaReviewServiceTests
         Assert.Equal(OtaReviewHarness.Now.UtcDateTime.AddHours(24), row.NextPollAt);
         Assert.DoesNotContain(OtaReviewHarness.GrantedRefer, h.Log.AllOutput, StringComparison.Ordinal);
 
-        // A failure that may pass is read again at the next run.
         h.Client
             .Setup(c => c.GetReviewAsync(h.Granted.Accommodation, h.Granted.Refer, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OctorateServerException(503));
@@ -329,12 +322,6 @@ public class OtaReviewServiceTests
         Assert.DoesNotContain("rivedervi", $"{failed.Payload.Title} {failed.Payload.Body}", StringComparison.OrdinalIgnoreCase);
     }
 
-    // ─── The reply ───
-
-    /// <summary>
-    /// PROOF TEST: data rule (OCT-13, a reply is public and goes out once). The same key asked twice, even with another text, sends once and answers what was stored; a second reply
-    /// of the same review with a key of its own is refused (the channel holds one); the reply is in no log.
-    /// </summary>
     [Fact]
     public async Task OtaReview_ReplyTwice_SendsOnce_Test()
     {
@@ -382,7 +369,6 @@ public class OtaReviewServiceTests
 
         var unknown = await ReplyAsync(h, h.Granted, review.Id, ReplyText, KeyOne);
 
-        // Saved before it left, and not known to have arrived: waiting for a check, never an error and never a success.
         Assert.Equal(OtaReviewActionState.ManualVerify, unknown.State);
         var waiting = await h.ReviewOfAsync(h.Granted);
         Assert.Equal(ReplyText, waiting.HostReplyText);
@@ -390,7 +376,6 @@ public class OtaReviewServiceTests
         Assert.NotNull(waiting.HostReplyRequestedAt);
         Assert.Null(waiting.HostReplySentAt);
 
-        // Neither the same key nor another one sends it again while nobody knows (a reply is public).
         var replay = await ReplyAsync(h, h.Granted, review.Id, ReplyText, KeyOne);
         Assert.True(replay.Replayed);
         Assert.Equal(OtaReviewActionState.ManualVerify, replay.State);
@@ -398,7 +383,6 @@ public class OtaReviewServiceTests
         Assert.Equal(OtaReviewErrorCodes.ActionUnconfirmed, refused.Code);
         TheReplyIsSent(h, Times.Once());
 
-        // The next read finds the reply on the channel and completes the action: still one send.
         h.ChannelHasReview(h.Granted, hostReply: ReplyText);
         var completed = await h.SyncAsync(h.Granted);
         Assert.Equal(OtaReviewActionState.Sent, completed.HostReplyState);
@@ -424,7 +408,6 @@ public class OtaReviewServiceTests
         Assert.Equal(OtaReviewActionState.Error, failed.HostReplyState);
         Assert.Equal(OtaReviewErrorCodes.ReplyNotDelivered, failed.HostReplyError);
 
-        // The host may try again, with a key of its own, when the channel manager answers.
         h.Client
             .Setup(c => c.SendHostReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
@@ -450,7 +433,6 @@ public class OtaReviewServiceTests
 
         await Assert.ThrowsAsync<OctorateRateLimitException>(() => ReplyAsync(h, h.Granted, review.Id, ReplyText, KeyOne));
 
-        // Nothing left CasaZen: no text, no key, no state, as if nothing was asked.
         var untouched = await h.ReviewOfAsync(h.Granted);
         Assert.Equal(OtaReviewActionState.None, untouched.HostReplyState);
         Assert.Null(untouched.HostReplyText);
@@ -582,15 +564,12 @@ public class OtaReviewServiceTests
         NothingWasSent(h);
     }
 
-    // ─── The host's own review ───
-
     [Fact]
     public async Task HostReview_WhileTheWindowIsOpen_IsSentOnceWithItsRatings_AndTheReplyIsAnotherAction()
     {
         var h = await OtaReviewHarness.CreateAsync();
         var review = await PublishAsync(h, h.Granted);
 
-        // The reply and the host's review are two actions: the same key may open both.
         var reply = await ReplyAsync(h, h.Granted, review.Id, ReplyText, KeyOne);
         var sent = await HostReviewAsync(h, h.Granted, review.Id, GoodReview(), KeyOne);
         var again = await HostReviewAsync(h, h.Granted, review.Id, GoodReview(), KeyOne);
@@ -611,7 +590,6 @@ public class OtaReviewServiceTests
             Times.Once);
         TheReplyIsSent(h, Times.Once());
 
-        // Once it is on the channel the window is over: another host's review of the same stay is refused as already sent.
         var second = await Assert.ThrowsAsync<DomainConflictException>(() => HostReviewAsync(h, h.Granted, review.Id, GoodReview(), KeyTwo));
         Assert.Equal(OtaReviewErrorCodes.HostReviewAlreadySent, second.Code);
 
@@ -639,8 +617,6 @@ public class OtaReviewServiceTests
         NothingWasSent(h);
     }
 
-    // ─── What the host reads ───
-
     [Fact]
     public async Task ListForBooking_ShowsWhatTheChannelAllowsEvenBeforeAnyReview_AndThenTheReviewWithItsActions()
     {
@@ -658,7 +634,6 @@ public class OtaReviewServiceTests
             Assert.Null(before.LastSyncedAt);
             Assert.Null(before.CanRefreshAt);
 
-            // A channel the channel manager has no reviews for says so, with its reason, and offers nothing.
             var noIntegration = await rig.Service.ListForBookingAsync(scope, booking.BookingId);
             Assert.Empty(noIntegration.Items);
             Assert.False(noIntegration.ChannelCapabilities.CanRead);
@@ -716,7 +691,6 @@ public class OtaReviewServiceTests
         h.Client.Verify(c => c.GetReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    /// <summary>A refresh that did not read anything is never a 200: a read the channel manager refused is stored and then raised with its own code, and it counts for the ten minutes.</summary>
     [Fact]
     public async Task Refresh_AReadTheChannelManagerRefuses_IsStoredThenRaisedWithItsCode_AndItCountsForTheTenMinutes()
     {
@@ -724,7 +698,6 @@ public class OtaReviewServiceTests
         await PublishAsync(h, h.Granted);
         await using var rig = h.AsRequestOf(h.Granted.OrgId);
 
-        // The channel manager does not give the reviews of the accommodation: 409 with its code, and the row remembers it (what was read before stays).
         h.Clock.Advance(TimeSpan.FromMinutes(11));
         h.Client
             .Setup(c => c.GetReviewAsync(h.Granted.Accommodation, h.Granted.Refer, It.IsAny<CancellationToken>()))
@@ -736,11 +709,9 @@ public class OtaReviewServiceTests
         Assert.Equal(OtaReviewErrorCodes.ReviewNotAvailable, stored.LastSyncError);
         Assert.True(stored.GuestReviewPublished);
 
-        // A read that failed counts for the ten minutes as one that worked.
         var tooSoon = await Assert.ThrowsAsync<DomainTooManyRequestsException>(() => rig.Service.RefreshAsync(h.World.OrgWide, h.Granted.BookingId));
         Assert.Equal(OtaReviewErrorCodes.RefreshTooSoon, tooSoon.Code);
 
-        // The channel manager did not answer: 502 with its code.
         h.Clock.Advance(TimeSpan.FromMinutes(11));
         h.Client
             .Setup(c => c.GetReviewAsync(h.Granted.Accommodation, h.Granted.Refer, It.IsAny<CancellationToken>()))
@@ -749,7 +720,6 @@ public class OtaReviewServiceTests
         Assert.Equal(502, down.ResponseStatusCode);
         Assert.Equal(down.Code, (await h.ReviewOfAsync(h.Granted)).LastSyncError);
 
-        // A read that works again is the answer, and the error is gone.
         h.Clock.Advance(TimeSpan.FromMinutes(11));
         h.ChannelHasReview(h.Granted);
         var list = await rig.Service.RefreshAsync(h.World.OrgWide, h.Granted.BookingId);
@@ -776,17 +746,10 @@ public class OtaReviewServiceTests
         var noListing = await Assert.ThrowsAsync<DomainConflictException>(() => rig.Service.RefreshAsync(h.World.OrgWide, h.Hidden.BookingId));
         Assert.Equal(OtaReviewErrorCodes.MappingNotConfirmed, noListing.Code);
 
-        // Nothing was asked of the channel manager and no row was made.
         h.Client.Verify(c => c.GetReviewAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         Assert.Empty(await h.ReadAsync(db => db.OtaReviews.ToListAsync()));
     }
 
-    // ─── Tenant and reach ───
-
-    /// <summary>
-    /// PROOF TEST: tenant rule (AC-NF69-2). A review, a booking and a reply of org A do not exist for org B: not listed, not read, not refreshed, not answered, not found for the check
-    /// of its property, and nothing of it ever reaches the channel manager. The same holds with the scope of org A in the hands of a request of org B (the tenant filter is the second wall).
-    /// </summary>
     [Fact]
     public async Task OtaReview_OtherOrg_NotVisible_Test()
     {
@@ -807,7 +770,6 @@ public class OtaReviewServiceTests
         Assert.Null(await service.FindPropertyIdAsync(review.Id));
         Assert.Equal(OtaReviewSyncOutcome.BookingNotFound, (await service.SyncBookingAsync(h.Granted.BookingId)).Outcome);
 
-        // The scope of org A in a request of org B: the tenant filter of the context hides the rows anyway.
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetAsync(h.World.OrgWide, review.Id));
         await Assert.ThrowsAsync<NotFoundException>(() => service.ListForBookingAsync(h.World.OrgWide, h.Granted.BookingId));
 
@@ -817,7 +779,6 @@ public class OtaReviewServiceTests
         Assert.Equal(OtaReviewActionState.None, untouched.HostReplyState);
         Assert.Null(untouched.HostReplyText);
 
-        // The org that owns it reads it: the setup is sound.
         await using var owner = h.AsRequestOf(h.Granted.OrgId);
         Assert.Equal(review.Id, (await owner.Service.GetAsync(h.World.OrgWide, review.Id)).Id);
         Assert.Equal(review.PropertyId, await owner.Service.FindPropertyIdAsync(review.Id));
@@ -840,11 +801,8 @@ public class OtaReviewServiceTests
         await Assert.ThrowsAsync<NotFoundException>(() => service.ListForBookingAsync(scope, h.Hidden.BookingId));
         await Assert.ThrowsAsync<NotFoundException>(() => service.RefreshAsync(scope, h.Hidden.BookingId));
 
-        // The owner of the org reads both.
         Assert.Equal(hidden.Id, (await service.GetAsync(h.World.OrgWide, hidden.Id)).Id);
     }
-
-    // ─── Privacy ───
 
     [Fact]
     public async Task GuestErasure_EmptiesTheWordsOfTheGuest_KeepsTheHostsOwn_AndALaterReadBringsNothingBack()
@@ -874,7 +832,6 @@ public class OtaReviewServiceTests
         Assert.Equal("Casa pulita.", (await h.ReviewOfAsync(h.Hidden)).GuestReviewText);
         Assert.Equal(kept.Id, (await h.ReviewOfAsync(h.Hidden)).Id);
 
-        // The channel manager still holds the words of the guest: the next read does not store them again.
         h.ChannelHasReview(h.Granted, "Siamo stati benissimo, io sono Giulietta Verdi.");
         h.Clock.Advance(TimeSpan.FromHours(7));
         var later = await h.SyncAsync(h.Granted);

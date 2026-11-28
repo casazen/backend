@@ -25,8 +25,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         "lookup", "cancel", "reschedule", "proposal/accept", "proposal/reject", "alternatives",
     ];
 
-    // ─── The whole journey ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Journey_FindTheBooking_TheSupplierTakesIt_TheCustomerCancels_TheSlotIsFreeAgain()
     {
@@ -34,7 +32,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         using var client = factory.CreateClient();
         var booked = await BookAsync(client, supplier, PublicBookingTestData.TuesdayAt9);
 
-        // 1. It finds the booking again: the status, what it booked, the comune, what it can do. Not the street.
         var lookup = await Http.PostAsync(client, "lookup", booked.Access());
         Assert.Equal(HttpStatusCode.OK, lookup.StatusCode);
         Http.AssertPrivateAnswer(lookup);
@@ -60,12 +57,10 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         Assert.Equal(factory.Clock.GetUtcNow().UtcDateTime.AddMinutes(180), view.GetProperty("respondBy").GetDateTime().ToUniversalTime());
         Assert.True(Http.IsNull(view, "proposal"));
         Assert.True(Http.IsNull(view, "cancellation"));
-        // Nothing of the customer's data comes back before the supplier took the request: not the name, not the address, not the phone.
         var body = view.ToString();
         foreach (var secret in PublicBookingTestData.Secrets(booked.Email))
             Assert.DoesNotContain(secret, body, StringComparison.OrdinalIgnoreCase);
 
-        // 2. The supplier takes it: now the customer reads the exact address, and the time can no longer be moved.
         using (var asSupplier = supplier.Client(factory))
         {
             var taken = await asSupplier.PostAsync($"/api/service-requests/{booked.RequestId}/take", content: null);
@@ -81,15 +76,11 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         Assert.True(afterTake.GetProperty("actions").GetProperty("canCancel").GetBoolean());
         Assert.False(afterTake.ToString().Contains(booked.Email, StringComparison.OrdinalIgnoreCase));
 
-        // 3. The slot is taken for anybody else.
         var taken2 = await client.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings",
             PublicBookingTestData.Body(supplier.Service, PublicBookingTestData.TuesdayAt9, PublicBookingTestData.NewEmail()));
         await Http.AssertProblemAsync(taken2, HttpStatusCode.Conflict, "supplier_slot_unavailable");
 
-        // 4. The customer cancels, with its reason: the answer is the booking as it is now. Half an hour later the 24 hours of free
-        // cancellation (Monday 09:00 in Rome) have passed: it is cancelled all the same, at no cost, and the supplier is told the notice
-        // was short.
         var emailsBefore = factory.EmailsTo(booked.Email).Count;
         HttpResponseMessage cancelled;
         using (factory.MoveClock(TimeSpan.FromMinutes(30)))
@@ -108,7 +99,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         Assert.False(after.GetProperty("actions").GetProperty("canCancel").GetBoolean());
         Assert.True(Http.IsNull(after.GetProperty("place"), "address"));
 
-        // 5. Both are told: the supplier with "Nome C." and the comune, the customer with a receipt.
         var toSupplier = Assert.Single(
             factory.EmailsTo(supplier.ContactEmail),
             e => e.Template == EmailTemplates.Names.SupplierBookingCancelledByCustomer);
@@ -123,7 +113,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             factory.Pushes.ToArray(),
             p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId) && p.Payload.Type == PushTypes.ServiceRequestCancelled);
 
-        // 6. The supplier sees who cancelled, and why.
         using (var asSupplier = supplier.Client(factory))
         {
             var detail = await asSupplier.GetFromJsonAsync<JsonElement>($"/api/supplier/inbox/{booked.RequestId}");
@@ -133,13 +122,11 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             Assert.Equal("Mario R.", detail.GetProperty("clientName").GetString());
         }
 
-        // 7. A second cancellation answers the same and does nothing again.
         var again = await Http.PostAsync(client, "cancel", booked.Access(new { reason = "Un altro motivo" }));
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
         Assert.Equal("Cambio programma", (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cancellation").GetProperty("reason").GetString());
         Assert.Equal(emailsBefore + 1, factory.EmailsTo(booked.Email).Count);
 
-        // 8. The slot is free again and another customer books it.
         var next = await client.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings",
             PublicBookingTestData.Body(supplier.Service, PublicBookingTestData.TuesdayAt9, PublicBookingTestData.NewEmail()));
@@ -161,8 +148,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             Assert.Equal(booked.Code, (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("publicCode").GetString());
         }
     }
-
-    // ─── One answer for everything that does not identify a booking ─────────────────────────────────────────────────────
 
     [Fact]
     public async Task NotFound_AWrongCode_AWrongAddress_AnotherSuppliersBooking_AnUnknownSupplier_Are_TheSame404_OnEveryEndpoint()
@@ -197,12 +182,10 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
                 bodies[name] = Http.SameBody(await response.Content.ReadFromJsonAsync<JsonElement>());
             }
 
-            // One answer: the same status, the same code, the same words, the same shape — whichever of the seven it was.
             Assert.True(bodies.Values.Distinct().Count() == 1, $"{path}: {string.Join(" | ", bodies.Values.Distinct())}");
             Assert.Contains("\"code\":\"supplier_booking_not_found\"", bodies.Values.First());
         }
 
-        // Nothing was changed by any of them, at either supplier.
         foreach (var owner in new[] { supplier, other })
         {
             var inbox = await owner.InboxAsync(factory);
@@ -256,7 +239,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         using var client = factory.CreateClient();
         var booked = await BookAsync(client, supplier, PublicBookingTestData.TuesdayAt9);
 
-        // SP-10c: the other suppliers are the way out of a request nobody answered in time; for a request in any other state there are none.
         var response = await Http.PostAsync(client, "alternatives", booked.Access());
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -265,7 +247,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         Assert.Equal(0, answer.GetProperty("alternatives").GetArrayLength());
         Assert.DoesNotContain(booked.Email, answer.ToString(), StringComparison.OrdinalIgnoreCase);
 
-        // The booking itself has no `alternatives` member at all while it is open: its answer is what it always was.
         var lookup = await (await Http.PostAsync(client, "lookup", booked.Access())).Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(lookup.TryGetProperty("alternatives", out _));
     }
@@ -291,12 +272,10 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             {
                 var response = await Http.PostAsync(client, path, body);
                 Assert.True(response.StatusCode == HttpStatusCode.BadRequest, $"{path}: {(int)response.StatusCode} for {JsonSerializer.Serialize(body)}");
-                // The answers MVC gives on its own, before the action runs, are as private as the others.
                 Http.AssertPrivateAnswer(response);
             }
         }
 
-        // And a body that is not JSON at all.
         var notJson = await client.PostAsync(
             "/api/public/supplier-bookings/lookup", new StringContent("{ not json", Encoding.UTF8, "application/json"));
         Assert.Equal(HttpStatusCode.BadRequest, notJson.StatusCode);
@@ -326,7 +305,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         using var client = factory.CreateClient();
         var booked = await BookAsync(client, supplier, PublicBookingTestData.TuesdayAt9);
 
-        // Only POST with a body: a GET with the credentials in the query string finds nothing (the route does not exist).
         var query = $"slug={supplier.Slug}&code={booked.Code}&email={Uri.EscapeDataString(booked.Email)}";
         foreach (var path in Paths)
         {
@@ -337,8 +315,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             Assert.True(post.StatusCode is HttpStatusCode.UnsupportedMediaType or HttpStatusCode.BadRequest, $"{path}: {(int)post.StatusCode}");
         }
     }
-
-    // ─── Reschedule ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Reschedule_MovesTheRequest_FreesTheOldSlot_AndTellsTheSupplier()
@@ -365,7 +341,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             factory.Pushes.ToArray(),
             p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId) && p.Payload.Type == PushTypes.ServiceRequestRescheduled);
 
-        // The old slot is bookable, the new one is not.
         var old = await client.PostAsJsonAsync(
             $"/api/public/suppliers/{supplier.Slug}/bookings",
             PublicBookingTestData.Body(supplier.Service, PublicBookingTestData.TuesdayAt9, PublicBookingTestData.NewEmail()));
@@ -386,10 +361,10 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
 
         foreach (var start in new[]
                  {
-                     PublicBookingTestData.TuesdayAt9.AddDays(1), // taken by another customer
-                     PublicBookingTestData.TuesdayAt9.AddDays(5), // a Sunday
-                     PublicBookingTestData.TuesdayAt9.AddDays(-7), // the past
-                     PublicBookingTestData.TuesdayAt9.AddMinutes(20), // not on the grid
+                     PublicBookingTestData.TuesdayAt9.AddDays(1),
+                     PublicBookingTestData.TuesdayAt9.AddDays(5),
+                     PublicBookingTestData.TuesdayAt9.AddDays(-7),
+                     PublicBookingTestData.TuesdayAt9.AddMinutes(20),
                      new DateTime(1, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                      new DateTime(9999, 12, 31, 22, 30, 0, DateTimeKind.Utc),
                  })
@@ -419,8 +394,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         await Http.AssertProblemAsync(afterTake, (HttpStatusCode)422, "supplier_booking_cannot_reschedule");
     }
 
-    // ─── Cancel ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Cancel_AReasonThatIsTooLong_Is422NamingTheField_AndATakenRequestOnceItsTimeHasPassedCannotBeCancelled()
     {
@@ -437,7 +410,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
 
         using (factory.MoveClock(TimeSpan.FromDays(1) + TimeSpan.FromHours(3)))
         {
-            // Tuesday 13 October 12:00 in Rome: the work started at 09:00 and nobody marked it.
             var late = await Http.PostAsync(client, "cancel", booked.Access());
             await Http.AssertProblemAsync(late, (HttpStatusCode)422, "supplier_booking_cannot_cancel");
             var view = await (await Http.PostAsync(client, "lookup", booked.Access())).Content.ReadFromJsonAsync<JsonElement>();
@@ -445,15 +417,13 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         }
     }
 
-    // ─── The proposed time ───────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task Proposal_TheSupplierProposesAnotherTime_TheCustomerAccepts_AndBothAreTold()
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);
         using var client = factory.CreateClient();
         var booked = await BookAsync(client, supplier, PublicBookingTestData.TuesdayAt9);
-        var proposed = PublicBookingTestData.TuesdayAt9.AddHours(5); // 14:00
+        var proposed = PublicBookingTestData.TuesdayAt9.AddHours(5);
         await ProposeAsync(supplier, booked, proposed, "Il mattino sono già impegnato");
 
         var lookup = await (await Http.PostAsync(client, "lookup", booked.Access())).Content.ReadFromJsonAsync<JsonElement>();
@@ -463,7 +433,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         Assert.Equal(factory.Clock.GetUtcNow().UtcDateTime.AddHours(24), proposal.GetProperty("answerBy").GetDateTime().ToUniversalTime());
         Assert.True(lookup.GetProperty("actions").GetProperty("canRespondToProposal").GetBoolean());
         Assert.True(Http.IsNull(lookup, "respondBy"));
-        // The booking keeps the time it was asked for until the customer accepts.
         Assert.Equal(PublicBookingTestData.TuesdayAt9, lookup.GetProperty("startUtc").GetDateTime().ToUniversalTime());
 
         var accepted = await Http.PostAsync(client, "proposal/accept", booked.Access());
@@ -486,7 +455,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             factory.Pushes.ToArray(),
             p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId) && p.Payload.Type == PushTypes.ServiceRequestProposalAccepted);
 
-        // A second answer finds no proposal.
         var again = await Http.PostAsync(client, "proposal/accept", booked.Access());
         await Http.AssertProblemAsync(again, (HttpStatusCode)422, "supplier_booking_no_proposal");
     }
@@ -553,8 +521,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         await Http.AssertProblemAsync(await Http.PostAsync(client, "proposal/reject", booked.Access()), (HttpStatusCode)422, "supplier_booking_no_proposal");
     }
 
-    // ─── What nobody may learn ───────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task EveryAnswer_IsNotIndexableNotCacheableAndSetsNoCookie_AndEchoesNothingPersonal()
     {
@@ -604,8 +570,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
             Assert.DoesNotContain(secret, logs, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ─── helpers ───
-
     private Task<BookedForManagement> BookAsync(HttpClient client, BookableSupplier supplier, DateTime start) =>
         Http.BookAsync(factory, client, supplier, start);
 
@@ -613,7 +577,6 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         Http.ProposeAsync(factory, supplier, booked, start, message);
 }
 
-/// <summary>The showcase host with the per-IP limit of the customer's area at three requests per five minutes.</summary>
 public sealed class PublicBookingManagePerIpThrottledFactory : PublicBookingFactory
 {
     protected override IEnumerable<KeyValuePair<string, string?>> ExtraSettings() =>
@@ -622,7 +585,6 @@ public sealed class PublicBookingManagePerIpThrottledFactory : PublicBookingFact
     ];
 }
 
-/// <summary>The showcase host with the per-address limit of the customer's area at three requests per fifteen minutes.</summary>
 public sealed class PublicBookingManagePerEmailThrottledFactory : PublicBookingFactory
 {
     protected override IEnumerable<KeyValuePair<string, string?>> ExtraSettings() =>
@@ -650,7 +612,6 @@ public class PublicSupplierBookingManagementRateLimitIntegrationTests(
         var booked = await Http.BookAsync(perIp, client, supplier, PublicBookingTestData.TuesdayAt9);
         const string ip = "203.0.113.91";
 
-        // Three calls use the budget of the IP, found or not, of any of the five endpoints.
         var first = await Http.PostAsync(client, "lookup", booked.Access(), ip);
         var second = await Http.PostAsync(client, "lookup", new { slug = supplier.Slug, code = "7K2XM-9QD4T", email = booked.Email }, ip);
         var third = await Http.PostAsync(client, "proposal/accept", booked.Access(), ip);
@@ -662,11 +623,9 @@ public class PublicSupplierBookingManagementRateLimitIntegrationTests(
         Assert.Equal((HttpStatusCode)422, third.StatusCode);
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(limited);
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
-        // The middleware answers before MVC, and the answer is as private as the ones of the controller.
         Http.AssertPrivateAnswer(limited);
         Assert.Equal(HttpStatusCode.OK, otherIp.StatusCode);
 
-        // The cancellation that was refused did not happen.
         var view = await (await Http.PostAsync(client, "lookup", booked.Access(), "203.0.113.93")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Richiesto", view.GetProperty("status").GetString());
     }
@@ -680,7 +639,6 @@ public class PublicSupplierBookingManagementRateLimitIntegrationTests(
         var booked = await Http.BookAsync(perEmail, client, supplier, PublicBookingTestData.TuesdayAt9);
         var wrong = new { slug = supplier.Slug, code = "7K2XM-9QD4T", email = booked.Email };
 
-        // A miss, a hit, a miss: three attempts of the same address at the same supplier, from three different IPs.
         var first = await Http.PostAsync(client, "lookup", wrong, "203.0.113.101");
         var second = await Http.PostAsync(client, "lookup", booked.Access(), "203.0.113.102");
         var third = await Http.PostAsync(client, "reschedule", booked.Access(new { startUtc = PublicBookingTestData.TuesdayAt9.AddDays(5) }), "203.0.113.103");
@@ -691,14 +649,11 @@ public class PublicSupplierBookingManagementRateLimitIntegrationTests(
         Assert.Equal(HttpStatusCode.Conflict, third.StatusCode);
         var problem = await ClientIpRateLimitingIntegrationTests.AssertRateLimitedAsync(limited);
         Assert.Equal("rate_limited", problem.GetProperty("code").GetString());
-        // The whole window of the limit, to the second, however long ago the first attempt was: the time that is left would tell
-        // when somebody last looked for a booking with this address.
         Assert.Equal(TimeSpan.FromMinutes(15), limited.Headers.RetryAfter?.Delta);
         Assert.Equal(15 * 60, problem.GetProperty("retryAfterSeconds").GetInt32());
         Http.AssertPrivateAnswer(first);
         Http.AssertPrivateAnswer(limited);
 
-        // Another address at the same supplier, and the same address at another supplier, have budgets of their own.
         var anotherAddress = await Http.PostAsync(client, "lookup", new { slug = supplier.Slug, code = booked.Code, email = "un.altro@example.com" }, "203.0.113.105");
         var anotherSupplier = await Http.PostAsync(client, "lookup", new { slug = other.Slug, code = booked.Code, email = booked.Email }, "203.0.113.106");
         Assert.Equal(HttpStatusCode.NotFound, anotherAddress.StatusCode);
@@ -735,10 +690,6 @@ public class PublicSupplierBookingManagementRateLimitIntegrationTests(
     }
 }
 
-/// <summary>
-/// SP-11 with the flag <c>SupplierShowcaseBooking</c> <b>off</b> (the default of every environment): the five endpoints answer 404 like
-/// a route that does not exist, whatever the body, before authentication and model binding, and nothing is read or changed.
-/// </summary>
 [Collection(SupplierCatalogHostsCollection.Name)]
 public class PublicSupplierBookingManagementFlagOffIntegrationTests(CasazenWebApplicationFactory factory) : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -757,7 +708,6 @@ public class PublicSupplierBookingManagementFlagOffIntegrationTests(CasazenWebAp
             {
                 await Http.PostAsync(client, path, access),
                 await Http.PostAsync(client, path, Http.Merge(access, new { startUtc = DateTime.UtcNow.AddDays(3), reason = "x" })),
-                // A body that would be refused is a 404 too, never a 400: nothing is read.
                 await Http.PostAsync(client, path, new { }),
                 await client.PostAsync($"/api/public/supplier-bookings/{path}", new StringContent("{ not json", Encoding.UTF8, "application/json")),
                 await client.PostAsync($"/api/public/supplier-bookings/{path}", content: null),

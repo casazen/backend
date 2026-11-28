@@ -4,11 +4,6 @@ using Casazen.Infrastructure.Services;
 
 namespace Casazen.Tests.Unit.Identity;
 
-/// <summary>
-/// Pictures of an identity card built in code (E71/F01/US01, NF-189): a light card with a border on a darker background, the zones of the format filled with what a card
-/// has (lines of text, the portrait, the MRZ band), and the variants the tests need (cut by the frame, of another ratio, turned by a quarter or a half turn, with a glare
-/// patch, blurred, brighter). No photo of a person or of a document is committed or read: the repository is public, and a picture built here is known pixel by pixel.
-/// </summary>
 internal static class DocumentImageFactory
 {
     public const int Width = 640;
@@ -23,7 +18,6 @@ internal static class DocumentImageFactory
     private static readonly (byte R, byte G, byte B) Skin = (200, 150, 120);
     private static readonly (byte R, byte G, byte B) Hair = (40, 30, 30);
 
-    /// <summary>Where the card is, in pixels of the picture; a card may reach outside the picture (it is cut by the frame).</summary>
     public readonly record struct Placement(int Left, int Top, int Width, int Height)
     {
         public int Right => Left + Width;
@@ -31,10 +25,8 @@ internal static class DocumentImageFactory
         public int Bottom => Top + Height;
     }
 
-    /// <summary>A card of the ratio of the format (480 by 303 is 1.584 against 1.586) well inside the picture.</summary>
     public static Placement WholeCard { get; } = new(80, 70, 480, 303);
 
-    /// <summary>A card on the picture: <paramref name="side"/> of <paramref name="format"/>, with the face stand-in when <paramref name="withFace"/>, and a patch of glare that covers <paramref name="glareShare"/> of the card.</summary>
     public static RasterImage Render(
         DocumentFormat format, DocumentSide side, Placement card, bool withFace = true, double glareShare = 0, int imageWidth = Width, int imageHeight = Height)
     {
@@ -66,7 +58,6 @@ internal static class DocumentImageFactory
         return new RasterImage(imageWidth, imageHeight, rgb);
     }
 
-    /// <summary>A picture of one gray level and nothing else: no card.</summary>
     public static RasterImage Plain(byte level, int width = Width, int height = Height)
     {
         var rgb = new byte[width * height * 3];
@@ -74,10 +65,6 @@ internal static class DocumentImageFactory
         return new RasterImage(width, height, rgb);
     }
 
-    /// <summary>
-    /// A page of text: the whole frame is light and <paramref name="lines"/> rows of printed blocks run across it, with no border and no card. It has straight lines of edges in great number (all the
-    /// same way, as the lines of a card have) and nothing that is a rectangle: the answer for it must stay «no card», turned or not.
-    /// </summary>
     public static RasterImage TextPage(int lines = 22, int imageWidth = Width, int imageHeight = Height)
     {
         var rgb = new byte[imageWidth * imageHeight * 3];
@@ -93,10 +80,6 @@ internal static class DocumentImageFactory
         return new RasterImage(imageWidth, imageHeight, rgb);
     }
 
-    /// <summary>
-    /// The picture with its gray levels squeezed into <paramref name="low"/> to <paramref name="high"/>: the same card at a contrast too low for the edge detector to see an edge (a dark card on a dark
-    /// table). The steps of the picture shrink in the same proportion, a step of 80 levels of the card against its background becomes 80 * (high - low) / 255.
-    /// </summary>
     public static RasterImage LowContrast(RasterImage source, byte low, byte high)
     {
         var rgb = new byte[source.Rgb.Length];
@@ -106,22 +89,15 @@ internal static class DocumentImageFactory
         return new RasterImage(source.Width, source.Height, rgb);
     }
 
-    /// <summary>The picture turned a quarter clockwise (the top goes to the right): what <c>RasterImage.Oriented(6)</c> makes of it.</summary>
     public static RasterImage TurnedClockwise(RasterImage source) =>
         Remap(source, source.Height, source.Width, (x, y) => (source.Height - 1 - y, x));
 
-    /// <summary>The picture turned a quarter counter-clockwise (the top goes to the left).</summary>
     public static RasterImage TurnedCounterClockwise(RasterImage source) =>
         Remap(source, source.Height, source.Width, (x, y) => (y, source.Width - 1 - x));
 
-    /// <summary>The picture turned a half turn (upside down).</summary>
     public static RasterImage TurnedHalf(RasterImage source) =>
         Remap(source, source.Width, source.Height, (x, y) => (source.Width - 1 - x, source.Height - 1 - y));
 
-    /// <summary>
-    /// The picture turned <paramref name="degrees"/> clockwise around its centre (a small angle: a card that is not held straight), bilinear, so the edges are as soft as the ones of
-    /// a photo (two or three pixels). What the turn uncovers at the border is the background of the picture, so no edge appears there.
-    /// </summary>
     public static RasterImage Rotated(RasterImage source, double degrees)
     {
         var radians = degrees * Math.PI / 180.0;
@@ -134,7 +110,6 @@ internal static class DocumentImageFactory
         {
             for (var x = 0; x < source.Width; x++)
             {
-                // The pixel of the result comes from the source turned back, so the content turns clockwise (the y axis points down).
                 var dx = x - centreX;
                 var dy = y - centreY;
                 var fromX = centreX + (cos * dx) + (sin * dy);
@@ -148,7 +123,6 @@ internal static class DocumentImageFactory
         return new RasterImage(source.Width, source.Height, rgb);
     }
 
-    /// <summary>The picture with every pixel <paramref name="delta"/> levels brighter (darker when negative), kept within 0 to 255.</summary>
     public static RasterImage Brightened(RasterImage source, int delta)
     {
         var rgb = new byte[source.Rgb.Length];
@@ -158,7 +132,6 @@ internal static class DocumentImageFactory
         return new RasterImage(source.Width, source.Height, rgb);
     }
 
-    /// <summary>The picture blurred by a box of <c>2 * radius + 1</c> pixels, <paramref name="passes"/> times (the edges of the picture are repeated).</summary>
     public static RasterImage Blurred(RasterImage source, int radius, int passes)
     {
         var width = source.Width;
@@ -174,7 +147,6 @@ internal static class DocumentImageFactory
         return new RasterImage(width, height, current);
     }
 
-    /// <summary>One row of dark blocks (a line of printed text) in a zone of the card.</summary>
     private static void TextLine(Canvas canvas, Placement card, DocumentFormatRegion zone)
     {
         var left = card.Left + (int)Math.Round(zone.X * card.Width);
@@ -185,7 +157,6 @@ internal static class DocumentImageFactory
             canvas.Fill(x, top, 9, height, InkLevel, InkLevel, InkLevel);
     }
 
-    /// <summary>The MRZ band: three dense lines of small dark blocks, the densest text of a card.</summary>
     private static void MrzBand(Canvas canvas, Placement card, DocumentFormatRegion mrz)
     {
         var left = card.Left + (int)Math.Round(mrz.X * card.Width);
@@ -216,16 +187,13 @@ internal static class DocumentImageFactory
         canvas.Fill(left + (int)(width * 0.15), top + (int)(height * 0.18), (int)(width * 0.7), (int)(height * 0.12), Hair.R, Hair.G, Hair.B);
     }
 
-    /// <summary>True when the pixel at <paramref name="at"/> is the colour of the skin of the stand-in, give or take the blend of a resize at its edge.</summary>
     internal static bool IsSkin(byte[] rgb, int at) => Near(rgb, at, Skin);
 
-    /// <summary>True when the pixel at <paramref name="at"/> is the colour of the hair of the stand-in.</summary>
     internal static bool IsHair(byte[] rgb, int at) => Near(rgb, at, Hair);
 
     private static bool Near(byte[] rgb, int at, (byte R, byte G, byte B) colour) =>
         Math.Abs(rgb[at] - colour.R) <= 20 && Math.Abs(rgb[at + 1] - colour.G) <= 20 && Math.Abs(rgb[at + 2] - colour.B) <= 20;
 
-    /// <summary>One channel of the picture at a point between its pixels (bilinear); the background level outside the picture.</summary>
     private static byte Sample(RasterImage source, double x, double y, int channel)
     {
         if (x < 0 || y < 0 || x > source.Width - 1 || y > source.Height - 1)
@@ -258,7 +226,6 @@ internal static class DocumentImageFactory
         return new RasterImage(width, height, rgb);
     }
 
-    /// <summary>One box blur of every channel along rows or columns, with a running sum.</summary>
     private static void Blur(byte[] from, byte[] to, int width, int height, int radius, bool horizontal)
     {
         var lines = horizontal ? height : width;
@@ -285,7 +252,6 @@ internal static class DocumentImageFactory
         }
     }
 
-    /// <summary>A picture in memory with the one operation the factory needs: a rectangle of one colour, cut to the picture.</summary>
     private sealed class Canvas(byte[] rgb, int width, int height)
     {
         public void Fill(int left, int top, int rectangleWidth, int rectangleHeight, byte r, byte g, byte b)
@@ -304,17 +270,10 @@ internal static class DocumentImageFactory
     }
 }
 
-/// <summary>
-/// A face detector for the pictures of <see cref="DocumentImageFactory"/>: it finds the stand-in of the portrait (a box of skin colour with a dark bar in its upper part)
-/// and says it is a face only when the bar is in the upper part of the picture it was given, as a real detector finds a face only when it is upright. So a card turned by
-/// a quarter or a half turn has its face found at the turn that makes it upright, and only there.
-/// </summary>
 internal sealed class PortraitStandInDetector : IFaceDetector
 {
-    /// <summary>How many pictures it was asked about.</summary>
     public int Calls { get; private set; }
 
-    /// <summary>The pixel arrays of the pictures it was shown, as the application held them (the tests prove the application zeroed them).</summary>
     public List<byte[]> SeenPixels { get; } = [];
 
     public IReadOnlyList<DetectedFace> Detect(RasterImage image, double minScore, CancellationToken cancellationToken)

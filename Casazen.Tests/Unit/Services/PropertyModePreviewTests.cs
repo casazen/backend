@@ -19,8 +19,6 @@ public class PropertyModePreviewTests : IDisposable
 
     public void Dispose() => _h.Dispose();
 
-    // ─── Short stays to long-term ───────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task ToLong_NothingInTheWay_TheFirstDayIsTomorrowAndItCanBeScheduled()
     {
@@ -58,7 +56,6 @@ public class PropertyModePreviewTests : IDisposable
         Assert.Equal(Day(25), listed.FreeFrom);
         Assert.Equal("Pending", listed.Status);
         Assert.Equal("Manual", listed.Source);
-        // Ordered by arrival: the stay in the house, then the two to come.
         Assert.Equal([Day(8), Day(12), Day(20)], preview.Blockers.Select(b => b.Start));
     }
 
@@ -80,11 +77,8 @@ public class PropertyModePreviewTests : IDisposable
         var property = await _h.SeedPropertyAsync();
         await _h.SeedStayAsync(property, Day(12), Day(30), BookingStatus.Cancelled);
         await _h.SeedStayAsync(property, Day(12), Day(30), BookingStatus.CheckedOut);
-        // Already gone: left today (free from tomorrow).
         await _h.SeedStayAsync(property, Day(7), Day(10));
-        // An abandoned checkout hold of the public site (30 minutes, BK-21) takes no dates.
         await _h.SeedStayAsync(property, Day(12), Day(30), BookingStatus.Pending, createdAt: Now.UtcDateTime.AddHours(-3), checkoutHold: true);
-        // Another property's stay.
         var other = await _h.SeedPropertyAsync(orgId: property.OrgId, name: "Altra casa");
         await _h.SeedStayAsync(other, Day(12), Day(40));
 
@@ -174,7 +168,6 @@ public class PropertyModePreviewTests : IDisposable
     [Fact]
     public async Task ToLong_LeasesOfTheProperty_AreNotInTheWayOfTheMode()
     {
-        // No constraint on the leases of a short-stay property (PM-01): they do not stop it from going long-term.
         var property = await _h.SeedPropertyAsync();
         await _h.SeedLeaseAsync(property, Day(-30), Day(300));
 
@@ -182,8 +175,6 @@ public class PropertyModePreviewTests : IDisposable
 
         Assert.True(preview.CanSchedule);
     }
-
-    // ─── Long-term to short stays ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ToShort_NoLease_TheFirstDayIsTomorrow()
@@ -238,12 +229,9 @@ public class PropertyModePreviewTests : IDisposable
     public async Task ToShort_LeasesThatDoNotCount_AreNotInTheWay()
     {
         var property = await _h.SeedPropertyAsync(RentalMode.Long);
-        // Rejected, and a lease that ended before today (concluded: one that is not, renews by itself, LR-14).
         await _h.SeedLeaseAsync(property, Day(-10), Day(90), LeaseStatus.Rejected);
         await _h.SeedLeaseAsync(property, Day(-400), Day(-5), terminatedOn: Day(-5));
-        // A lease that ends today is free from tomorrow.
         await _h.SeedLeaseAsync(property, Day(-400), Day(10));
-        // Another property's lease.
         var other = await _h.SeedPropertyAsync(RentalMode.Long, property.OrgId, "Altra casa");
         await _h.SeedLeaseAsync(other, Day(-10), Day(500));
 
@@ -267,11 +255,8 @@ public class PropertyModePreviewTests : IDisposable
         Assert.Equal((PropertyModeBlockerKind.DraftLease, draft.Id), (listed.Kind, listed.Id));
         Assert.Null(listed.FreeFrom);
         Assert.Equal("Draft", listed.Status);
-        // No date frees the property from a draft: the earliest day is still tomorrow.
         Assert.Equal(Day(11), preview.EarliestDate);
     }
-
-    // ─── Common ─────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(10)]
@@ -357,7 +342,6 @@ public class PropertyModePreviewTests : IDisposable
     public async Task Preview_AfterTwentyTwoUtc_TodayIsAlreadyTheNextDayInRome()
     {
         var property = await _h.SeedPropertyAsync();
-        // 23:30 UTC on the 10th is 01:30 of the 11th in Rome (CEST): tomorrow is the 12th.
         _h.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 10, 23, 30, 0, TimeSpan.Zero));
 
         var preview = await _h.Service.PreviewAsync(property.Id, RentalMode.Long);

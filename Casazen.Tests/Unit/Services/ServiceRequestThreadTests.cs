@@ -22,8 +22,6 @@ public class ServiceRequestThreadTests
 {
     private const string Reply = "Certo, posso passare giovedì mattina per un sopralluogo gratuito.";
 
-    // ─── Reading ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetThread_ShowsTheCustomersWordsInOrder_MarksThemRead_AndSaysTheSupplierCanWrite()
     {
@@ -37,13 +35,11 @@ public class ServiceRequestThreadTests
         var message = Assert.Single(first.Messages);
         Assert.Equal(ServiceRequestMessageAuthor.Customer, message.Author);
         Assert.Equal(InquiryScenario.Words, message.Body);
-        // As it was before this reading: the screen can tell what is new to the supplier.
         Assert.Null(message.ReadAt);
         Assert.Equal(ServiceRequestStatus.Richiesto, first.Status);
         Assert.True(first.CanWrite);
         Assert.Equal(request.ResponseDueAt, first.RespondBy);
 
-        // From now on the customer's message is read; the next reading shows it.
         var second = await s.Service.GetThreadAsSupplierAsync(request.Id, s.SupplierOrgId);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, Assert.Single(second.Messages).ReadAt);
     }
@@ -65,8 +61,6 @@ public class ServiceRequestThreadTests
         Assert.Null(Assert.Single(await s.ThreadAsync(request.Id)).ReadAt);
     }
 
-    // ─── Writing ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task PostMessage_AddsTheSuppliersMessage_StopsTheClock_AndTellsTheCustomerWithALinkAndNoWords()
     {
@@ -84,7 +78,6 @@ public class ServiceRequestThreadTests
         Assert.Equal([ServiceRequestMessageAuthor.Customer, ServiceRequestMessageAuthor.Supplier], thread.Select(m => m.Author).ToArray());
         Assert.Equal(s.SupplierOrgId, thread[1].OrgId);
 
-        // The supplier answered: nobody closes the conversation behind the customer's back.
         var stored = await s.Db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == request.Id);
         Assert.Equal(ServiceRequestStatus.Richiesto, stored.Status);
         Assert.Null(stored.ResponseDueAt);
@@ -128,18 +121,15 @@ public class ServiceRequestThreadTests
         var other = await s.AddBookableSupplierAsync();
         s.ForgetNotifications();
 
-        // Empty, too long, with a character a message cannot have: one answer.
         foreach (var body in new[] { null, "   ", new string('x', ShowcaseInquiryLimits.MessageMaxLength + 1), "con un carattere" + (char)0 + " nascosto" })
         {
             var invalid = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Service.PostMessageAsSupplierAsync(request.Id, s.SupplierOrgId, body));
             Assert.Equal("service_request_message_invalid", invalid.Code);
         }
 
-        // A request that is not the supplier's, or is not on measure, is a 404; a host never reaches the thread.
         await Assert.ThrowsAsync<NotFoundException>(async () => await s.Service.PostMessageAsSupplierAsync(request.Id, other.OrgId, Reply));
         await Assert.ThrowsAsync<NotFoundException>(async () => await s.Service.PostMessageAsSupplierAsync(booking.Id, s.SupplierOrgId, Reply));
 
-        // A supplier that is not active writes nothing (it can still read).
         await s.SetSupplierStatusAsync(SupplierStatus.Suspended);
         var suspended = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Service.PostMessageAsSupplierAsync(request.Id, s.SupplierOrgId, Reply));
         Assert.Equal(ServiceRequestErrorCodes.SupplierNotActive, suspended.Code);
@@ -163,7 +153,6 @@ public class ServiceRequestThreadTests
         Assert.Equal("service_request_thread_closed", closed.Code);
         Assert.False((await s.Service.GetThreadAsSupplierAsync(refused.Id, s.SupplierOrgId)).CanWrite);
 
-        // 199 more messages and the thread has the 200 it may have.
         var now = s.Clock.GetUtcNow().UtcDateTime;
         for (var i = 0; i < ShowcaseInquiryLimits.MaxMessagesPerRequest - 1; i++)
         {
@@ -184,8 +173,6 @@ public class ServiceRequestThreadTests
         Assert.Equal("service_request_thread_full", full.Code);
         Assert.Equal(ShowcaseInquiryLimits.MaxMessagesPerRequest, (await s.ThreadAsync(crowded.Id)).Count);
     }
-
-    // ─── A request on measure is answered, refused or lapses: it is never taken as a booking is ──────────────────────
 
     [Fact]
     public async Task ARequestOnMeasure_IsNotTakenNorGivenAnotherTime_UntilThereIsAnOffer()

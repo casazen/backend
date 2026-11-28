@@ -37,9 +37,6 @@ public sealed class IdentitySessionOpeningTests
     private static readonly DateTimeOffset Now = new(2026, 11, 27, 9, 0, 0, TimeSpan.Zero);
     private static readonly CancellationToken Ct = CancellationToken.None;
 
-    // ─── The opening ─────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>AC1: the opening records the notice version and hash, the channel and the bound guest once; a second call changes nothing.</summary>
     [Fact]
     public async Task IdentitySessionOpening_RecordsTheNoticeTheChannelAndTheBoundGuest_Once()
     {
@@ -64,7 +61,6 @@ public sealed class IdentitySessionOpeningTests
         Assert.False(first.State.Closed);
         Assert.Null(first.State.Outcome);
 
-        // Later, from another browser: nothing changes.
         world.Clock.Advance(TimeSpan.FromMinutes(10));
         var again = await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.DesktopFirefox, Ct);
 
@@ -74,13 +70,11 @@ public sealed class IdentitySessionOpeningTests
             (saved.IdentityOpenedAt, saved.IdentityNoticeVersion, saved.IdentityNoticeTextHash, saved.IdentityChannel, saved.IdentityGuestId, saved.UpdatedAt),
             (unchanged.IdentityOpenedAt, unchanged.IdentityNoticeVersion, unchanged.IdentityNoticeTextHash, unchanged.IdentityChannel, unchanged.IdentityGuestId, unchanged.UpdatedAt));
 
-        // A channel that is not one of the codes is kept as web:other: never a text of the request.
         var other = await world.StayAsync("Bruno", "Conti");
         await world.Flow().OpenIdentityAsync(other, ServedVersion, "Mozilla/5.0 (X11; Linux x86_64) Gecko/20100101", Ct);
         Assert.Equal(IdentityChannels.Other, (await world.ReadBackAsync(other.Id)).IdentityChannel);
     }
 
-    /// <summary>AC2: a notice that is not the version the registry serves now (a past one, another case, none) is refused and nothing is recorded.</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -104,14 +98,12 @@ public sealed class IdentitySessionOpeningTests
     {
         await using var world = await World.CreateAsync();
 
-        // The registry serves no consent (production with nothing approved): no notice to record.
         var withoutText = await world.StayAsync("Dario", "Esposito");
         world.ServeNoConsent();
         Assert.Equal(IdentityOpenStatus.NoticeVersionUnknown, (await world.Flow().OpenIdentityAsync(withoutText, ServedVersion, IdentityChannels.IosSafari, Ct)).Status);
         AssertNothingOpened(await world.ReadBackAsync(withoutText.Id));
         world.ServeTheConsent();
 
-        // Already with a person (the guest refused before the flow was self-hosted) or already passed: the state answers and nothing is opened.
         var refused = await world.StayAsync("Elena", "Ferrari");
         refused.BiometricConsentRefusedAt = Now.UtcDateTime;
         refused.OperatorRequestedAt = Now.UtcDateTime;
@@ -128,10 +120,6 @@ public sealed class IdentitySessionOpeningTests
         }
     }
 
-    /// <summary>
-    /// Proof (privacy, AC3): the User-Agent of the request is never kept or logged, only its family. Through the real endpoints (the opening and the consent) with a
-    /// header that carries a unique marker: no text column of the saved session, no line of the logs and no answer holds it, and the session says the family.
-    /// </summary>
     [Fact]
     public async Task IdentitySessionOpening_UserAgentIsNotPersisted()
     {
@@ -163,12 +151,6 @@ public sealed class IdentitySessionOpeningTests
             Assert.DoesNotContain(marker, JsonSerializer.Serialize(answer, new JsonSerializerOptions(JsonSerializerDefaults.Web)), StringComparison.Ordinal);
     }
 
-    // ─── The choice ──────────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// AC4: a consent given to the served version is the choice <c>automatic</c> and opens the step when it was not opened (the consent version is the notice); a refusal
-    /// is <c>assisted</c>; a request for a person on an opened verification is the switch to <c>assisted</c>; a consent to a stale version records nothing.
-    /// </summary>
     [Fact]
     public async Task IdentitySessionOpening_TheConsentAndTheRequestForAPerson_RecordTheChoice()
     {
@@ -182,34 +164,28 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal((IdentityChoices.Automatic, Now.UtcDateTime), (afterConsent.IdentityChoice, afterConsent.IdentityChoiceAt));
         Assert.Null(afterConsent.IdentityClosedAt);
 
-        // The guest asks for a person: the switch to the assisted path, and the hand-off closes the verification.
         world.Clock.Advance(TimeSpan.FromMinutes(3));
         await world.Flow().RequestOperatorAsync(agreed, Ct);
         var afterRequest = await world.ReadBackAsync(agreed.Id);
         Assert.Equal((IdentityChoices.Assisted, Now.UtcDateTime.AddMinutes(3)), (afterRequest.IdentityChoice, afterRequest.IdentityChoiceAt));
         Assert.Equal(IdentityOutcomeCodes.Assisted, afterRequest.IdentityOutcomeCode);
 
-        // A refusal, without a version, on a session never opened: opened with the served consent as the notice, the choice assisted, closed as refused.
         var refusing = await world.StayAsync("Ida", "Piccoli");
         Assert.Equal(BiometricConsentStatus.Refused, (await world.Flow().RecordConsentAsync(refusing, false, null, IdentityChannels.DesktopSafari, Ct)).Status);
         var refused = await world.ReadBackAsync(refusing.Id);
         Assert.Equal((ServedVersion, IdentityChannels.DesktopSafari, IdentityChoices.Assisted), (refused.IdentityNoticeVersion, refused.IdentityChannel, refused.IdentityChoice));
         Assert.Equal(IdentityOutcomeCodes.ConsentRefused, refused.IdentityOutcomeCode);
 
-        // A consent to a stale version is no consent and no choice.
         var stale = await world.StayAsync("Luca", "Rossi");
         Assert.Equal(BiometricConsentStatus.VersionUnknown, (await world.Flow().RecordConsentAsync(stale, true, "TEST-biometric-v0", IdentityChannels.IosSafari, Ct)).Status);
         AssertNothingOpened(await world.ReadBackAsync(stale.Id));
 
-        // A request for a person on a session never opened opens nothing: the hand-off happens, the self-hosted columns stay empty.
         var neverOpened = await world.StayAsync("Mara", "Rossetti");
         await world.Flow().RequestOperatorAsync(neverOpened, Ct);
         var handedOff = await world.ReadBackAsync(neverOpened.Id);
         Assert.NotNull(handedOff.OperatorRequestedAt);
         AssertNothingOpened(handedOff);
     }
-
-    // ─── The closure ─────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData(VerificationAlertReasons.Review, IdentityOutcomeCodes.Review)]
@@ -233,17 +209,12 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal(IdentityOutcomeCodes.Review, IdentityVerificationFlowService.IdentityOutcomeOf("a_reason_of_tomorrow"));
         Assert.Equal(IdentityVerificationGuestResults.Ok, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.AutoApproved, handedToAPerson: false));
 
-        // Every other code handed the verification to a person; an abandoned one did not (the retention closed it, nobody was told): it says nothing until the guest asks for one.
         Assert.All(IdentityOutcomeCodes.All.Where(code => code != IdentityOutcomeCodes.AutoApproved && code != IdentityOutcomeCodes.Abandoned), code =>
             Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(code, handedToAPerson: true)));
         Assert.Null(IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.Abandoned, handedToAPerson: false));
         Assert.Equal(IdentityVerificationGuestResults.Operator, IdentityVerificationFlowService.GuestOutcomeOf(IdentityOutcomeCodes.Abandoned, handedToAPerson: true));
     }
 
-    /// <summary>
-    /// AC5: every hand-off of an opened session to a person, along the real paths of the flow, sets <c>IdentityClosedAt</c> and the code of its reason; a later hand-off
-    /// keeps the first code, and the state says closed with the outcome <c>operator</c>.
-    /// </summary>
     [Theory]
     [InlineData("review", IdentityOutcomeCodes.Review)]
     [InlineData("last-attempt", IdentityOutcomeCodes.Review)]
@@ -259,7 +230,6 @@ public sealed class IdentitySessionOpeningTests
         var session = await world.StayAsync("Nora", "Galli", path == "minor" ? new DateTime(2014, 3, 3) : null);
         Assert.Equal(IdentityOpenStatus.Answered, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
 
-        // E73/F01/US01/T02: with the self-hosted flow on the two-frame selfie is closed, so the review, the attempts used and the error come from the closure of the presence.
         switch (path)
         {
             case "review":
@@ -306,17 +276,12 @@ public sealed class IdentitySessionOpeningTests
         Assert.True(state.Closed);
         Assert.Equal(IdentityVerificationGuestResults.Operator, state.Outcome);
 
-        // A later hand-off (the guest asks for a person after the closure) keeps the first code and time.
         world.Clock.Advance(TimeSpan.FromMinutes(5));
         await world.Flow().RequestOperatorAsync(session, Ct);
         var after = await world.ReadBackAsync(session.Id);
         Assert.Equal((closed.IdentityClosedAt, outcome), (after.IdentityClosedAt, after.IdentityOutcomeCode));
     }
 
-    /// <summary>
-    /// Proof (security, AC5, AC-NF188-3): a closed verification refuses every new identity step with 409 <c>identity_already_closed</c> and the state, through the real
-    /// endpoints: the opening, the document, the presence challenge and the selfie; nothing of them reaches the flow's work. The request for a person stays available.
-    /// </summary>
     [Fact]
     public async Task IdentitySessionOpening_ClosedSessionRefusesNewAttempts()
     {
@@ -335,7 +300,6 @@ public sealed class IdentitySessionOpeningTests
         AssertClosed((await controller.UploadSelfie(Token, Image("selfie"), turnedSelfie: Image("turnedSelfie"), challengeToken: "anything")).Result);
         Assert.Equal(IdentityOpenStatus.Closed, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.DesktopFirefox, Ct)).Status);
 
-        // Nothing ran: no picture read or kept, no attempt, no agent, the closure as it was.
         Assert.Equal(0, world.Agent.Calls);
         Assert.Equal(0, world.Mrz.Reads);
         Assert.Empty(world.Storage.Objects);
@@ -343,18 +307,12 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal((closed.IdentityClosedAt, closed.IdentityOutcomeCode, closed.BiometricAttempts, closed.DocumentCheckJson),
             (after.IdentityClosedAt, after.IdentityOutcomeCode, after.BiometricAttempts, after.DocumentCheckJson));
 
-        // The way to a person is still open.
         var request = Assert.IsType<OperatorRequestResponse>(Assert.IsType<OkObjectResult>((await controller.RequestOperator(Token)).Result).Value);
         Assert.True(request.OperatorPathOpen);
         Assert.True(request.State.Closed);
         Assert.Equal(alerts, world.Alerts.Count);
     }
 
-    /// <summary>
-    /// E73/F01/US02/T03 (review of S015): a verification the hourly retention closed as abandoned is closed and says nothing more. The public state has no outcome (it must not say that
-    /// a person has it: no operator was told, no request, no alert), the identity steps refuse it as every closed verification, and the way to a person stays open: once the guest asks
-    /// for one the hand-off is real, the operators are told once and the outcome is <c>operator</c>.
-    /// </summary>
     [Fact]
     public async Task IdentitySessionOpening_AnAbandonedSession_IsClosedWithNoOutcome_UntilTheGuestAsksForAPerson()
     {
@@ -362,7 +320,6 @@ public sealed class IdentitySessionOpeningTests
         var session = await world.StayAsync("Rita", "Moro");
         Assert.Equal(IdentityOpenStatus.Answered, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
 
-        // The next day the hourly retention closes it: the real service, on a context of its own, as the job runs.
         world.Clock.Advance(TimeSpan.FromHours(25));
         var counts = await world.Retention().PurgeAsync(world.Clock.GetUtcNow().UtcDateTime, Ct);
 
@@ -381,7 +338,6 @@ public sealed class IdentitySessionOpeningTests
         Assert.True(dto.OperatorPathOpen);
         Assert.Equal(IdentityOpenStatus.Closed, (await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
 
-        // The guest asks for a person: that is the hand-off, told once; the closure keeps its first code and the outcome is now operator.
         var asked = PublicIdentityVerificationStateDto.From(await world.Flow().RequestOperatorAsync(session, Ct));
         Assert.True(asked.Closed);
         Assert.True(asked.OperatorRequested);
@@ -392,13 +348,6 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal((closed.IdentityClosedAt, IdentityOutcomeCodes.Abandoned), (handedOff.IdentityClosedAt, handedOff.IdentityOutcomeCode));
     }
 
-    // ─── The bound guest ─────────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Proof (data): one guest per session. The opening binds the guest the flow verifies (the booker's row here); an edit of the guest list that would make the rule of
-    /// today pick somebody else does not move it: a second opening and the consent keep it, and the step asks the bound guest. A first guest with a document that is not the
-    /// booker's row is bound by the id of its row, and stays bound wherever the list moves it. With the self-hosted flow off the rule of today applies.
-    /// </summary>
     [Fact]
     public async Task IdentitySessionOpening_BoundGuestNeverChanges()
     {
@@ -412,7 +361,6 @@ public sealed class IdentitySessionOpeningTests
         await world.Flow().OpenIdentityAsync(session, ServedVersion, IdentityChannels.AndroidChrome, Ct);
         Assert.Equal(booker, (await world.ReadBackAsync(session.Id)).IdentityGuestId);
 
-        // The list is edited: the booker's row is a family member now and a new head of family comes after it. The rule of today would verify the new head.
         world.Guests = booking =>
         [
             Row(booking, bookerRow, 0, StayGuestType.FamilyMember, booker),
@@ -425,7 +373,6 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal(IdentityChannels.AndroidChrome, kept.IdentityChannel);
         Assert.Equal(0, (await world.Flow().GetStateAsync(session, Ct)).VerifyingGuestPosition);
 
-        // A first guest with a document that is not the booker's row: bound by its row, and still the one asked when the list moves it.
         var second = await world.StayAsync("Rita", "Sala");
         var headRow = Guid.NewGuid();
         world.Guests = booking =>
@@ -444,12 +391,10 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal(2, (await world.Flow().GetStateAsync(second, Ct)).VerifyingGuestPosition);
         Assert.Equal(headRow, (await world.ReadBackAsync(second.Id)).IdentityGuestId);
 
-        // The self-hosted flow off: the binding is not read, the rule of today picks the first guest with a document.
         world.Flags.Set(FeatureFlags.CheckInIdentitySelfHosted, false);
         Assert.Equal(0, (await world.Flow().GetStateAsync(second, Ct)).VerifyingGuestPosition);
     }
 
-    /// <summary>The bound guest left the stay: the verification is not offered any more and never moves to somebody else; the consent hands it to a person for review.</summary>
     [Fact]
     public async Task IdentitySessionOpening_TheBoundGuestLeftTheStay_APersonDecides()
     {
@@ -476,7 +421,6 @@ public sealed class IdentitySessionOpeningTests
         Assert.Equal(VerificationAlertReasons.Review, Assert.Single(world.Alerts).Reason);
     }
 
-    /// <summary>AC6 for the flow: with <c>CheckInIdentitySelfHosted</c> off the opening, the consent and the request for a person write none of the self-hosted columns.</summary>
     [Fact]
     public async Task IdentitySessionOpening_SelfHostedOff_RecordsNothing_AndTheStateIsTheLegacyOne()
     {
@@ -515,7 +459,6 @@ public sealed class IdentitySessionOpeningTests
         Assert.False(open.Closed);
         Assert.Null(open.Outcome);
 
-        // The success path of the automatic approval (a later task) writes this code: the guest then sees ok.
         session.IdentityClosedAt = Now.UtcDateTime;
         session.IdentityOutcomeCode = IdentityOutcomeCodes.AutoApproved;
         await world.Db.SaveChangesAsync(Ct);
@@ -523,8 +466,6 @@ public sealed class IdentitySessionOpeningTests
         Assert.True(approved.Closed);
         Assert.Equal(IdentityVerificationGuestResults.Ok, approved.Outcome);
     }
-
-    // ─── Fixtures ────────────────────────────────────────────────────────────────────────────────────────
 
     private static void AssertNothingOpened(GuestCheckInSession session)
     {
@@ -574,7 +515,6 @@ public sealed class IdentitySessionOpeningTests
         };
     }
 
-    /// <summary>One org on the Agency plan (the verification on by default), a property in Italy, the flow with its fakes and the self-hosted flow on.</summary>
     private sealed class World : IAsyncDisposable
     {
         private readonly DbContextOptions<AppDbContext> _options =
@@ -584,8 +524,6 @@ public sealed class IdentitySessionOpeningTests
         private readonly Guid _propertyId = Guid.NewGuid();
         private readonly Mock<ICheckInLegalTexts> _legalTexts = ActivePoseFlowTestVerifier.CreateRegistry();
 
-        // E73/F01/US01/T02: the closure of the presence, the real path of a review or an error with the self-hosted flow on: the committed policy pinned, the models there, a
-        // double of the pipeline and a segment in observation.
         private readonly string _directory = Path.Combine(Path.GetTempPath(), "casazen-identity-session-" + Guid.NewGuid().ToString("N"));
         private readonly Casazen.Infrastructure.Identity.IdentityPolicyProvider _policy;
         private readonly Mock<IIdentitySegmentService> _segments = new();
@@ -621,7 +559,6 @@ public sealed class IdentitySessionOpeningTests
 
         public List<string> Logs { get; } = [];
 
-        /// <summary>The guests of a stay as the flow reads them; null: the booker alone, as the real service answers before anyone is registered.</summary>
         public Func<Booking, IReadOnlyList<StayGuest>>? Guests { get; set; }
 
         public static async Task<World> CreateAsync(params string[] flags)
@@ -683,7 +620,6 @@ public sealed class IdentitySessionOpeningTests
             segments: _segments.Object,
             decisionEngine: new Casazen.Infrastructure.Identity.IdentityDecisionEngine());
 
-        /// <summary>One attempt of the presence on the real closure: a challenge when the step offers one, the frames and a new key; the pipeline answers what the test scripted.</summary>
         public async Task<PresenceStepResult> PresenceAsync(GuestCheckInSession session)
         {
             var flow = Flow();
@@ -693,7 +629,6 @@ public sealed class IdentitySessionOpeningTests
             return answer;
         }
 
-        /// <summary>The public endpoints over the real flow, for <paramref name="session"/> and a request that carries <paramref name="userAgent"/>.</summary>
         public PublicGuestCheckInController Controller(GuestCheckInSession session, string userAgent)
         {
             var checkIn = new Mock<IGuestCheckInService>();
@@ -739,7 +674,6 @@ public sealed class IdentitySessionOpeningTests
             await Db.SaveChangesAsync(Ct);
         }
 
-        /// <summary>A confirmed stay of a booker with an open check-in session, loaded as the public endpoint loads it.</summary>
         public async Task<GuestCheckInSession> StayAsync(string firstName, string lastName, DateTime? dateOfBirth = null)
         {
             var guest = new Guest
@@ -786,7 +720,6 @@ public sealed class IdentitySessionOpeningTests
                 .SingleAsync(s => s.Id == session.Id, Ct);
         }
 
-        /// <summary>The consent recorded and the document read, its picture kept encrypted: the selfie can be compared.</summary>
         public async Task ReadyAsync(GuestCheckInSession session)
         {
             Assert.Equal(BiometricConsentStatus.Recorded, (await Flow().RecordConsentAsync(session, true, ServedVersion, IdentityChannels.AndroidChrome, Ct)).Status);
@@ -794,10 +727,8 @@ public sealed class IdentitySessionOpeningTests
             Assert.True((await Flow().SubmitDocumentAsync(session, document, Ct)).DocumentStored);
         }
 
-        /// <summary>A context of its own on the same store, as a job has it.</summary>
         public AppDbContext NewContext() => new(_options, null, _dataProtection);
 
-        /// <summary>The hourly retention of the identity verification on a context of its own, with the flags, the bucket and the clock of the world.</summary>
         public Casazen.Infrastructure.Identity.IdentityRetentionService Retention() => new(
             NewContext(),
             Storage,
@@ -807,7 +738,6 @@ public sealed class IdentitySessionOpeningTests
             Clock,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<Casazen.Infrastructure.Identity.IdentityRetentionService>.Instance);
 
-        /// <summary>The session as it was saved, read by another context on the same store.</summary>
         public async Task<GuestCheckInSession> ReadBackAsync(Guid sessionId)
         {
             await using var other = new AppDbContext(_options, null, _dataProtection);
@@ -822,7 +752,6 @@ public sealed class IdentitySessionOpeningTests
         }
     }
 
-    /// <summary>The guests of the stay the world says, else the booker alone; the flow reads nothing else of the service.</summary>
     private sealed class RosterOfTheTest(World world) : IStayGuestService
     {
         public Task<IReadOnlyList<StayGuest>> GetForBookingAsync(Booking booking, CancellationToken cancellationToken = default)
@@ -858,7 +787,6 @@ public sealed class IdentitySessionOpeningTests
         }
     }
 
-    /// <summary>An agent that accepts every capture and answers the selfie from a script (an outcome, or an exception).</summary>
     private sealed class ScriptedAgent : IIdentityVerificationAgent
     {
         private readonly Queue<Func<IdentityVerificationOutcome>> _answers = new();
@@ -887,7 +815,6 @@ public sealed class IdentitySessionOpeningTests
         }
     }
 
-    /// <summary>The alerts raised, in order.</summary>
     private sealed class RecordingAlerts : List<(Guid SessionId, string Reason)>, IVerificationOperatorAlerts
     {
         public Task RaiseAsync(Guid sessionId, string reasonCode, CancellationToken ct)
@@ -899,7 +826,6 @@ public sealed class IdentitySessionOpeningTests
         public Task ResolveAsync(Guid orgId, Guid bookingId, CancellationToken ct) => Task.CompletedTask;
     }
 
-    /// <summary>An MRZ that reads a valid, unexpired Italian card of an adult, counting the pictures it was shown.</summary>
     private sealed class CountingMrz : IMrzExtractionService
     {
         public int Reads { get; private set; }
@@ -931,7 +857,6 @@ public sealed class IdentitySessionOpeningTests
         };
     }
 
-    /// <summary>A private bucket in memory.</summary>
     private sealed class MemoryStorage : IFileStorage
     {
         public Dictionary<string, byte[]> Objects { get; } = new(StringComparer.Ordinal);
@@ -963,7 +888,6 @@ public sealed class IdentitySessionOpeningTests
             Task.FromResult<Uri?>(null);
     }
 
-    /// <summary>A logger that keeps every formatted line, to prove what is not written.</summary>
     private sealed class ListLogger<T>(List<string> lines) : ILogger<T>
     {
         public IDisposable? BeginScope<TState>(TState state)

@@ -7,11 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Email;
 
-/// <summary>
-/// AM-02b: the email that tells an administrator that a member asks for access, in Italian and English, with every dynamic
-/// value (names, the note) HTML-encoded (FD-13), one link (the people page) and a label for every area and page that can be
-/// asked for, in both languages.
-/// </summary>
 public class OrgAccessRequestEmailTemplatesTests
 {
     private const string PeopleUrl = "https://casazen-app.test/app/account/people";
@@ -71,7 +66,6 @@ public class OrgAccessRequestEmailTemplatesTests
 
         Assert.DoesNotContain("<a href=\"https://phish.example\"", content.HtmlBody);
         Assert.Contains(EncodedPayload, content.HtmlBody);
-        // The subject is plain text: values are not encoded there, and it is one line.
         Assert.DoesNotContain('\n', content.Subject);
     }
 
@@ -98,8 +92,6 @@ public class OrgAccessRequestEmailTemplatesTests
         Assert.Throws<System.Resources.MissingManifestResourceException>(() => EmailTemplates.OrgAccessRequest(
             EmailTemplates.DefaultCulture, "A", "B", OrgRole.Collaborator, "salaries", null, PeopleUrl));
     }
-
-    // ─── The labels ────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("account", "OrgAccessArea_Account")]

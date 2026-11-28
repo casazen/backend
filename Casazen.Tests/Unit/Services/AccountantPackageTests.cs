@@ -23,16 +23,8 @@ using FiscalDocumentKind = Casazen.Core.Entities.Enums.FiscalDocumentKind;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E15/F01/US01/T01 (NF-101, NF-87, NF-115, D11): the ZIP of the accountant has a fixed structure with an index that tells the truth about every file, the owner accounting is left out
-/// (and said so) for a caller who may not read it, and the agency summary adds up what the ledger and the fiscal documents store, in the ZIP and on the screen alike.
-/// </summary>
 public class AccountantPackageTests
 {
-    /// <summary>
-    /// PROOF TEST: data rule. The index lists every file of the ZIP and no other: the file exists, its SHA-256 is the one of its bytes and, for a CSV, its rows are the rows of its
-    /// tables; the fixed folders are all there, and a full caller has no folder omitted.
-    /// </summary>
     [Fact]
     public async Task AccountantPackage_IndexMatchesFilesAndHashes_Test()
     {
@@ -43,7 +35,6 @@ public class AccountantPackageTests
         var index = ParseIndex(files[AccountantPackageStructure.IndexFile]);
         Assert.NotEmpty(index.Entries);
 
-        // The two words of the header that read the same in both languages are written by the code.
         var header = ParseCsv(files[AccountantPackageStructure.IndexFile])[1];
         Assert.Equal(("File", "SHA-256"), (header[0], header[3]));
         foreach (var entry in index.Entries)
@@ -63,7 +54,6 @@ public class AccountantPackageTests
             index.Entries.Select(e => e.Path).Order(StringComparer.Ordinal));
         Assert.Empty(index.Omitted);
 
-        // The structure that is always there, and the documents of the period with their files.
         foreach (var fixedFile in new[]
                  {
                      "riepilogo-agenzia/riepilogo-agenzia.csv", "riepilogo-agenzia/riepilogo-agenzia.xlsx", "riepilogo-agenzia/riepilogo-agenzia.pdf",
@@ -105,7 +95,6 @@ public class AccountantPackageTests
             Assert.Equal(files.Keys.Where(k => k != AccountantPackageStructure.IndexFile).Order(StringComparer.Ordinal), index.Entries.Select(e => e.Path).Order(StringComparer.Ordinal));
         }
 
-        // Nothing of the owner accounting was read for them: no statement file, no owner report.
         rig.StatementFiles.Verify(f => f.GetPdfAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         rig.OwnerReports.Verify(r => r.GetByOwnerAsync(It.IsAny<HostScope>(), It.IsAny<HostPerformanceQuery>(), It.IsAny<CancellationToken>()), Times.Never);
 
@@ -126,7 +115,6 @@ public class AccountantPackageTests
         Assert.DoesNotContain(OwnerInvoicesNotInVat, fullVat, StringComparison.Ordinal);
         Assert.Contains(OwnerInvoicesNotInVat, VatCsv(restricted), StringComparison.Ordinal);
 
-        // A collaborator given the lake house gets the documents of the lake house, and still no owner folder: an owner's accounts span properties it does not reach.
         var lake = Unzip(await rig.BuildAsync(AccountantPackageAccess.Full, period, new HostScope(rig.OrgId, GrantedToUserId: "auth0|lago")));
         Assert.Equal(3, lake.Keys.Count(k => k.StartsWith("documenti-ospiti/", StringComparison.Ordinal) && k.EndsWith(".pdf", StringComparison.Ordinal)));
         foreach (var folder in AccountantPackageStructure.OwnerAccountingFolders)
@@ -177,7 +165,6 @@ public class AccountantPackageTests
             new[] { (8.1m, 1310.00m, 106.11m), (0m, 40.00m, 0m) },
             summary.OwnerInvoices.Rates.Select(r => (r.RatePercent!.Value, r.Amounts.Taxable, r.Amounts.Vat)));
 
-        // The documents of the guests are the stored ones, a credit note negative: two invoices and a credit note of part of the first.
         var stored = await rig.Db.FiscalDocuments.AsNoTracking().Where(d => d.Purpose == FiscalDocumentPurpose.GuestStay).ToListAsync();
         var invoices = summary.GuestDocuments.Single(g => g.Kind == FiscalDocumentKind.Invoice);
         var creditNotes = summary.GuestDocuments.Single(g => g.Kind == FiscalDocumentKind.CreditNote);
@@ -188,22 +175,18 @@ public class AccountantPackageTests
         Assert.Equal(1, creditNotes.Documents);
         Assert.Equal("CHE-109.322.551", invoices.Issuer.TaxId);
 
-        // The Swiss tourist tax is the lines of the documents (CHF 40.00 of the invoice of October), in the canton of the municipality of the property.
         var tax = Assert.Single(summary.TouristTax.Switzerland);
         Assert.Equal(("TI", "CHF", 40.00m), (tax.Canton, tax.Currency, tax.Collected));
 
-        // The payouts and the wires are the rows (the reversed payout is out), the margin the commissions and the recharges less the portal commissions of the account the agency holds.
         Assert.Equal(new AgencyPayoutRow("CHF", 1, 1000.00m, 0m, 1000.00m), Assert.Single(summary.Payouts));
         Assert.Equal(new AgencyWireRow("CHF", WireBatchStatus.Paid, 1, 1, 1000.00m), Assert.Single(summary.Wires));
         Assert.Equal(new AgencyPortalCommissionBorneRow(BookingSource.BookingCom, "CHF", 120.00m), Assert.Single(summary.PortalCommissionsBorne));
         Assert.Equal(new AgencyMarginRow("CHF", 1200.00m, 110.00m, 120.00m, 1190.00m), Assert.Single(summary.Margin));
 
-        // What the services of the reports say is carried as it is, never worked out again.
         Assert.Equal((5000.00m, 3, 10), (summary.Stays.Revenue, summary.Stays.Stays, summary.Stays.OccupiedNights));
         Assert.Equal(1234.50m, summary.Collections.Collected);
         Assert.Equal(300.00m, summary.TouristTax.Italy.Owed);
 
-        // The ZIP carries the very figures of the screen: its summary file is the one made of this summary, and the JSON maps the same record.
         var files = Unzip(await rig.BuildAsync(AccountantPackageAccess.Full, period));
         var texts = new PackageTexts(new ResxDocumentTexts(), PackageTexts.PackageLanguage);
         var expected = CsvWriter.Write(AgencySummaryDocuments.Tables(summary, texts));
@@ -213,10 +196,6 @@ public class AccountantPackageTests
         Assert.Equal((summary.Margin[0].Margin, "creditNote"), (dto.Margin[0].Margin, dto.GuestDocuments.Single(g => g.Amounts.Total < 0m).Kind));
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. A credit note of the invoice to the owner takes its lines away from the commission, the recharges, the invoiced total and the totals for each rate, and is counted
-    /// apart from the invoices.
-    /// </summary>
     [Fact]
     public async Task AgencySummary_OwnerCreditNote_TakesAwayFromTheCommission_Test()
     {
@@ -261,16 +240,11 @@ public class AccountantPackageTests
             },
             register.Rows.Select(r => (r[0].TextValue ?? string.Empty, r[1].TextValue ?? string.Empty, r[5].DecimalValue, r[6].DecimalValue, (int)r[8].WholeValue)));
 
-        // In the flat-rate regime the invoices are a class of their own, whatever the nature code.
         var flatRate = new AgencyIssuer("IT|09876543210|TEST", "TEST Ditta Individuale", "IT", "09876543210", DocumentRegime.VatFlatRate);
         var flat = Assert.Single(AccountantPackageDocuments.Vat(flatRate, [ItalianDocument(FiscalDocumentKind.Invoice, new DateOnly(2026, 10, 5), 500.00m, 0m, 0m)], [], texts));
         Assert.Equal(("Fatture in regime forfettario", 500.00m), (flat.Rows[0][1].TextValue, flat.Rows[0][5].DecimalValue));
     }
 
-    /// <summary>
-    /// PROOF TEST: money rule. The class of a document in the sales register is the regime it was issued under (its own issuer snapshot): an issuer is one issuer by its country, tax number and
-    /// name, so an issuer that moves to the flat-rate regime inside a period has each invoice in the class of its own regime, never all in the class of the first.
-    /// </summary>
     [Fact]
     public void AccountantPackage_ItalianSalesRegister_ClassifiesEachInvoiceByTheRegimeItWasIssuedUnder_Test()
     {
@@ -374,7 +348,6 @@ public class AccountantPackageTests
             false,
             [new PackageDocumentLine(1, FiscalLineType.Accommodation, net, rate, rate == 0m ? "N2.2" : null, vat)]);
 
-    /// <summary>The period is a month <c>yyyy-MM</c> or a year <c>yyyy</c> of 2000 to 2100, never longer than twelve months; anything else is not a period.</summary>
     [Theory]
     [InlineData("2026-10", "2026-10-01", "2026-10-31", "casazen-commercialista-2026-10.zip")]
     [InlineData("2026-02", "2026-02-01", "2026-02-28", "casazen-commercialista-2026-02.zip")]
@@ -408,10 +381,6 @@ public class AccountantPackageTests
         Assert.False(AccountantPackagePeriod.TryParse(text, out _));
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A period with more files of documents than the caps of the archive allow is refused with 422 <c>accountant_package_too_large</c> before the first byte is
-    /// written, and a period within them is not.
-    /// </summary>
     [Fact]
     public async Task AccountantPackage_BeyondTheCaps_Is422BeforeTheFirstByte_Test()
     {
@@ -428,12 +397,10 @@ public class AccountantPackageTests
                 .BuildAsync(rig.Scope, AccountantPackageAccess.Full, AccountantPackagePeriod.OfYear(2026), output));
         Assert.Equal((AccountantPackageErrors.TooLarge, 0L), (tooBig.Code, output.Length));
 
-        // October holds two documents of the guests (an invoice and a credit note) with their PDF: well within the caps.
         var result = await rig.Package().BuildAsync(rig.Scope, AccountantPackageAccess.Full, AccountantPackagePeriod.OfMonth(2026, 10), output);
         Assert.True(output.Length > 0 && result.Files > 1);
     }
 
-    /// <summary>Every word of the files of the package is in both resource files (Italian and English): a missing key would be printed as its own name in a file the accountant opens.</summary>
     [Fact]
     public void Labels_EveryKey_IsInBothResourceFiles()
     {
@@ -450,8 +417,6 @@ public class AccountantPackageTests
             texts.Add(keys);
         }
 
-        // The localization test of the resource files (SharedResourcesLocalizationTests, run by the CI) refuses a key whose English text is the Italian one: a word that reads the same in both
-        // languages is a constant of the code (AccountantPackageDocuments.IndexFileHeader), not a key.
         var same = PackageLabels.All.Where(k => texts[0][k] == texts[1][k]).ToList();
         Assert.True(same.Count == 0, $"The same text in Italian and in English: {string.Join(", ", same)}");
 
@@ -459,10 +424,6 @@ public class AccountantPackageTests
         Assert.Equal(PackageLabels.All.Count, PackageLabels.All.Distinct().Count());
     }
 
-    /// <summary>
-    /// E15/F01/US02/T02: the package the agency sends every month holds only the folders it chose. A folder that is not chosen is neither read nor written and the index lists it as left out, next to the owner
-    /// accounting a caller may not read; what is chosen holds the very files the package with every folder holds, and the owner accounting stays out whatever is chosen when the access does not allow it.
-    /// </summary>
     [Fact]
     public async Task AccountantPackage_WithChosenFolders_WritesOnlyThose_AndTheIndexListsTheOthersAsLeftOut()
     {
@@ -475,7 +436,6 @@ public class AccountantPackageTests
 
         var some = Unzip(await rig.BuildAsync(AccountantPackageAccess.Full.Narrowed(chosen), period));
 
-        // Only the chosen folders are there, with the files the package with every folder has in them.
         string FolderOfPath(string path) => path[..path.IndexOf('/', StringComparison.Ordinal)];
         var written = some.Keys.Where(k => k != AccountantPackageStructure.IndexFile).ToList();
         Assert.Equal(["fatture-proprietari", "incassi", "iva"], written.Select(FolderOfPath).Distinct().Order(StringComparer.Ordinal));
@@ -483,18 +443,15 @@ public class AccountantPackageTests
             everything.Keys.Where(k => k != AccountantPackageStructure.IndexFile && written.Select(FolderOfPath).Contains(FolderOfPath(k))).Order(StringComparer.Ordinal),
             written.Order(StringComparer.Ordinal));
 
-        // The index tells the truth about them and lists every folder that is not there.
         var index = ParseIndex(some[AccountantPackageStructure.IndexFile]);
         Assert.Equal(written.Order(StringComparer.Ordinal), index.Entries.Select(e => e.Path).Order(StringComparer.Ordinal));
         Assert.Equal(
             AccountantPackageFolderRules.Singles.Where(f => (chosen & f) == 0).Select(AccountantPackageFolderRules.FolderOf).Order(StringComparer.Ordinal),
             index.Omitted.Select(r => r.TrimEnd('/')).Order(StringComparer.Ordinal));
 
-        // What was not chosen was not even read: no statement, no owner report (the summary and the statements are not chosen).
         rig.StatementFiles.Verify(f => f.GetPdfAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
         rig.OwnerReports.Verify(r => r.GetByOwnerAsync(It.IsAny<HostScope>(), It.IsAny<HostPerformanceQuery>(), It.IsAny<CancellationToken>()), Times.Never);
 
-        // The invoices to the owners are chosen, but the access does not allow the owner accounting: the folder is left out for that, and no folder is listed twice.
         var withoutPermission = Unzip(await rig.BuildAsync(AccountantPackageAccess.WithoutOwnerAccounting.Narrowed(chosen), period));
         Assert.DoesNotContain(withoutPermission.Keys, k => k.StartsWith("fatture-proprietari/", StringComparison.Ordinal));
         var omitted = ParseIndex(withoutPermission[AccountantPackageStructure.IndexFile]).Omitted.Select(r => r.TrimEnd('/')).ToList();
@@ -506,15 +463,12 @@ public class AccountantPackageTests
             omitted.Order(StringComparer.Ordinal));
     }
 
-    // ---------------------------------------------------------------- helpers
-
     private static Task<decimal> SumAsync(AccountantPackageRig rig, OwnerLedgerEntryType type) =>
         rig.Db.OwnerLedgerEntries.AsNoTracking().Where(e => e.EntryType == type).SumAsync(e => e.Amount);
 
     /// <summary>The title of the table that tells a VAT file does not hold the invoices to the owners (a caller that reaches only some properties).</summary>
     private const string OwnerInvoicesNotInVat = "Fatture emesse ai proprietari non incluse in questo file";
 
-    /// <summary>The VAT file (CSV) of the one issuer of the rig.</summary>
     private static string VatCsv(Dictionary<string, byte[]> files) =>
         Text(files.Single(f => f.Key.StartsWith("iva/iva-", StringComparison.Ordinal) && f.Key.EndsWith(".csv", StringComparison.Ordinal)).Value);
 
@@ -536,7 +490,6 @@ public class AccountantPackageTests
 
     private static string Text(byte[] bytes) => Encoding.UTF8.GetString(bytes).TrimStart((char)0xFEFF);
 
-    /// <summary>The rows of a CSV of <c>CsvWriter</c>: <c>;</c> between the cells, quoted cells with the quotes doubled, <c>CRLF</c> after each row.</summary>
     private static List<List<string>> ParseCsv(byte[] bytes)
     {
         var text = Text(bytes);
@@ -592,7 +545,6 @@ public class AccountantPackageTests
         return rows;
     }
 
-    /// <summary>The data rows of the tables of a CSV: what is under each title row and header, the empty rows between the tables left out.</summary>
     private static int RowsOf(byte[] bytes) => Blocks(bytes).Sum(block => block.Count - 2);
 
     private static int RowsOfFirstTable(byte[] bytes) => Blocks(bytes)[0].Count - 2;
@@ -624,7 +576,6 @@ public class AccountantPackageTests
 
     private sealed record Index(List<IndexEntry> Entries, List<string> Omitted);
 
-    /// <summary>The index of the package: the files of its first table and the folders of its second.</summary>
     private static Index ParseIndex(byte[] bytes)
     {
         var blocks = Blocks(bytes);
@@ -643,11 +594,6 @@ public class AccountantPackageTests
     }
 }
 
-/// <summary>
-/// A Swiss agency of Lugano (the rig of the owner invoices) with, for 2026: an owner invoice issued in November, a statement published in September, two invoices and a credit note
-/// to guests (one with CHF 40.00 of tourist tax in the canton of Ticino), a confirmed payout and a reversed one, a paid wire batch, and the portal account of one listing held by the
-/// agency. The services of the reports are stand-ins that answer fixed figures; everything else is the real code over one in-memory database.
-/// </summary>
 internal sealed class AccountantPackageRig : IAsyncDisposable
 {
     private readonly OwnerInvoiceRig _owners;
@@ -733,7 +679,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
             Options.Create(limits ?? new DocumentArchiveOptions()),
             NullLogger<AccountantPackageService>.Instance);
 
-    /// <summary>The ZIP of <paramref name="period"/> for the caller of <paramref name="scope"/> (the whole org by default).</summary>
     public async Task<byte[]> BuildAsync(AccountantPackageAccess access, AccountantPackagePeriod period, HostScope? scope = null)
     {
         using var output = new MemoryStream();
@@ -741,7 +686,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
         return output.ToArray();
     }
 
-    /// <summary>A credit note of the whole invoice of the agency to the owner, issued at once in the series of the invoice.</summary>
     public async Task CreditTheOwnerInvoiceAsync()
     {
         var invoice = await Db.FiscalDocuments.AsNoTracking().SingleAsync(d => d.Purpose == FiscalDocumentPurpose.OwnerInvoice && d.Kind == FiscalDocumentKind.Invoice);
@@ -759,7 +703,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
         var draft = await _owners.Invoices.CreateDraftAsync(OrgId, version.Id, null);
         await _owners.Invoices.IssueAsync(OrgId, draft.Id, confirm: true, null);
 
-        // September: a statement published to the owner.
         db.OwnerStatementVersions.Add(new OwnerStatementVersion
         {
             OrgId = OrgId,
@@ -779,7 +722,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
             CreatedAt = new DateTime(2026, 10, 2, 8, 0, 0, DateTimeKind.Utc),
         });
 
-        // The municipality of the lake house is in Ticino.
         db.SwissMunicipalities.Add(new SwissMunicipality { MunicipalityCode = "5192", CantonCode = "TI", OfficialName = "TEST Lugano" });
         var lake = await db.Properties.SingleAsync(p => p.Id == _owners.LakeHouse);
         lake.Country = "CH";
@@ -795,7 +737,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
         var second = GuestDocument(FiscalDocumentKind.Invoice, 3, new DateOnly(2026, 11, 2), snapshot, Line(1, FiscalLineType.ExtraService, 100.00m, 8.1m, 8.10m));
         db.FiscalDocuments.AddRange(first, credit, second);
 
-        // A confirmed payout and a reversed one, a paid batch of the confirmed one; the account of Booking.com on the lake house is held by the agency (V2).
         var payout = Payout("A", OwnerPayoutStatus.Confirmed);
         db.OwnerPayouts.AddRange(payout, Payout("B", OwnerPayoutStatus.Reversed));
         var batch = new WireBatch
@@ -810,7 +751,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
         };
         db.WireBatches.Add(batch);
 
-        // A collaborator «Solo alcuni» was given the mountain house only, another the lake house only.
         db.PropertyMemberAccesses.AddRange(
             new PropertyMemberAccess { OrgId = OrgId, UserId = "auth0|collaboratore", PropertyId = _owners.MountainHouse },
             new PropertyMemberAccess { OrgId = OrgId, UserId = "auth0|lago", PropertyId = _owners.LakeHouse });
@@ -841,7 +781,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
         ConfirmedAt = new DateTime(2026, 10, 31, 9, 0, 0, DateTimeKind.Utc),
     };
 
-    /// <summary>The withholding decision of a payout of October, applicable, under the rule of <paramref name="jurisdiction"/> (<c>IT</c>, <c>CH</c>): <paramref name="amount"/> of <paramref name="gross"/>, tax code 1919.</summary>
     public TaxObligationEvidence Evidence(string jurisdiction, decimal gross, decimal amount) => new()
     {
         OrgId = OrgId,
@@ -877,7 +816,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
         VatAmount = vat,
     };
 
-    /// <summary>An issued Swiss document of the lake house to a guest: the amounts are the sums of its lines.</summary>
     private FiscalDocument GuestDocument(FiscalDocumentKind kind, int sequence, DateOnly issued, string issuerSnapshot, params FiscalDocumentLine[] lines)
     {
         var document = new FiscalDocument
@@ -925,10 +863,6 @@ internal sealed class AccountantPackageRig : IAsyncDisposable
     }
 }
 
-/// <summary>
-/// What <c>AddCasazenServices</c> registers for the accountant package (E15/F01/US01/T01): the package and the agency summary, each once and scoped (they read the org's database for
-/// one request), and nothing else of the package: the services have no flag of their own, the endpoints are behind <c>Features:AccountantPackage</c>.
-/// </summary>
 public class AccountantPackageRegistrationTests
 {
     [Fact]

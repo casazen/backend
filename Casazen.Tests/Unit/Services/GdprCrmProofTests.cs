@@ -48,7 +48,6 @@ public class GdprCrmProofTests
         await using (var db = CrmTestWorld.Open(store))
             export = await Service(db).ExportGuestDataAsync(orgId, world.MarioId, new HostScope(orgId), true, "auth0|host", Ct);
 
-        // The per-channel consent of the check-in, with everything that proves it.
         var channel = Assert.Single(export.MarketingChannels);
         Assert.Equal(world.MarioBookingId, channel.BookingId);
         Assert.True(channel.ConsentEmail);
@@ -59,7 +58,6 @@ public class GdprCrmProofTests
         Assert.Equal(ConsentAt, channel.ConsentTimestamp);
         Assert.Equal("203.0.113.7", channel.IpAddress);
 
-        // The profile of the guest alone: language, country, tags and the aggregates of its stays.
         var profile = export.CrmProfile;
         Assert.NotNull(profile);
         Assert.Equal(world.MarioProfileId, profile.Id);
@@ -70,8 +68,6 @@ public class GdprCrmProofTests
         Assert.Equal<int?>(2, profile.TotalStays);
         Assert.Equal<decimal?>(450m, profile.TotalSpend);
 
-        // The contacts of the guest with origin, confirmation, basis, version and suppression: the three he gave and the lead on his profile (the
-        // profile is his alone, so its contacts are his). Not Anna's.
         Assert.Equal(4, export.Contacts.Count);
         Assert.Single(export.Contacts, c => c.Value == "lead@example.com");
         var email = Assert.Single(export.Contacts, c => c.Value == "mario.rossi@example.com");
@@ -92,7 +88,6 @@ public class GdprCrmProofTests
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, phone.LegalBasis);
         Assert.DoesNotContain(export.Contacts, c => c.Value.Contains("anna", StringComparison.OrdinalIgnoreCase));
 
-        // The messages of the conversation with the host, oldest first, on the booking they belong to; not Anna's.
         Assert.Equal(2, export.Messages.Count);
         Assert.Equal(
             new[] { GuestMessageSender.Guest, GuestMessageSender.Host },
@@ -101,7 +96,6 @@ public class GdprCrmProofTests
         Assert.Equal("Arriveremo verso le 18.", export.Messages[0].Text);
         Assert.Equal("Perfetto, vi aspettiamo.", export.Messages[1].Text);
 
-        // Never the keyed hashes of the profile, nor a proposal of merge, nor the data of another guest.
         var json = JsonSerializer.Serialize(export);
         Assert.DoesNotContain(world.PhoneKeyHash, json, StringComparison.Ordinal);
         Assert.DoesNotContain(world.NameBirthKeyHash, json, StringComparison.Ordinal);
@@ -110,10 +104,6 @@ public class GdprCrmProofTests
         Assert.DoesNotContain("Siamo in due.", json, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// Proof test (privacy rule): a profile that other guests are linked to adds their stays to its aggregates, so the export of one of them leaves
-    /// the aggregates out and says the profile is shared; the contacts of the profile that other guests gave are not in it.
-    /// </summary>
     [Fact]
     public async Task GdprExport_ProfileSharedWithOtherGuests_LeavesOutTheirAggregatesAndContacts_Test()
     {
@@ -133,7 +123,6 @@ public class GdprCrmProofTests
         Assert.Null(profile.FirstStayAt);
         Assert.Null(profile.LastStayAt);
 
-        // Only the two contacts the guest gave: not the contact of the other guest, not the lead of the profile.
         Assert.Equal(2, export.Contacts.Count);
         Assert.Contains(export.Contacts, c => c.Value == "mario.rossi@example.com");
         Assert.Contains(export.Contacts, c => c.Value == "mario.old@example.com");
@@ -179,29 +168,19 @@ public class GdprCrmProofTests
 
         Assert.Equal(4, wholeOrg.Messages.Count);
 
-        // The collaborator reads the conversation of the property it was given, not the one of the other.
         Assert.Equal(2, limited.Messages.Count);
         Assert.All(limited.Messages, m => Assert.Equal(grantedBookingId, m.BookingId));
         Assert.DoesNotContain(limited.Messages, m => m.Text.Contains("zanzar", StringComparison.OrdinalIgnoreCase));
 
-        // Without booking.read no message leaves; the rest of the export is as it was.
         Assert.Empty(withoutBookingRead.Messages);
         Assert.Equal(wholeOrg.Bookings.Count, withoutBookingRead.Bookings.Count);
         Assert.Equal(wholeOrg.Contacts.Count, withoutBookingRead.Contacts.Count);
 
-        // A scope of another org is a mistake of the caller: refused, not read as a wider reach.
         await using var other = CrmTestWorld.Open(store);
         await Assert.ThrowsAsync<ArgumentException>(
             () => Service(other).ExportGuestDataAsync(orgId, guestId, new HostScope(Guid.NewGuid()), true, "auth0|altro", Ct));
     }
 
-    /// <summary>
-    /// Proof test (privacy rule): the erasure of a guest takes the person out of the CRM and keeps the opt-out. The contacts the guest gave and
-    /// the other contacts of its profile are deleted, the profile and the proposals of merge that involve it go with it, and the guest is
-    /// unlinked; the contact that carries a suppression stays as a row with no value, no name, no IP, no guest and no profile (only its keyed hash,
-    /// the flag and its date), so the suppression list and the contact still say the same thing. Nobody else is touched, a second erasure changes
-    /// nothing, and nothing the erasure writes to a log holds an address or a hash.
-    /// </summary>
     [Fact]
     public async Task GdprErasure_RemovesContactsButKeepsTheOptOut_Test()
     {
@@ -216,7 +195,6 @@ public class GdprCrmProofTests
 
         await using var verify = CrmTestWorld.Open(store);
 
-        // Mario's contacts are gone but the opt-out; Anna's two are as they were.
         var contacts = await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct);
         Assert.Equal(3, contacts.Count);
         Assert.Equal(2, contacts.Count(c => c.GuestId == world.AnnaId));
@@ -239,12 +217,10 @@ public class GdprCrmProofTests
         Assert.DoesNotContain(contacts, c => c.Value.Contains("mario", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(contacts, c => c.Value.Contains("lead", StringComparison.OrdinalIgnoreCase));
 
-        // The entry of the suppression list is where it was: the opt-out says the same in both places.
         var suppression = new SuppressionService(verify, Index, NullLogger<SuppressionService>.Instance);
         Assert.True(await suppression.IsSuppressedAsync(orgId, "mario.old@example.com", Ct));
         Assert.True(await verify.GuestContacts.AnyAsync(c => c.OrgId == orgId && c.ValueHash == Index.Hash("mario.old@example.com") && c.IsSuppressed, Ct));
 
-        // The profile of Mario is deleted with the proposal that involved it; Anna's profile and the proposal that does not involve him stay.
         var profiles = await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == orgId).ToListAsync(Ct);
         Assert.DoesNotContain(profiles, p => p.Id == world.MarioProfileId);
         Assert.Contains(profiles, p => p.Id == world.AnnaProfileId);
@@ -252,25 +228,21 @@ public class GdprCrmProofTests
         var left = Assert.Single(proposals);
         Assert.Equal(world.UnrelatedProposalId, left.Id);
 
-        // The guest is unlinked and erased; the erasure is audited once.
         var mario = await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.MarioId, Ct);
         Assert.Null(mario.GuestCrmProfileId);
         Assert.True(mario.IsDeleted);
         Assert.Equal(1, await verify.GuestPrivacyAuditEntries.CountAsync(a => a.GuestId == world.MarioId && a.Action == GuestPrivacyAuditAction.Erased, Ct));
 
-        // Anna is as she was.
         var anna = await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.AnnaId, Ct);
         Assert.Equal(world.AnnaProfileId, anna.GuestCrmProfileId);
         Assert.False(anna.IsDeleted);
 
-        // A second erasure finds nothing left: no new audit entry, the same rows.
         await using (var again = CrmTestWorld.Open(store))
             await Service(again).EraseGuestDataAsync(orgId, world.MarioId, "Richiesta dell'ospite", "auth0|host", Ct);
         await using var last = CrmTestWorld.Open(store);
         Assert.Equal(1, await last.GuestPrivacyAuditEntries.CountAsync(a => a.GuestId == world.MarioId, Ct));
         Assert.Equal(3, await last.GuestContacts.CountAsync(c => c.OrgId == orgId, Ct));
 
-        // The logs say what was done in numbers: no address, no hash, no name.
         var output = serviceLog.AllOutput + Environment.NewLine + eraserLog.AllOutput;
         Assert.Contains(world.MarioId.ToString(), output, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("example", output, StringComparison.OrdinalIgnoreCase);
@@ -297,7 +269,6 @@ public class GdprCrmProofTests
 
         await using var verify = CrmTestWorld.Open(store);
 
-        // The profile is there, linked to the other guest, without what may be the erased guest's.
         var profile = await verify.GuestCrmProfiles.AsNoTracking().SingleAsync(p => p.Id == world.ProfileId, Ct);
         Assert.Null(profile.PhoneKeyHash);
         Assert.Null(profile.NameBirthKeyHash);
@@ -310,7 +281,6 @@ public class GdprCrmProofTests
         var first = await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.FirstGuestId, Ct);
         Assert.Null(first.GuestCrmProfileId);
 
-        // The erased guest's contact is gone, its opt-out is a bare marker off the profile; the other guest's contact and the lead stay.
         var contacts = await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct);
         Assert.Equal(3, contacts.Count);
         Assert.DoesNotContain(contacts, c => c.Value == "mario.rossi@example.com");
@@ -326,15 +296,9 @@ public class GdprCrmProofTests
         var lead = Assert.Single(contacts, c => c.Value == "lead@example.com");
         Assert.Equal(world.ProfileId, lead.GuestCrmProfileId);
 
-        // The proposal of merge that involves the surviving profile is still there.
         Assert.Equal(1, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == orgId && (m.ProfileAId == world.ProfileId || m.ProfileBId == world.ProfileId), Ct));
     }
 
-    /// <summary>
-    /// Proof test (data rule): the guests of one profile who are all erased in the same run (the retention erases a chunk of guests before one save)
-    /// take the profile with them. Each is read against a database that still has the other linked, so the first leaves the profile and the last takes
-    /// it, with its proposals and the contact of no guest; nothing is left with no guest, and the opt-out stays as a bare marker.
-    /// </summary>
     [Fact]
     public async Task GdprErasure_GuestsOfOneProfileErasedInTheSameRun_TakeTheProfileWithThem_Test()
     {
@@ -361,7 +325,6 @@ public class GdprCrmProofTests
         Assert.Equal(0, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == orgId && (m.ProfileAId == world.ProfileId || m.ProfileBId == world.ProfileId), Ct));
         Assert.All(await verify.Guests.AsNoTracking().Where(g => g.OrgId == orgId).ToListAsync(Ct), g => Assert.Null(g.GuestCrmProfileId));
 
-        // Their contacts and the lead are gone; the opt-out of the first guest is the one row left, bare.
         var marker = Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct));
         Assert.Equal(Index.Hash("mario.old@example.com"), marker.ValueHash);
         Assert.True(marker.IsSuppressed);
@@ -370,12 +333,6 @@ public class GdprCrmProofTests
         Assert.Null(marker.GuestCrmProfileId);
     }
 
-    /// <summary>
-    /// Proof test (data and privacy rule, E07/F01/US03/T02): the profiles merged into a profile follow it. A merge keeps the profile that goes as a tombstone
-    /// with all it held, so the erasure of the only guest of the survivor deletes the survivor and both tombstones of its chain, with the proposals that
-    /// decided the merges and the lead left on a tombstone; the opt-out a merge left on the second tombstone is taken off it first and stays as a bare
-    /// marker; a profile that has nothing to do with the survivor is as it was.
-    /// </summary>
     [Fact]
     public async Task GdprErasure_ProfileWithMergedProfiles_TakesTheTombstonesWithIt_Test()
     {
@@ -391,7 +348,6 @@ public class GdprCrmProofTests
         Assert.Empty(await verify.GuestMergeCandidates.AsNoTracking().Where(m => m.OrgId == orgId).ToListAsync(Ct));
         Assert.Null((await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.FirstGuestId, Ct)).GuestCrmProfileId);
 
-        // The consent address, the lead of the survivor and the lead of the tombstone are gone; the opt-out is the row left, bare and off every profile.
         var marker = Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct));
         Assert.Equal(Index.Hash("mario.old@example.com"), marker.ValueHash);
         Assert.True(marker.IsSuppressed);
@@ -420,11 +376,6 @@ public class GdprCrmProofTests
         await AssertTheSurvivorStaysAndTheTombstonesAreEmptyAsync(verify, orgId, world);
     }
 
-    /// <summary>
-    /// Proof test (data and privacy rule): a guest whose link is still on a tombstone (kept from before a merge) is erased through the survivor at the
-    /// end of the chain. Alone, the survivor and both tombstones go; with another guest on the survivor, the survivor stays and the tombstones are emptied.
-    /// Erasing the tombstone alone would have left the survivor, with everything it took over, untouched.
-    /// </summary>
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -449,11 +400,6 @@ public class GdprCrmProofTests
         }
     }
 
-    /// <summary>
-    /// Proof test (data and privacy rule, the retention): the guests of one survivor erased in the same run and saved once (the retention erases a chunk
-    /// of guests before one save) take the survivor and its tombstones with them. The first leaves the survivor and empties the tombstones, the last
-    /// deletes them all, and nothing is left with no guest.
-    /// </summary>
     [Fact]
     public async Task GdprErasure_GuestsOfAProfileWithMergedProfilesErasedInTheSameRun_TakeAllOfItWithThem_Test()
     {
@@ -514,7 +460,6 @@ public class GdprCrmProofTests
             foreach (var theirs in new[] { "tag-del-primo", "tag-del-secondo", "Francia", "Spagna" })
                 Assert.DoesNotContain(theirs, json, StringComparison.Ordinal);
 
-            // Only what the guest gave: the consent address and the old one. Not the leads, not the other guest's address.
             Assert.Equal(2, export.Contacts.Count);
             Assert.DoesNotContain(export.Contacts, c => c.Value is "lead@example.com" or "lead.vecchio@example.com" or "luisa.verdi@example.com");
         }
@@ -528,13 +473,11 @@ public class GdprCrmProofTests
             Assert.Equal("es", second.Language);
             Assert.Equal(new[] { "tag-del-secondo" }, second.Tags);
 
-            // The contacts of the survivor and of its tombstones: the same set the erasure removes.
             Assert.Equal(4, export.Contacts.Count);
             Assert.Contains(export.Contacts, c => c.Value == "lead.vecchio@example.com");
             Assert.Contains(export.Contacts, c => c.Value == "mario.old@example.com");
         }
 
-        // Never a keyed hash of any of the profiles.
         Assert.DoesNotContain(Index.Hash("m.rossi@example.com|rossi|m"), json, StringComparison.Ordinal);
         Assert.DoesNotContain(Index.Hash("+393332000001"), json, StringComparison.Ordinal);
     }
@@ -542,10 +485,6 @@ public class GdprCrmProofTests
     private static void AssertOnlyTheUnrelatedProfileIsLeft(List<GuestCrmProfile> profiles, MergedWorld world) =>
         Assert.Equal(world.UnrelatedProfileId, Assert.Single(profiles).Id);
 
-    /// <summary>
-    /// The survivor stays with its other guest and loses what may be the erased guest's; both tombstones stay with the pointer of their chain and nothing
-    /// else; the other guest, its contact, the leads and the three proposals are as they were; the opt-out is bare and on no profile.
-    /// </summary>
     private static async Task AssertTheSurvivorStaysAndTheTombstonesAreEmptyAsync(AppDbContext verify, Guid orgId, MergedWorld world)
     {
         var profiles = await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == orgId).ToListAsync(Ct);
@@ -575,17 +514,14 @@ public class GdprCrmProofTests
             Assert.Equal("[]", tombstone.PropertyIdsJson);
         }
 
-        // The unrelated profile is untouched.
         var unrelated = Assert.Single(profiles, p => p.Id == world.UnrelatedProfileId);
         Assert.Equal("[\"vip\",\"famiglia\"]", unrelated.TagsJson);
         Assert.NotNull(unrelated.PhoneKeyHash);
 
-        // The guests: the erased one is unlinked, the other one is still on the survivor; the three proposals (two of history, one waiting) are there.
         Assert.Null((await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.FirstGuestId, Ct)).GuestCrmProfileId);
         Assert.Equal(world.SurvivorId, (await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.SecondGuestId, Ct)).GuestCrmProfileId);
         Assert.Equal(3, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == orgId, Ct));
 
-        // The contacts: the other guest's address and the two leads stay where they were; the opt-out is bare and on no profile.
         var contacts = await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct);
         Assert.Equal(4, contacts.Count);
         Assert.Equal(world.SurvivorId, Assert.Single(contacts, c => c.Value == "luisa.verdi@example.com").GuestCrmProfileId);
@@ -635,12 +571,6 @@ public class GdprCrmProofTests
         Assert.Equal(1, await verify.GuestPrivacyAuditEntries.CountAsync(a => a.GuestId == guestId && a.Action == GuestPrivacyAuditAction.Erased, Ct));
     }
 
-    /// <summary>
-    /// Proof test (privacy rule, the suppression list): the address of an erased guest who had opted out comes back with a new booking. The row the erasure
-    /// left as a bare marker is found by its keyed hash and gets its value back, and it is still suppressed, with the date and the source of the opt-out:
-    /// whatever the new booking brings (a purchase and a soft opt-in notice raise nothing above service only), it is still one row for the address, and
-    /// nothing can write to it for marketing.
-    /// </summary>
     [Fact]
     public async Task GdprErasure_OptedOutAddressComingBack_FindsItsMarkerAndStaysSuppressed_Test()
     {
@@ -650,7 +580,6 @@ public class GdprCrmProofTests
         await using (var db = CrmTestWorld.Open(store))
             await Service(db).EraseGuestDataAsync(orgId, world.MarioId, "Richiesta dell'ospite", "auth0|host", Ct);
 
-        // Someone else books with the address that had unsubscribed, on a direct booking that is a purchase, with the soft opt-in notice recorded.
         Guid newGuestId;
         await using (var seed = CrmTestWorld.Open(store))
         {
@@ -681,7 +610,6 @@ public class GdprCrmProofTests
         Assert.Equal("mario.old@example.com", row.Value);
         Assert.Equal(newGuestId, row.GuestId);
 
-        // The opt-out holds: still suppressed, with its own date and source, and nothing above service only.
         Assert.True(row.IsSuppressed);
         Assert.Equal(OptOutAt, row.SuppressedAt);
         Assert.Equal("unsubscribe", row.SuppressedSource);
@@ -691,11 +619,6 @@ public class GdprCrmProofTests
         Assert.True(await new SuppressionService(verify, Index, NullLogger<SuppressionService>.Instance).IsSuppressedAsync(orgId, "mario.old@example.com", Ct));
     }
 
-    /// <summary>
-    /// Proof test (privacy rule, AC-NF95-7): when the retention ends the marketing consent of a guest, its contacts on consent go back to service
-    /// only, and are not suppressed (an expiry is not an opt-out: the guest can consent again). A soft opt-in and a suppression stay as they were,
-    /// and a guest whose consent has not ended keeps its contacts.
-    /// </summary>
     [Fact]
     public async Task GdprRetention_EndOfMarketingConsent_MovesConsentContactsToServiceOnlyWithoutSuppressing_Test()
     {
@@ -762,11 +685,6 @@ public class GdprCrmProofTests
         Assert.Equal(GuestContactLegalBasis.Consent, untouched.LegalBasis);
     }
 
-    /// <summary>
-    /// Proof test (privacy rule, AC-NF95-7): the end of the marketing consent is not undone by the next sync of the guest. The per-channel consent of the
-    /// check-in stays on record as proof, and the sync that follows every booking event reads it again: after the retention it leaves the contacts on
-    /// service only, while a consent the guest gives afterwards counts as a new one.
-    /// </summary>
     [Fact]
     public async Task GdprRetention_EndOfMarketingConsent_IsNotUndoneByTheNextSyncOfTheGuest_Test()
     {
@@ -796,11 +714,9 @@ public class GdprCrmProofTests
             await CrmTestWorld.Contacts(db, clock).SyncFromGuestAsync(guestId, Ct);
         }
 
-        // The sync after the check-in puts the marketing address on consent, confirmed by the guest: marketable.
         await SyncAsync();
         Assert.True(CrmContactRules.CanReceiveMarketing(await MarketingAddressAsync()));
 
-        // The retention ends the consent: the address goes back to service only.
         await using (var db = CrmTestWorld.Open(store))
         {
             var options = new GdprOptions
@@ -818,14 +734,12 @@ public class GdprCrmProofTests
 
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, (await MarketingAddressAsync()).LegalBasis);
 
-        // The next sync of the guest (any booking event) reads the same record again and leaves the address where the end put it.
         await SyncAsync();
         var afterSync = await MarketingAddressAsync();
         Assert.Equal(GuestContactLegalBasis.ServiceOnly, afterSync.LegalBasis);
         Assert.False(CrmContactRules.CanReceiveMarketing(afterSync));
         Assert.False(afterSync.IsSuppressed);
 
-        // A consent the guest gives afterwards is a new consent and counts.
         clock.Advance(TimeSpan.FromDays(1));
         await using (var seed = CrmTestWorld.Open(store))
         {
@@ -837,7 +751,6 @@ public class GdprCrmProofTests
         Assert.Equal(GuestContactLegalBasis.Consent, (await MarketingAddressAsync()).LegalBasis);
     }
 
-    /// <summary>The per-channel consent the check-in records for an e-mail address typed for marketing, confirmed by the guest.</summary>
     private static MarketingConsentRecord MarketingConsentOf(Guid orgId, Guid guestId, DateTime at) => new()
     {
         OrgId = orgId,
@@ -852,9 +765,6 @@ public class GdprCrmProofTests
         IpAddress = "203.0.113.7",
     };
 
-    // ---- the world of the proofs --------------------------------------------------------------------------------------------------
-
-    /// <summary>The ids and the hashes of <see cref="SeedMarioAndAnnaAsync"/>.</summary>
     private sealed record MarioAndAnna(
         Guid MarioId,
         Guid AnnaId,
@@ -866,15 +776,8 @@ public class GdprCrmProofTests
         string NameBirthKeyHash,
         string CompositeKeyHash);
 
-    /// <summary>The ids of <see cref="SeedSharedProfileAsync"/>.</summary>
     private sealed record SharedProfile(Guid FirstGuestId, Guid SecondGuestId, Guid ProfileId);
 
-    /// <summary>
-    /// Mario Rossi, with a profile of his own (two stays, tags, keyed hashes), three contacts he gave (an e-mail on consent, a phone number, an old
-    /// address that carries an unsubscribe), a contact of no guest on his profile (a lead), the per-channel consent of his booking, and a
-    /// conversation with the host; Anna Neri, with a profile, two contacts and a conversation of her own; one proposal of merge that involves Mario's
-    /// profile and one that does not.
-    /// </summary>
     private static async Task<MarioAndAnna> SeedMarioAndAnnaAsync(DbContextOptions<AppDbContext> store, Guid orgId)
     {
         await using var seed = CrmTestWorld.Open(store);
@@ -914,7 +817,6 @@ public class GdprCrmProofTests
             Contact(orgId, anna.Id, annaProfile.Id, GuestContactChannel.Email, "anna.neri@example.com", "Anna Neri", GuestContactLegalBasis.Consent),
             Contact(orgId, anna.Id, annaProfile.Id, GuestContactChannel.Phone, "+393339999999", "Anna Neri", GuestContactLegalBasis.ServiceOnly));
 
-        // The unsubscribe of the old address is on the suppression list as well, where the withdrawal of a consent puts it.
         seed.SuppressionListEntries.Add(new SuppressionListEntry { OrgId = orgId, EmailHash = Index.Hash("mario.old@example.com"), Source = "unsubscribe", AddedAt = OptOutAt });
 
         var withMario = NewProposal(orgId, marioProfile.Id, annaProfile.Id);
@@ -937,11 +839,6 @@ public class GdprCrmProofTests
             marioProfile.CompositeKeyHash);
     }
 
-    /// <summary>
-    /// One profile that two guests are linked to (a merge of two records of a family), with tags, a country and keyed hashes: an e-mail contact on
-    /// consent for each guest, an old address of the first guest that carries an unsubscribe, a lead on the profile that is nobody's, and a proposal
-    /// of merge that involves the profile.
-    /// </summary>
     private static async Task<SharedProfile> SeedSharedProfileAsync(DbContextOptions<AppDbContext> store, Guid orgId)
     {
         await using var seed = CrmTestWorld.Open(store);
@@ -964,10 +861,6 @@ public class GdprCrmProofTests
         return new SharedProfile(first.Id, second.Id, profile.Id);
     }
 
-    /// <summary>
-    /// A guest registered from the guest list, with no booking at all: a profile of its own, an e-mail address, an old address that carries an
-    /// unsubscribe, a lead on the profile, and a proposal of merge that involves the profile.
-    /// </summary>
     private static async Task<(Guid GuestId, Guid ProfileId)> SeedGuestWithNoBookingsAsync(DbContextOptions<AppDbContext> store, Guid orgId)
     {
         await using var seed = CrmTestWorld.Open(store);
@@ -987,7 +880,6 @@ public class GdprCrmProofTests
         return (guest.Id, profile.Id);
     }
 
-    /// <summary>The ids of <see cref="SeedMergedProfilesAsync"/>.</summary>
     private sealed record MergedWorld(Guid FirstGuestId, Guid SecondGuestId, Guid SurvivorId, Guid FirstTombstoneId, Guid SecondTombstoneId, Guid UnrelatedProfileId);
 
     /// <summary>
@@ -1047,7 +939,6 @@ public class GdprCrmProofTests
         CapturingLogger<GdprService>? serviceLog = null,
         CapturingLogger<GuestDataEraser>? eraserLog = null)
     {
-        // No stay is open: the erasure is not refused (art. 17.3.b).
         var repository = new Mock<IGuestRepository>();
         repository
             .Setup(r => r.GetUsageAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
@@ -1124,7 +1015,6 @@ public class GdprCrmProofTests
             UpdatedAt = ConsentAt,
         };
 
-    /// <summary>A proposal of merge of two profiles, stored the way the database wants it: the smaller id first.</summary>
     private static GuestMergeCandidate NewProposal(Guid orgId, Guid profileId, Guid otherProfileId)
     {
         var first = profileId.CompareTo(otherProfileId) < 0 ? profileId : otherProfileId;

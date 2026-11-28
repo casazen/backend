@@ -37,11 +37,6 @@ public class PricingAdapterControllerTests
             _mockLogger.Object);
     }
 
-    // Authorization is the real host resource handler (TN-3): the owner of a property of TestOrgId is allowed,
-    // anyone else (another user of the org without an org-wide role, an anonymous caller) is not.
-
-    // ─── Helpers ────────────────────────────────────────────────────────────────
-
     private void SetUser(string userId)
     {
         var identity = new ClaimsIdentity(new[] { new Claim("sub", userId) }, "TestAuth");
@@ -79,21 +74,16 @@ public class PricingAdapterControllerTests
             UpdatedAt = DateTime.UtcNow
         };
 
-    // ─── GET config ─────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetConfig_WithValidOwner_ReturnsOk()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId));
 
-        // Act
         var result = await _controller.GetConfig(propertyId);
 
-        // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PricingAdapterConfigResponse>(ok.Value);
         Assert.Equal(propertyId, dto.PropertyId);
@@ -102,16 +92,13 @@ public class PricingAdapterControllerTests
     [Fact]
     public async Task GetConfig_WhenConfigNotFound_ReturnsDefaultDisabledConfig()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync((PricingAdapterConfig?)null);
 
-        // Act
         var result = await _controller.GetConfig(propertyId);
 
-        // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PricingAdapterConfigResponse>(ok.Value);
         Assert.Equal(propertyId, dto.PropertyId);
@@ -121,30 +108,24 @@ public class PricingAdapterControllerTests
     [Fact]
     public async Task GetConfig_WhenPropertyNotFound_ReturnsNotFound()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync((Property?)null);
 
-        // Act
         var result = await _controller.GetConfig(propertyId);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result.Result);
     }
 
     [Fact]
     public async Task GetConfig_AsNonOwner_ReturnsForbid()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OtherId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId, OwnerId));
 
-        // Act
         var result = await _controller.GetConfig(propertyId);
 
-        // Assert
         Assert.IsType<ForbidResult>(result.Result);
         _mockPricingService.Verify(x => x.GetConfigAsync(It.IsAny<Guid>()), Times.Never);
     }
@@ -152,24 +133,18 @@ public class PricingAdapterControllerTests
     [Fact]
     public async Task GetConfig_WithoutUserId_ReturnsForbid()
     {
-        // Arrange
         SetAnonymousUser();
         var propertyId = Guid.NewGuid();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
 
-        // Act
         var result = await _controller.GetConfig(propertyId);
 
-        // Assert
         Assert.IsType<ForbidResult>(result.Result);
     }
-
-    // ─── POST config ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SaveConfig_WithValidRequest_ReturnsOkWithResponse()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
@@ -185,10 +160,8 @@ public class PricingAdapterControllerTests
             IncludePublicHolidays = false
         };
 
-        // Act
         var result = await _controller.SaveConfig(propertyId, request, CancellationToken.None);
 
-        // Assert
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<PricingAdapterConfigResponse>(ok.Value);
         Assert.True(dto.IsEnabled);
@@ -199,17 +172,14 @@ public class PricingAdapterControllerTests
     [Fact]
     public async Task SaveConfig_AsNonOwner_ReturnsForbid()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OtherId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId, OwnerId));
 
         var request = new PricingAdapterConfigRequest { IsEnabled = true, AdaptationFrequency = "daily" };
 
-        // Act
         var result = await _controller.SaveConfig(propertyId, request, CancellationToken.None);
 
-        // Assert
         Assert.IsType<ForbidResult>(result.Result);
         _mockPricingService.Verify(x => x.SaveConfigAsync(It.IsAny<PricingAdapterConfig>()), Times.Never);
     }
@@ -217,35 +187,27 @@ public class PricingAdapterControllerTests
     [Fact]
     public async Task SaveConfig_WithoutUserId_ReturnsForbid()
     {
-        // Arrange
         SetAnonymousUser();
         var propertyId = Guid.NewGuid();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         var request = new PricingAdapterConfigRequest { IsEnabled = true, AdaptationFrequency = "daily" };
 
-        // Act
         var result = await _controller.SaveConfig(propertyId, request, CancellationToken.None);
 
-        // Assert
         Assert.IsType<ForbidResult>(result.Result);
     }
-
-    // ─── DELETE config ──────────────────────────────────────────────────────────
 
     [Fact]
     public async Task DisableConfig_WithValidOwner_ReturnsNoContent()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync(MakeConfig(propertyId));
         _mockPricingService.Setup(x => x.DisableConfigAsync(propertyId, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-        // Act
         var result = await _controller.DisableConfig(propertyId, CancellationToken.None);
 
-        // Assert
         Assert.IsType<NoContentResult>(result);
         _mockPricingService.Verify(x => x.DisableConfigAsync(propertyId, It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -253,16 +215,13 @@ public class PricingAdapterControllerTests
     [Fact]
     public async Task DisableConfig_WhenConfigNotFound_ReturnsNotFound()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OwnerId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
         _mockPricingService.Setup(x => x.GetConfigAsync(propertyId)).ReturnsAsync((PricingAdapterConfig?)null);
 
-        // Act
         var result = await _controller.DisableConfig(propertyId, CancellationToken.None);
 
-        // Assert
         Assert.IsType<NotFoundResult>(result);
         _mockPricingService.Verify(x => x.DisableConfigAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -270,34 +229,26 @@ public class PricingAdapterControllerTests
     [Fact]
     public async Task DisableConfig_AsNonOwner_ReturnsForbid()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         SetUser(OtherId);
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId, OwnerId));
 
-        // Act
         var result = await _controller.DisableConfig(propertyId, CancellationToken.None);
 
-        // Assert
         Assert.IsType<ForbidResult>(result);
     }
 
     [Fact]
     public async Task DisableConfig_WithoutUserId_ReturnsForbid()
     {
-        // Arrange
         SetAnonymousUser();
         var propertyId = Guid.NewGuid();
         _mockPropertyService.Setup(x => x.GetPropertyAsync(propertyId)).ReturnsAsync(MakeProperty(propertyId));
 
-        // Act
         var result = await _controller.DisableConfig(propertyId, CancellationToken.None);
 
-        // Assert
         Assert.IsType<ForbidResult>(result);
     }
-
-    // ─── POST config: rules and immediate computation (PC-15) ───────────────────
 
     [Fact]
     public async Task SaveConfig_EnabledWithRules_StoresThemAndComputesTheSuggestionsNow()
@@ -387,8 +338,6 @@ public class PricingAdapterControllerTests
         _mockPricingService.Verify(x => x.SaveConfigAsync(It.IsAny<PricingAdapterConfig>()), Times.Never);
     }
 
-    // ─── GET suggestions ────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetSuggestions_Enabled_ReturnsRowsWithTheRealCurrentBasePrice()
     {
@@ -451,8 +400,6 @@ public class PricingAdapterControllerTests
 
         Assert.IsType<ForbidResult>(result.Result);
     }
-
-    // ─── POST recalculate ───────────────────────────────────────────────────────
 
     [Fact]
     public async Task Recalculate_Enabled_RunsTheSameComputationAsTheJobWithoutTheDueCheck()

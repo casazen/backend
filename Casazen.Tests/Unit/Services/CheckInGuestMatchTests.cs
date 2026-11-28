@@ -51,10 +51,6 @@ public class CheckInGuestMatchTests
         Assert.Null(IdentityVerificationFlowService.VerifiedNumberMismatch(session, [matching, different]));
     }
 
-    /// <summary>
-    /// The guest at the door keeps the session and gets a new token (<c>IGuestCheckInService.ReissueLinkAsync</c>): the proof of the verified number was made with the key of the first picture
-    /// (<c>ProofKey</c>), so it still verifies, whatever token hash the session has now.
-    /// </summary>
     [Fact]
     public void AcceptedDocumentNumber_StillBelongsToTheVerifiedGuest_AfterTheSessionGetsANewToken()
     {

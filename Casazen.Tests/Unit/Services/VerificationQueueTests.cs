@@ -23,10 +23,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// Verification queue permission tests (NF-12, ADR-013): proves that manual biometric verification
-/// decisions are restricted to owner, admins, and property managers, excluding staff.
-/// </summary>
 public class VerificationQueueTests
 {
     /// <summary>
@@ -54,14 +50,10 @@ public class VerificationQueueTests
     [Fact]
     public void VerificationQueue_StaffCannotDecide()
     {
-        // Arrange: The VerificationDecision policy is defined in CasazenPolicies
         var policyName = CasazenPolicies.VerificationDecision;
 
-        // Act: Parse the policy to extract its permission requirement
         var (contextKeys, permissionKey) = CasazenPolicies.ParseContextPolicy(policyName);
 
-        // Assert: Verify that the policy requires the "verification.decision" permission
-        // in the "short-rent" context, which staff do NOT have
         Assert.Single(contextKeys);
         Assert.Equal("short-rent", contextKeys[0]);
         Assert.Equal("verification.decision", permissionKey);
@@ -79,12 +71,6 @@ public class VerificationQueueTests
         // which ensures that ONLY users with the verification.decision permission can access it.
     }
 
-    /// <summary>
-    /// Proof test (TN-3): the decision endpoints receive only a booking id, so the service applies the caller scope.
-    /// A collaborator whose scope reaches another owner's properties can neither record a decision, nor reject, nor
-    /// ask a new photo for a guest of a property outside it, and nothing is changed; the scope that reaches the
-    /// booking can.
-    /// </summary>
     [Fact]
     public async Task VerificationQueue_ScopeOfAnotherProperty_CannotDecideRejectOrRequestPhoto()
     {
@@ -158,11 +144,6 @@ public class VerificationQueueTests
         MaxGuests = 4,
     };
 
-    /// <summary>
-    /// E73/F01/US02/T02 (NF-195, AC5): an item of the queue says how its last automatic outcome was decided (the mode, the shadow outcome, the version of the policy, the format
-    /// and the channel), carries every reason of it (the legacy <c>active_pose</c> and the checks of the self-hosted flow included, with their value and threshold) and the
-    /// evidence kept for the reviewer (how many pictures are live and when the first expires); the evidence is not shown while it is off.
-    /// </summary>
     [Fact]
     public async Task VerificationQueue_PendingItems_CarryTheDecisionOfThePolicy_EveryReason_AndTheEvidence()
     {
@@ -273,14 +254,12 @@ public class VerificationQueueTests
         Assert.True(item.Provisional);
         Assert.Equal(new PendingEvidenceSummary(2, now.UtcDateTime.AddHours(10)), item.Evidence);
 
-        // The codes of the API.
         var dto = await PendingDtoAsync(item, orgId);
         Assert.Equal(("observation", "accept", "2026.11-1", "it-cie-3.0", "web:android-chrome"), (dto.DecisionMode, dto.ShadowOutcome, dto.PolicyVersion, dto.FormatId, dto.Channel));
         Assert.Equal((2, now.UtcDateTime.AddHours(10)), (dto.Evidence!.Count, dto.Evidence.ExpiresAt));
         Assert.Contains(dto.Reasons, reason => reason.Check == VerificationReasons.Checks.ActivePose && reason.Result == VerificationReasons.Results.Failed);
         Assert.Contains(dto.Reasons, reason => reason.Check == VerificationReasons.Checks.Similarity && reason.Value == 0.81 && reason.Threshold == 0.85);
 
-        // A legacy item (no automatic outcome of the policy) says legacy with nothing else, and the evidence is not shown while it is off.
         flags.Set(Casazen.Core.Features.FeatureFlags.CheckInIdentityReviewEvidence, false);
         Assert.Null(Assert.Single(await service.GetPendingVerificationsAsync("auth0|owner", new HostScope(orgId))).Evidence);
         var legacy = await PendingDtoAsync(item with { DecisionMode = IdentityDecisionMode.Legacy, ShadowOutcome = null, PolicyVersion = null, Evidence = null }, orgId);
@@ -302,7 +281,6 @@ public class VerificationQueueTests
         DeletionReason = deleted ? "decided" : null,
     };
 
-    /// <summary>The item as <c>GET api/Verification/pending</c> sends it.</summary>
     private static async Task<PendingVerificationDto> PendingDtoAsync(PendingVerification item, Guid orgId)
     {
         const string user = "auth0|owner";

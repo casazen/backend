@@ -19,8 +19,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
     private static readonly byte[] JpegBytes =
         [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00];
 
-    // ─── Create: service and time ───
-
     [Fact]
     public async Task Create_WithAServiceAndAFreeSlot_Returns201WithTheScheduleThePriceAndTheDeadline()
     {
@@ -53,7 +51,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal(6000, price.GetProperty("amountCents").GetInt32());
         Assert.Equal("estimated", price.GetProperty("basis").GetString());
         Assert.False(price.GetProperty("needsCustomerConfirmation").GetBoolean());
-        // The host sees its own property and notes.
         Assert.Equal(ServiceRequestWorlds.PropertyName, body.GetProperty("propertyName").GetString());
         Assert.Equal(ServiceRequestWorlds.HostNotes, body.GetProperty("notes").GetString());
     }
@@ -170,8 +167,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal("validation_error", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
     }
 
-    // ─── Take, start, complete ───
-
     [Fact]
     public async Task Take_WithoutABody_Returns200AsItAlwaysDid()
     {
@@ -190,7 +185,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
     {
         var world = await ServiceRequestWorlds.SeedAsync(factory);
         var id = await factory.CreateRequestAsync(world);
-        // Legacy shape before backfill: take still sets the time when the row has none.
         await factory.ChangeRequestAsync(id, r =>
         {
             r.ScheduledStartUtc = null;
@@ -207,7 +201,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         var price = body.GetProperty("price");
         Assert.Equal(7500, price.GetProperty("quotedAmountCents").GetInt32());
         Assert.Equal("quoted", price.GetProperty("basis").GetString());
-        // From the take the supplier reads the property and the notes of the host.
         Assert.Equal(ServiceRequestWorlds.PropertyName, body.GetProperty("propertyName").GetString());
     }
 
@@ -321,7 +314,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal("extra", lines[1].GetProperty("kind").GetString());
         Assert.Equal("Pulizia vetri", lines[1].GetProperty("label").GetString());
 
-        // The host reads what the supplier wrote in its own field and its own notes as it wrote them.
         using var host = factory.Host(world);
         var seen = await host.GetFromJsonAsync<JsonElement>($"/api/service-requests/{id}");
         Assert.Equal("Lavoro finito, lasciate le chiavi", seen.GetProperty("completionNotes").GetString());
@@ -365,8 +357,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal("service_request_final_amount_invalid", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
     }
 
-    // ─── What the supplier sees before the take (decision D9) ───
-
     [Fact]
     public async Task GetById_AsTheSupplierBeforeTheTake_HidesThePropertyNameAndTheNotesAndShowsThemAfter()
     {
@@ -398,8 +388,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.DoesNotContain(ServiceRequestWorlds.HostNotes, text);
     }
 
-    // ─── Cancel ───
-
     [Fact]
     public async Task Cancel_AsTheHost_Returns200AndTheSupplierSeesItCancelledWithTheReason()
     {
@@ -419,7 +407,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal("Annullato", seen.GetProperty("status").GetString());
         Assert.Equal("Host", seen.GetProperty("cancelledBy").GetString());
         Assert.Equal("Ospiti partiti prima", seen.GetProperty("cancellationReason").GetString());
-        // A request cancelled before the take still hides the property and the notes from the supplier.
         Assert.Equal(JsonValueKind.Null, seen.GetProperty("propertyName").ValueKind);
         Assert.Equal(JsonValueKind.Null, seen.GetProperty("notes").ValueKind);
     }
@@ -510,8 +497,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    // ─── Remind ───
-
     [Fact]
     public async Task Remind_AsTheHost_Returns200ThenARepeatWithinSixHoursReturns422WithTheCode()
     {
@@ -560,8 +545,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal(HttpStatusCode.NotFound, byOtherHost.StatusCode);
         Assert.Null((await factory.LoadRequestAsync(id)).LastRemindedAt);
     }
-
-    // ─── Propose another time ───
 
     [Fact]
     public async Task ProposeTime_ThenTheHostAccepts_TheRequestIsTakenAtThatTime()
@@ -656,8 +639,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
         Assert.Equal(ServiceRequestStatus.Richiesto, (await factory.LoadRequestAsync(id)).Status);
     }
 
-    // ─── Photos of the work ───
-
     [Fact]
     public async Task Photos_TheSupplierUploadsAndBothPartiesReadThemBackButNobodyElse()
     {
@@ -739,8 +720,6 @@ public class ServiceRequestLifecycleIntegrationTests(CasazenWebApplicationFactor
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
-
-    // ─── Who may call the new endpoints ───
 
     [Theory]
     [InlineData("start")]

@@ -7,10 +7,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Assistant;
 
-/// <summary>
-/// E05/F05/US01/T02 (NF-66, AC-NF66-1): the facts of a property are built from what the host entered, in Italian or English, and nothing else. They are pure and never stored, they
-/// never read a Wi-Fi password or an access code, and they never say that something is absent.
-/// </summary>
 public class ListingKnowledgeBuilderTests
 {
     private static Property Complete()
@@ -69,13 +65,11 @@ public class ListingKnowledgeBuilderTests
             Texts(facts, KnowledgeTopic.Directions));
         Assert.Equal(["Gli animali sono ammessi su richiesta."], Texts(facts, KnowledgeTopic.Pets));
 
-        // The screen says «from your listing» and points at the field.
         Assert.Equal(ListingFactSources.CheckInWindow, facts.First(f => f.Topic == KnowledgeTopic.CheckIn).SourceField);
         Assert.Equal(ListingFactSources.PetsPolicy, facts.Single(f => f.Topic == KnowledgeTopic.Pets).SourceField);
         Assert.Equal(ListingFactSources.QuietHours, facts.Single(f => f.Topic == KnowledgeTopic.Hours).SourceField);
         Assert.All(facts, fact => Assert.False(string.IsNullOrWhiteSpace(fact.SourceField)));
 
-        // Facts come in the order of the topics.
         Assert.Equal(facts.Select(f => (int)f.Topic).Order(), facts.Select(f => (int)f.Topic));
     }
 
@@ -94,7 +88,6 @@ public class ListingKnowledgeBuilderTests
         Assert.Equal(["Quiet hours are from 22:00 to 07:30."], Texts(facts, KnowledgeTopic.Hours));
         Assert.Equal(["Pets are allowed on request."], Texts(facts, KnowledgeTopic.Pets));
 
-        // The note on the rules has no English text: the Italian one is used, in the English frame.
         Assert.Contains("Note on the rules: Rispettate il vicinato", Texts(facts, KnowledgeTopic.HouseRules));
         Assert.Contains("Area: Ostuni countryside", Texts(facts, KnowledgeTopic.Directions));
         Assert.Contains("Nearby: 10 minuti dal mare", Texts(facts, KnowledgeTopic.Directions));
@@ -121,7 +114,6 @@ public class ListingKnowledgeBuilderTests
         var all = string.Join(" | ", ListingKnowledgeBuilder.Build(property, Profile(property), "it").Select(f => f.Text))
                   + string.Join(" | ", ListingKnowledgeBuilder.Build(property, Profile(property), "en").Select(f => f.Text));
 
-        // The listing has no password to read, and the builder has no way to be given one or an access code: it takes a property and its profile and nothing else.
         Assert.DoesNotContain("password", all, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("codice", all.Replace("con cassetta a codice", string.Empty), StringComparison.OrdinalIgnoreCase);
         var build = typeof(ListingKnowledgeBuilder).GetMethod(nameof(ListingKnowledgeBuilder.Build))!;
@@ -133,7 +125,6 @@ public class ListingKnowledgeBuilderTests
     [Fact]
     public void Build_NeverSaysThatSomethingIsAbsent_ATopicWithNothingEnteredHasNoFact()
     {
-        // A bare property: the host ticked no amenity and answered no question. «No Wi-Fi» is a claim the listing does not make.
         var bare = new Property { OrgId = Guid.NewGuid(), Name = "Casa", Address = "Via Roma 1", City = "Lecce" };
 
         var facts = ListingKnowledgeBuilder.Build(bare, null, "it");

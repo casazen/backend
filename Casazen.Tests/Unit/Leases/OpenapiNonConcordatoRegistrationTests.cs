@@ -20,10 +20,6 @@ using static Casazen.Tests.Unit.Services.OrgTeamTestData;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// Openapi DocuEngine registration of a lease that is not canone concordato: the contract type goes in the request,
-/// the filing fee is the fixed Openapi and CasaZen service price, and an unpaid fee never reaches Openapi.
-/// </summary>
 public class OpenapiNonConcordatoRegistrationTests
 {
     private const string OwnerId = "auth0|openapi-owner";

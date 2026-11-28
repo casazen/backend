@@ -32,15 +32,12 @@ public class PropertyServiceTests
     [Fact]
     public async Task GetPropertyAsync_WithValidId_ReturnsProperty()
     {
-        // Arrange
         var propertyId = Guid.NewGuid();
         var property = new Property { Id = propertyId, Name = "Test Property" };
         _mockRepository.Setup(x => x.GetByIdAsync(propertyId)).ReturnsAsync(property);
 
-        // Act
         var result = await _service.GetPropertyAsync(propertyId);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(propertyId, result.Id);
         _mockRepository.Verify(x => x.GetByIdAsync(propertyId), Times.Once);
@@ -49,24 +46,19 @@ public class PropertyServiceTests
     [Fact]
     public async Task CreatePropertyAsync_WithValidProperty_ReturnsCreatedProperty()
     {
-        // Arrange
         var property = new Property { Name = "New Property", City = "Test City" };
         _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ReturnsAsync(property);
 
-        // Act
         var result = await _service.CreatePropertyAsync(property);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(property.Name, result.Name);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Once);
     }
 
-    // SearchAsync projection tests live in PropertyServicePublicReadModelTests (#212).
     [Fact]
     public async Task GetOwnerPropertiesAsync_WithValidOwnerId_ReturnsProperties()
     {
-        // Arrange
         var ownerId = "auth0|test_user_123";
         var properties = new List<Property>
         {
@@ -75,10 +67,8 @@ public class PropertyServiceTests
         };
         _mockRepository.Setup(x => x.GetByOwnerAsync(ownerId)).ReturnsAsync(properties);
 
-        // Act
         var result = await _service.GetOwnerPropertiesAsync(ownerId);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(2, result.Count());
         Assert.All(result, p => Assert.Equal(ownerId, p.OwnerId));
@@ -88,14 +78,11 @@ public class PropertyServiceTests
     [Fact]
     public async Task GetOwnerPropertiesAsync_WithNonExistentOwnerId_ReturnsEmpty()
     {
-        // Arrange
         var ownerId = "auth0|nonexistent_user";
         _mockRepository.Setup(x => x.GetByOwnerAsync(ownerId)).ReturnsAsync(new List<Property>());
 
-        // Act
         var result = await _service.GetOwnerPropertiesAsync(ownerId);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Empty(result);
         _mockRepository.Verify(x => x.GetByOwnerAsync(ownerId), Times.Once);
@@ -107,17 +94,14 @@ public class PropertyServiceTests
     [InlineData("auth0|very-long-user-id-with-many-characters-1234567890")]
     public async Task GetOwnerPropertiesAsync_WithVariousAuth0Formats_CallsRepository(string ownerId)
     {
-        // Arrange
         var properties = new List<Property>
         {
             new() { Id = Guid.NewGuid(), Name = "Property 1", OwnerId = ownerId }
         };
         _mockRepository.Setup(x => x.GetByOwnerAsync(ownerId)).ReturnsAsync(properties);
 
-        // Act
         var result = await _service.GetOwnerPropertiesAsync(ownerId);
 
-        // Assert
         Assert.Single(result);
         Assert.Equal(ownerId, result.First().OwnerId);
         _mockRepository.Verify(x => x.GetByOwnerAsync(ownerId), Times.Once);
@@ -126,7 +110,6 @@ public class PropertyServiceTests
     [Fact]
     public async Task CreatePropertyAsync_WithAuth0OwnerId_CreatesProperty()
     {
-        // Arrange
         var ownerId = "auth0|test_user_123";
         var property = new Property
         {
@@ -137,10 +120,8 @@ public class PropertyServiceTests
         };
         _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ReturnsAsync(property);
 
-        // Act
         var result = await _service.CreatePropertyAsync(property);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(ownerId, result.OwnerId);
         Assert.Equal(property.Name, result.Name);
@@ -150,7 +131,6 @@ public class PropertyServiceTests
     [Fact]
     public async Task DeletePropertyAsync_NothingToCome_SoftDeletesWithTheClockInstantAndRomeDate()
     {
-        // 23:30 UTC on 30 Sept is already 1 Oct in Rome: "today" for the stays is the Rome date.
         var now = new DateTimeOffset(2026, 9, 30, 23, 30, 0, TimeSpan.Zero);
         var service = new PropertyService(
             _mockRepository.Object,
@@ -190,7 +170,6 @@ public class PropertyServiceTests
     public async Task DeletePropertyAsync_StayOrLeaseStillToCome_ThrowsConflict(
         PropertySoftDeleteOutcome outcome, string expectedCode, string expectedKey)
     {
-        // PC-05, A2-18: a guest or tenant already booked must never lose their stay to a delete.
         var propertyId = Guid.NewGuid();
         _mockRepository
             .Setup(x => x.SoftDeleteAsync(propertyId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
@@ -205,7 +184,6 @@ public class PropertyServiceTests
     [Fact]
     public async Task UpdatePropertyAsync_WithValidProperty_UpdatesProperty()
     {
-        // Arrange
         var property = new Property
         {
             Id = Guid.NewGuid(),
@@ -216,10 +194,8 @@ public class PropertyServiceTests
         };
         _mockRepository.Setup(x => x.UpdateAsync(It.IsAny<Property>())).ReturnsAsync(property);
 
-        // Act
         var result = await _service.UpdatePropertyAsync(property);
 
-        // Assert
         Assert.NotNull(result);
         Assert.Equal(property.Id, result.Id);
         Assert.Equal(property.Name, result.Name);
@@ -279,8 +255,6 @@ public class PropertyServiceTests
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Property>()), Times.Never);
     }
 
-    // ─── Pause / Activate (PC-03, A2-05) ────────────────────────────────────────
-
     [Fact]
     public async Task PausePropertyAsync_NotPaused_SetsIsPausedAndPausedAtAndSaves()
     {
@@ -299,7 +273,6 @@ public class PropertyServiceTests
         Assert.True(result.IsPaused);
         Assert.Equal(now.UtcDateTime, result.PausedAt);
         Assert.Equal(DateTimeKind.Utc, result.PausedAt!.Value.Kind);
-        // Pausing never touches the active flag: the host still sees and edits the property.
         Assert.True(result.IsActive);
         _mockRepository.Verify(x => x.UpdateAsync(property), Times.Once);
     }
@@ -353,8 +326,6 @@ public class PropertyServiceTests
         _mockRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
     }
 
-    // ─── Unique address, unit and coordinates (PC-06, A2-19, A2-33) ──────────────
-
     private static DbUpdateException UniqueViolation(string constraintName) =>
         new("save failed", new PostgresException(
             "duplicate key value violates unique constraint", "ERROR", "ERROR", PostgresErrorCodes.UniqueViolation,
@@ -375,7 +346,6 @@ public class PropertyServiceTests
     [Fact]
     public async Task CreatePropertyAsync_SlugIndexViolation_ThrowsDuplicateSlugConflictNotAnAddressOne()
     {
-        // Two parallel creates with the same name: the loser must not be told that its ADDRESS is taken.
         var property = new Property { Name = "Casa", OrgId = Guid.NewGuid(), Address = "Via Roma 1", City = "Milano" };
         _mockRepository.Setup(x => x.AddAsync(It.IsAny<Property>())).ThrowsAsync(UniqueViolation("UIX_Properties_OrgId_Slug"));
 

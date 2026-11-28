@@ -45,7 +45,6 @@ public class HostAvailabilityChannelManagerTests : IAsyncLifetime
         Assert.Null(conflict.Channel);
         Assert.Equal(new DateOnly(2026, 10, 20), conflict.From);
         Assert.Equal(new DateOnly(2026, 10, 22), conflict.To);
-        // CasaZen's calendar was free: there is no window to suggest, as the free dates are the ones Octorate refuses.
         Assert.Null(result.NearestFreeWindow);
         Assert.Equal(2, result.Nights);
         _channelManager.Verify(
@@ -91,7 +90,6 @@ public class HostAvailabilityChannelManagerTests : IAsyncLifetime
     {
         Answers(new ChannelManagerAvailability(ChannelManagerAnswer.NotAvailable));
 
-        // The arrival is before today (Oct 9), and the departure is not after the arrival.
         var past = await Service().CheckAsync(_world.Granted, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 3), cancellationToken: Ct);
         var backwards = await Service().CheckAsync(_world.Granted, new DateOnly(2026, 10, 22), new DateOnly(2026, 10, 20), cancellationToken: Ct);
 
@@ -125,7 +123,6 @@ public class HostAvailabilityChannelManagerTests : IAsyncLifetime
 
         var result = await Service().CheckAsync(_world.Granted, new DateOnly(2026, 10, 20), new DateOnly(2026, 10, 22), cancellationToken: Ct);
 
-        // Exactly the dates of the block: the host completes it with the guest's name, and that reservation is what Octorate would answer with.
         Assert.Equal(HostAvailabilityState.LinkableBlock, result.State);
         Assert.Null(result.ChannelManagerChecked);
         Assert.Equal(HostAvailabilityConflictType.Ical, Assert.Single(result.Conflicts).Type);

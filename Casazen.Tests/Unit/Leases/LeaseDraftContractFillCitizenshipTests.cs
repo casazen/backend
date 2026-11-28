@@ -14,8 +14,8 @@ namespace Casazen.Tests.Unit.Leases;
 /// </summary>
 public class LeaseDraftContractFillCitizenshipTests
 {
-    private const string LandlordCode = "RSSMRA80A01H501U"; // born in Roma
-    private const string TenantCode = "VRDGLI85B42F205E"; // born in Milano
+    private const string LandlordCode = "RSSMRA80A01H501U";
+    private const string TenantCode = "VRDGLI85B42F205E";
 
     [Fact]
     public void ALandlordBornInItaly_IsTakenAsItalian_AndTheFieldSaysItIsDerived_ForTheServicesDraft()
@@ -27,7 +27,6 @@ public class LeaseDraftContractFillCitizenshipTests
         var derived = Assert.Single(fill.Fields, f => f is { Field: "citizenship", Derived: true });
         Assert.Equal(PartyRole.Landlord, derived.Role);
         Assert.Equal(FieldReadingState.Read, derived.State);
-        // The tenant's citizenship is never guessed: the contract did not state it, so it stays to be asked.
         Assert.True(string.IsNullOrEmpty(Assert.Single(fill.Values.Tenants).Citizenship));
         Assert.DoesNotContain(fill.Fields, f => f.Field == "citizenship" && f.Role == PartyRole.Tenant);
     }
@@ -44,7 +43,7 @@ public class LeaseDraftContractFillCitizenshipTests
     [Fact]
     public void ALandlordBornAbroad_IsNotGuessed()
     {
-        var foreign = WithCheckCharacter("RSSMRA80A01Z404"); // born in the United States
+        var foreign = WithCheckCharacter("RSSMRA80A01Z404");
 
         Assert.True(ItalianFiscalCode.IsValid(foreign));
         Assert.False(ItalianFiscalCode.IsPersonBornInItaly(foreign));
@@ -72,14 +71,13 @@ public class LeaseDraftContractFillCitizenshipTests
     [InlineData(LandlordCode, true)]
     [InlineData(TenantCode, true)]
     [InlineData("rssmra80a01h501u", true)]
-    [InlineData("RSSMRA80A01H501X", false)] // wrong check character
+    [InlineData("RSSMRA80A01H501X", false)]
     [InlineData("12345", false)]
     [InlineData("", false)]
     [InlineData(null, false)]
     public void IsPersonBornInItaly_OnlyForTheValidCodeOfAPersonWhosePlaceOfBirthIsAMunicipality(string? code, bool expected) =>
         Assert.Equal(expected, ItalianFiscalCode.IsPersonBornInItaly(code));
 
-    /// <summary>A contract that names a landlord and a tenant by their fiscal codes and residence, and states no citizenship.</summary>
     private static LeaseContractReading Reading(string landlordCode) =>
         new()
         {
@@ -104,6 +102,5 @@ public class LeaseDraftContractFillCitizenshipTests
             ResidenceConfidence = 90,
         };
 
-    /// <summary>The 15 characters of a code with the check character that makes it valid.</summary>
     private static string WithCheckCharacter(string first15) => first15 + ItalianFiscalCode.CheckCharacter(first15.AsSpan());
 }

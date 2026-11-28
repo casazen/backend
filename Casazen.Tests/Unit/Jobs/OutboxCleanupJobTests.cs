@@ -26,11 +26,6 @@ public class OutboxCleanupJobTests
     private static readonly DateTime Now = new(2026, 11, 5, 3, 10, 0, DateTimeKind.Utc);
     private static readonly Guid OrgA = Guid.Parse("0f6c1a52-3b7e-4c11-9d2a-5e8b7c6d4a01");
 
-    /// <summary>
-    /// Proof of ADR-022-R15/R21 (data rule): a dead letter past the retention keeps its row with an empty payload, no error and no
-    /// entity, and keeps its org, type, dates and attempts; dispatched events inside the retention and undispatched events are not
-    /// deleted; dispatched events past the retention are.
-    /// </summary>
     [PostgresFact]
     public async Task OutboxCleanup_DeadLetteredRows_AnonymizedNeverDeleted_Test()
     {
@@ -47,7 +42,7 @@ public class OutboxCleanupJobTests
         }
 
         await RunAsync(database, new EventBusOptions());
-        await RunAsync(database, new EventBusOptions()); // a second night changes nothing more
+        await RunAsync(database, new EventBusOptions());
 
         await using var read = database.CreateContext();
         var rows = await read.OutboxEvents.AsNoTracking().ToDictionaryAsync(e => e.Id);

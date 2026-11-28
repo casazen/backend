@@ -84,7 +84,6 @@ public class PublicCheckInInvoiceProofTests
             Assert.DoesNotContain(stored, json, StringComparison.OrdinalIgnoreCase);
         }
 
-        // The page of a booking with no invoice data says so with the same two booleans.
         var noData = await SeedAsync();
         await using (noData)
         {
@@ -97,7 +96,6 @@ public class PublicCheckInInvoiceProofTests
             Assert.Contains("\"hasInvoiceData\":false", blankJson, StringComparison.Ordinal);
         }
 
-        // Once the check-in is completed the page carries no booking data at all, the two booleans included.
         var done = await svc.SubmitAsync(token, ValidGuests());
         Assert.True(done.Success);
         var completed = Assert.IsType<OkObjectResult>((await controller.GetContext(token)).Result);
@@ -106,11 +104,6 @@ public class PublicCheckInInvoiceProofTests
         Assert.DoesNotContain("invoice", completedJson, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// PROOF TEST: data rule. A «yes» with an invoice block whose fiscal code is not valid answers 422 with the field and the code: the check-in is
-    /// not completed, no guest line, no invoice data, no event. The same guest sends again with the code corrected: the check-in completes and the
-    /// data is saved with the source CheckIn, together with the «yes» and one event.
-    /// </summary>
     [Fact]
     public async Task PublicCheckIn_InvoiceBlockInvalid_SavesNothing_Test()
     {
@@ -136,7 +129,6 @@ public class PublicCheckInInvoiceProofTests
         Assert.Empty(await seed.Db.BookingInvoiceData.AsNoTracking().ToListAsync());
         Assert.Empty(await seed.Db.OutboxEvents.AsNoTracking().ToListAsync());
 
-        // Corrected, the same guest sends again: everything is saved by the one save of the check-in.
         invoice.Data = invoice.Data with { FiscalCode = FiscalCode };
         var done = await svc.SubmitAsync(token, request);
 
@@ -254,7 +246,6 @@ public class PublicCheckInInvoiceProofTests
             Mock.Of<IStringLocalizer<SharedResources>>(),
             NullLogger<PublicGuestCheckInController>.Instance)
         {
-            // The page reads the Accept-Language of the request to open in the guest's language (NF-40): a controller built by hand needs a request.
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
         };
 }

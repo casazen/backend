@@ -18,12 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The readiness providers and the part evaluators of the other epics (E10/F01/US04/T01, NF-106, NF-104): the messages, documents and reports flows
-/// and the parts «Messages and AI», «Fiscal documents» and «Partners», on EF InMemory and the world of <see cref="HostScopeScenario"/> (an org with a
-/// property given to the collaborator «Solo alcuni», one not given, and another org). Every state is read from the facts the epics store; nothing here
-/// is a flag that says «ready».
-/// </summary>
 public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
 {
     private static readonly CancellationToken Ct = CancellationToken.None;
@@ -37,8 +31,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     public async Task InitializeAsync() => _world = await HostScopeScenario.SeedAsync(_db);
 
     public async Task DisposeAsync() => await _db.DisposeAsync();
-
-    // ---------------------------------------------------------------- the flows
 
     /// <summary>
     /// Proof (data, NF-106, AC-NF106-1, AC-NF106-4): the state of the messages, documents and reports flows follows the stored facts. With nothing but
@@ -55,7 +47,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         _db.PropertyFlowActivations.AddRange(CrossEpicFlows.Select(flow => Activation(_world.Granted.Id, flow)));
         await _db.SaveChangesAsync();
 
-        // Nothing stored but the host's activation.
         var missing = await StatusesAsync(status);
         Assert.Equal(
             (OnboardingFlowStates.ToComplete, (string?)OnboardingFlowReasons.MessageSyncNotReady, (string?)null),
@@ -68,8 +59,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             Of(missing, OnboardingFlow.Reports));
         Assert.DoesNotContain(missing.Values, s => s.State == OnboardingFlowStates.Active || s.Reason == OnboardingFlowReasons.NotProvided);
 
-        // The facts arrive: a pass of the message sync read the listing, the host saved its issuer (CasaZen issues, the issuance is on), a booking came
-        // from the channel manager.
         _db.OtaMessageSyncStates.Add(SyncState(_world.Granted.Id));
         _db.OrgFiscalIssuerProfiles.Add(Issuer(DocumentIssuerMode.CasaZen));
         await _db.SaveChangesAsync();
@@ -78,7 +67,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         var ready = await StatusesAsync(status);
         Assert.All(CrossEpicFlows, flow => Assert.Equal(OnboardingFlowStates.Active, ready[flow].State));
 
-        // The facts go: the flows follow them, the host's activation is still stored. With the issuance off nobody issues, whatever the profile says.
         (await _db.OtaMessageSyncStates.SingleAsync()).LastError = OtaMessageSyncErrorCodes.ChatNotLicensed;
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(false);
         (await _db.Bookings.SingleAsync(b => b.OctorateReservationId != null)).Status = BookingStatus.Cancelled;
@@ -135,10 +123,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Empty(noChat.Prerequisites);
     }
 
-    /// <summary>
-    /// The state of a listing counts for the property it is confirmed to and the org it belongs to: a row with no property (its mapping is not confirmed)
-    /// or of another org says nothing about this property, so the sync is not working for it.
-    /// </summary>
     [Fact]
     public async Task MessagesFlow_ASyncStateOfNoPropertyOrOfAnotherOrg_IsNotTheStateOfTheProperty()
     {
@@ -173,7 +157,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         (string Key, bool Met, string? Reason)[] issuerMissing = [(OnboardingPrerequisiteKeys.Issuer, false, OnboardingFlowReasons.IssuerMissing)];
         Assert.All(ids, id => Assert.Equal(issuerMissing, none[id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason))));
 
-        // Every stored mode, the retired ones included, is CasaZen: the profile is enough, no connection to Octorate is needed.
         var profile = Issuer(DocumentIssuerMode.CasaZen);
         _db.OrgFiscalIssuerProfiles.Add(profile);
         await _db.SaveChangesAsync();
@@ -186,8 +169,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             Assert.All(ids, id => Assert.Null(casazen[id].NotAvailableReason));
         }
 
-        // The issuance is switched off: nobody issues then (the issuer service answers «issuance off» for every booking), so the flow leads the host to the
-        // wizard again.
         _flags.Setup(f => f.IsEnabled(FeatureFlags.FiscalDocumentIssuance)).Returns(false);
         var switchedOff = await provider.EvaluateAsync(_world.OrgId, ids, Ct);
         Assert.All(ids, id => Assert.Equal(issuerMissing, switchedOff[id].Prerequisites.Select(p => (p.Key, p.Met, p.Reason))));
@@ -227,7 +208,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(issuerMissing, await FlowAsync());
         Assert.Equal(PartFacts.Counted(1, 5, BillingSetupItemKeys.AddressMissing), await part.EvaluateAsync(context, Ct));
 
-        // Complete to issue: the flow runs; the part asks the next step, the numbering.
         profile.AddressStreet = "Via Nassa";
         profile.PostalCode = "6900";
         profile.City = "Lugano";
@@ -235,7 +215,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(issuerMet, await FlowAsync());
         Assert.Equal(PartFacts.Counted(2, 5, BillingSetupItemKeys.GuestSeriesUnconfirmed), await part.EvaluateAsync(context, Ct));
 
-        // The steps are done one by one, in the order of the wizard: the series, the tourist tax, the emission.
         profile.GuestDocumentSeries = "{year}";
         profile.OwnerInvoiceSeries = "PM{year}";
         await _db.SaveChangesAsync();
@@ -244,7 +223,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         Assert.Equal(PartFacts.Counted(4, 5, BillingSetupItemKeys.AutoIssueUnconfirmed), await part.EvaluateAsync(context, Ct));
 
-        // Nothing is missing: done.
         profile.ConfirmedAt = HostScopeScenario.Now.UtcDateTime;
         await _db.SaveChangesAsync();
         var done = await part.EvaluateAsync(context, Ct);
@@ -262,7 +240,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(PartFacts.Counted(3, 5, BillingSetupItemKeys.LegalNameMissing), await part.EvaluateAsync(context, Ct));
         Assert.Equal(issuerMissing, await FlowAsync());
 
-        // The issuance is switched off: nobody issues, so nothing is ready and nothing is done, whatever is set.
         profile.LegalName = "TEST Quokka Sagl";
         profile.OwnerInvoiceSeries = "PM{year}";
         await _db.SaveChangesAsync();
@@ -297,7 +274,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(ready, bookings.Met);
         Assert.Equal(ready ? null : OnboardingFlowReasons.NoBookingsYet, bookings.Reason);
 
-        // The booking of one property is never the booking of another: Hidden has none imported.
         var hidden = answer[_world.Hidden.Id].Prerequisites.Single(p => p.Key == OnboardingPrerequisiteKeys.Bookings);
         Assert.False(hidden.Met);
     }
@@ -365,8 +341,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(new[] { _world.Granted.Id, _world.Hidden.Id }.Order(), orgWide.Select(s => s.PropertyId).Distinct().Order());
     }
 
-    // ---------------------------------------------------------------- the parts
-
     /// <summary>
     /// Proof (data, AC-NF104-9..11): the parts «Messages and AI», «Fatturazione» and «Partners» show their progress from the stored facts of E05, E06
     /// and E09, and none is done without them. The preferences of a collaborator, and the row the alert router makes with the defaults, are not a save
@@ -381,7 +355,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         var partners = new PartnersPartEvaluator(_flags.Object, Catalog());
         var context = new OnboardingPartContext(_world.OrgWide, [_world.Granted.Id, _world.Hidden.Id]);
 
-        // Nothing stored: never done, each with the reason of what is missing.
         Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.NotificationPreferencesMissing), await messages.EvaluateAsync(context, Ct));
         Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.IssuerMissing), await fiscal.EvaluateAsync(context, Ct));
         Assert.Equal(PartFacts.NotAvailable(OnboardingPartReasons.ConnectorOff), await partners.EvaluateAsync(context, Ct));
@@ -390,18 +363,15 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(PartFacts.Counted(0, 2, OnboardingPartReasons.NotificationPreferencesMissing), await messages.EvaluateAsync(context, Ct));
         Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.PartnerIntegrationMissing), await partners.EvaluateAsync(context, Ct));
 
-        // What is not a save of an administrator: a collaborator's choice, and the defaults the alert router creates by itself.
         _db.UserNotificationChannelSettings.Add(ChannelSetting(_world.CollaboratorId));
         _db.UserNotificationPreferences.Add(new UserNotificationPreferences { OrgId = _world.OrgId, UserId = _world.OwnerUserId });
         await _db.SaveChangesAsync();
         Assert.Equal(0, (await messages.EvaluateAsync(context, Ct)).Done);
 
-        // The owner saves its channels: the first check holds; the assistant has no situation yet.
         _db.UserNotificationChannelSettings.Add(ChannelSetting(_world.OwnerUserId));
         await _db.SaveChangesAsync();
         Assert.Equal(PartFacts.Counted(1, 2, OnboardingPartReasons.AssistantSituationMissing), await messages.EvaluateAsync(context, Ct));
 
-        // A situation of the organization: both hold. With the assistant off the second check is not asked at all.
         _db.AssistantSituationSettings.Add(Situation(null));
         await _db.SaveChangesAsync();
         var both = await messages.EvaluateAsync(context, Ct);
@@ -410,8 +380,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         var onlyPreferences = await messages.EvaluateAsync(context, Ct);
         Assert.Equal((1, 1, true), (onlyPreferences.Done, onlyPreferences.Total, onlyPreferences.IsComplete));
 
-        // The invoicing (E11/F01/US01/T04): done once every step of the setup is confirmed, but only while the issuance is on; switched off, nobody issues and the
-        // part is to do again. A profile that still says a retired mode (accountant, Octorate) is CasaZen too: no part says «the accountant handles» any more.
         var profile = Issuer(DocumentIssuerMode.CasaZen);
         FullySetUp(profile);
         _db.OrgFiscalIssuerProfiles.Add(profile);
@@ -427,16 +395,11 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             Assert.True(done.IsComplete);
         }
 
-        // A partner declared by the host: done.
         _db.MarketplaceActivations.Add(Activation(null, MarketplaceActivationKind.Partner, MarketplaceActivationStatus.Active, declared: true));
         await _db.SaveChangesAsync();
         Assert.Equal(PartFacts.Counted(1, 1, null), await partners.EvaluateAsync(context, Ct));
     }
 
-    /// <summary>
-    /// Proof (permission, AM-03): the assistant exception of a property counts only for a caller who reaches that property, and an org with no property
-    /// (or none reached) counts the rows of the organization only, never «every row».
-    /// </summary>
     [Fact]
     public async Task MessagesAiPart_AnAssistantExceptionCountsOnlyForACallerWhoReachesTheProperty()
     {
@@ -452,7 +415,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(1, (await evaluator.EvaluateAsync(orgWide, Ct)).Done);
         Assert.Equal(0, (await evaluator.EvaluateAsync(noProperty, Ct)).Done);
 
-        // The exception of the property the collaborator reaches counts for it; the row of the organization counts for everybody.
         _db.AssistantSituationSettings.Add(Situation(_world.Granted.Id, AssistantSituation.Parking));
         await _db.SaveChangesAsync();
         Assert.Equal(1, (await evaluator.EvaluateAsync(restricted, Ct)).Done);
@@ -464,10 +426,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             Assert.Equal(1, await DoneAsync(evaluator, context));
     }
 
-    /// <summary>
-    /// «Saved by an administrator» (the part «Messages and AI», E05): an active Admin of the org, not only its owner, is an administrator, and what it saves
-    /// counts.
-    /// </summary>
     [Fact]
     public async Task MessagesAiPart_PreferencesSavedByAnActiveAdmin_Count()
     {
@@ -482,9 +440,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(PartFacts.Counted(1, 1, null), await evaluator.EvaluateAsync(context, Ct));
     }
 
-    /// <summary>
-    /// A deactivated Admin is nobody's administrator any more: its saved channels and its quiet hours are not a save of the org, however many there are.
-    /// </summary>
     [Fact]
     public async Task MessagesAiPart_PreferencesOfADeactivatedAdmin_DoNotCount()
     {
@@ -498,10 +453,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(PartFacts.Counted(0, 1, OnboardingPartReasons.NotificationPreferencesMissing), await evaluator.EvaluateAsync(context, Ct));
     }
 
-    /// <summary>
-    /// Quiet hours that differ from the defaults (22:00 to 08:00) are a save of the administrator, and so is the legal alerts switch turned off; the row the
-    /// alert router makes by itself, with the defaults, is not (it proves nothing: it exists for whoever was ever alerted).
-    /// </summary>
     [Theory]
     [InlineData(22, 8, true, false)]
     [InlineData(23, 8, true, true)]
@@ -524,10 +475,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(counts ? 1 : 0, await DoneAsync(evaluator, context));
     }
 
-    /// <summary>
-    /// Isolation between organizations: the rows of another org (its administrator's channels and quiet hours, and a row of that org under the id of an
-    /// administrator of this one) are not a save of this org, while they do count for the org they belong to, so the rows are really there to be read.
-    /// </summary>
     [Fact]
     public async Task MessagesAiPart_ThePreferencesOfAnotherOrganization_DoNotCount()
     {
@@ -544,10 +491,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(PartFacts.Counted(1, 1, null), await evaluator.EvaluateAsync(otherContext, Ct));
     }
 
-    /// <summary>
-    /// «Partners» reads the Active tab of the marketplace for the scope of the caller (E09): an integration of a property counts for a caller who reaches
-    /// it, one of the organization only for a caller who reaches the whole org; a request that is not active nor declared, and a deactivated one, do not.
-    /// </summary>
     [Fact]
     public async Task PartnersPart_ReadsTheActiveTabForTheScopeOfTheCaller()
     {
@@ -561,17 +504,14 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         await _db.SaveChangesAsync();
         Assert.Equal(0, (await evaluator.EvaluateAsync(orgWide, Ct)).Done);
 
-        // Active on the property the collaborator was NOT given: the owner sees it, the collaborator does not.
         _db.MarketplaceActivations.Add(Activation(_world.Hidden.Id, MarketplaceActivationKind.Tool, MarketplaceActivationStatus.Active, declared: false));
         await _db.SaveChangesAsync();
         Assert.Equal((0, 1), (await DoneAsync(evaluator, restricted), await DoneAsync(evaluator, orgWide)));
 
-        // A partner declared for the whole org: the whole org sees it, the collaborator «Solo alcuni» does not.
         _db.MarketplaceActivations.Add(Activation(null, MarketplaceActivationKind.Partner, MarketplaceActivationStatus.Pending, declared: true));
         await _db.SaveChangesAsync();
         Assert.Equal((0, 1), (await DoneAsync(evaluator, restricted), await DoneAsync(evaluator, orgWide)));
 
-        // Active on the property it was given: it counts for the collaborator too.
         _db.MarketplaceActivations.Add(Activation(_world.Granted.Id, MarketplaceActivationKind.Tool, MarketplaceActivationStatus.Active, declared: false));
         await _db.SaveChangesAsync();
         Assert.Equal((1, 1), (await DoneAsync(evaluator, restricted), await DoneAsync(evaluator, orgWide)));
@@ -618,7 +558,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             }
         }
 
-        // Both answers really happened (a matrix that answers only one way proves nothing), and the deactivated rows are not on the tab.
         Assert.True(answeredYes > 0 && answeredNo > 0, $"{answeredYes} yes, {answeredNo} no");
         _db.MarketplaceActivations.RemoveRange(await _db.MarketplaceActivations.ToListAsync());
         _db.MarketplaceActivations.Add(Activation(null, MarketplaceActivationKind.Partner, MarketplaceActivationStatus.Deactivated, declared: true));
@@ -685,9 +624,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.True(OnboardingPartCatalog.IsDeferrable(OnboardingPartKey.Partners));
     }
 
-    // ---------------------------------------------------------------- the codes and the registration
-
-    /// <summary>The stable codes this task adds (add-only, never renamed) and the actions and default reasons that go with them.</summary>
     [Fact]
     public void TheStableCodes_AreAddOnly_AndEveryUnmetPrerequisiteHasItsReasonAndAction()
     {
@@ -706,13 +642,11 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal(OnboardingFlowReasons.NoBookingsYet, OnboardingPrerequisiteKeys.DefaultReasonOf(OnboardingPrerequisiteKeys.Bookings));
         Assert.Equal(OnboardingFlowReasons.MessageSyncNotReady, OnboardingPrerequisiteKeys.DefaultReasonOf(OnboardingPrerequisiteKeys.MessageSync));
 
-        // Only the missing issuer is something the host fixes; the sync and the first booking come by themselves, and a «not available» reason has none.
         Assert.Equal(OnboardingFlowActions.ChooseIssuer, OnboardingFlowActions.ForReason(OnboardingFlowReasons.IssuerMissing));
         Assert.All(
             new[] { OnboardingFlowReasons.MessageSyncNotReady, OnboardingFlowReasons.NoBookingsYet, OnboardingFlowReasons.ChatNotLicensed, OnboardingFlowReasons.AccountantHandles },
             reason => Assert.Null(OnboardingFlowActions.ForReason(reason)));
 
-        // The reasons of the parts that alias a reason of the flows are the same code.
         Assert.Equal(OnboardingFlowReasons.IssuerMissing, OnboardingPartReasons.IssuerMissing);
         Assert.Equal(OnboardingFlowReasons.AccountantHandles, OnboardingPartReasons.AccountantHandles);
         Assert.Equal(
@@ -726,10 +660,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             });
     }
 
-    /// <summary>
-    /// The exact registrations of the activation (E10): one provider for each of the six flows and one evaluator for each of the twelve parts, in the
-    /// order they are registered, none a placeholder (a factory) any more, all scoped.
-    /// </summary>
     [Fact]
     public void Registration_EveryFlowAndEveryPartHasItsOwnProvider_NoPlaceholder()
     {
@@ -770,7 +700,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             Assert.Equal(ServiceLifetime.Scoped, d.Lifetime);
         });
 
-        // What each one answers for: all six flows and all twelve parts, each at the order of a real provider (10), none at the placeholder's (0).
         var reader = Reader();
         IFlowReadinessProvider[] flows =
         [
@@ -789,8 +718,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         Assert.Equal([OnboardingPartKey.MessagesAi, OnboardingPartKey.FiscalDocuments, OnboardingPartKey.Partners], parts.Select(p => p.Part));
         Assert.All(parts, p => Assert.Equal(OnboardingPartEvaluatorOrders.Evaluator, p.Order));
     }
-
-    // ---------------------------------------------------------------- the world
 
     private static (string State, string? Reason, string? Action) Of(IReadOnlyDictionary<OnboardingFlow, FlowPropertyStatus> statuses, OnboardingFlow flow)
     {
@@ -834,7 +761,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     private async Task<IReadOnlyDictionary<OnboardingFlow, FlowPropertyStatus>> StatusesAsync(OnboardingFlowStatusService status) =>
         (await status.GetStatusesAsync(_world.OrgWide, [_world.Granted.Id], CrossEpicFlows, Ct)).ToDictionary(s => s.Flow);
 
-    /// <summary>The real catalog of the marketplace over the same database: the Active tab the part «Partners» reads.</summary>
     private MarketplaceCatalogService Catalog()
     {
         var suppliers = new Mock<IHostSupplierUsageReader>();
@@ -874,10 +800,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         };
     }
 
-    /// <summary>
-    /// A complete profile of the issuer that the wizard confirmed (a Swiss issuer that is not registered needs no tax id, only its name and its address),
-    /// whatever mode the row says.
-    /// </summary>
     private OrgFiscalIssuerProfile Issuer(DocumentIssuerMode mode, Guid? orgId = null) => new()
     {
         OrgId = orgId ?? _world.OrgId,
@@ -897,7 +819,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
     /// </summary>
     private BillingSetupService Billing() => BillingSetupTestServices.Create(Issuers());
 
-    /// <summary>Every step of the billing setup confirmed on a profile that can issue: both series, the tourist tax (a Swiss issuer; no portal collects it) and the emission.</summary>
     private static void FullySetUp(OrgFiscalIssuerProfile profile)
     {
         profile.GuestDocumentSeries = "{year}";
@@ -906,7 +827,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         profile.ConfirmedAt = HostScopeScenario.Now.UtcDateTime;
     }
 
-    /// <summary>The real issuer service over the same database: the profile the billing setup reads, what is missing included.</summary>
     private DocumentIssuerService Issuers()
     {
         var environment = new Mock<IHostEnvironment>();
@@ -914,7 +834,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         return new DocumentIssuerService(_db, _flags.Object, TaxRuleCatalogs.Resolver(), environment.Object, TimeProvider.System, NullLogger<DocumentIssuerService>.Instance);
     }
 
-    /// <summary>A member of an org with its own account: the row of the team and the user it belongs to. Returns the id of the user.</summary>
     private async Task<string> AddMemberAsync(Guid orgId, OrgRole role, OrgMemberStatus status)
     {
         var user = HostScopeScenario.NewUser($"auth0|{role}-{Guid.NewGuid():N}", orgId, UserRole.None);
@@ -951,7 +870,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         DeclaredAt = declared ? HostScopeScenario.Now.UtcDateTime : null,
     };
 
-    /// <summary>A booking of <paramref name="property"/> that came (or not, with no reservation id) from the channel manager.</summary>
     private async Task<Booking> AddBookingAsync(Property property, BookingStatus status, string? reservationId = "RES-1", bool noShow = false, BookingSource source = BookingSource.BookingCom)
     {
         var guestId = await _db.Guests.AsNoTracking().Where(g => g.OrgId == property.OrgId).Select(g => g.Id).FirstAsync();
@@ -965,7 +883,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
             NumberOfGuests = 2,
             Status = status,
             Source = source,
-            // A blank or missing id stays as it is (that is the case under test); a real one is made unique for the org.
             OctorateReservationId = string.IsNullOrWhiteSpace(reservationId) ? reservationId : $"{reservationId}-{Guid.NewGuid():N}",
             NoShowAt = noShow ? HostScopeScenario.Now.UtcDateTime : null,
             BasePrice = 300m,
@@ -976,7 +893,6 @@ public class OnboardingCrossEpicProvidersTests : IAsyncLifetime
         return booking;
     }
 
-    /// <summary>The confirmed mapping of the properties named, and no other.</summary>
     private sealed class StubMappingReader(IReadOnlyCollection<Guid> confirmed) : IPropertyMappingReader
     {
         public bool IsProvided => true;

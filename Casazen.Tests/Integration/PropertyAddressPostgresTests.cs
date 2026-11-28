@@ -28,7 +28,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
     {
         var userId = $"auth0|addr-{Guid.NewGuid():N}";
         var org = await _factory.SeedOrgForOwnerAsync(userId);
-        // Starter allows 3 properties; these tests create more apartments in one building.
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -41,8 +40,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
 
         return (userId, _factory.CreateAuthenticatedClient(userId, "PropertyOwner"));
     }
-
-    // ─── Several apartments in one building ──────────────────────────────────────
 
     [PostgresFact]
     public async Task Create_SecondApartmentOfTheSameBuilding_WithAnotherUnit_Succeeds()
@@ -103,8 +100,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(DuplicateCode, await CodeOfAsync(variant));
     }
 
-    // ─── Per org ─────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Create_SameAddressInAnotherOrg_Succeeds_SoNothingOfTheOtherTenantIsRevealed()
     {
@@ -115,7 +110,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
 
         var other = await hostB.PostAsJsonAsync("/api/properties", Body(street));
 
-        // Before PC-06 this was a 409 "address already used": the second host learned that the building is in use.
         Assert.Equal(HttpStatusCode.Created, other.StatusCode);
     }
 
@@ -156,7 +150,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
     [PostgresFact]
     public async Task Update_ParallelChangesOfTwoPropertiesToTheSameAddress_OnlyOneWinsTheRestIsAConflict()
     {
-        // Updates are not serialized by the org lock: this is the real 23505 path, with no check before the save.
         var (_, host) = await NewHostAsync();
         var first = await CreateAsync(host, Body(NewStreet()));
         var second = await CreateAsync(host, Body(NewStreet()));
@@ -241,8 +234,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
     }
 
-    // ─── Unit ────────────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Create_UnitWithExtraSpaces_IsStoredTrimmedAndCollapsed()
     {
@@ -264,8 +255,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    // ─── Coordinates ─────────────────────────────────────────────────────────────
-
     [PostgresFact]
     public async Task Create_CoordinatesWithSixDecimals_AreStoredAndReturnedAsSent()
     {
@@ -273,7 +262,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
 
         var id = await CreateAsync(host, Body(NewStreet(), latitude: 45.464211m, longitude: 9.189982m));
 
-        // numeric(18,2) used to turn 45.464211 into 45.46 (about 1 km away on the map).
         var record = await ReadAsync(await host.GetAsync($"/api/properties/{id}"));
         Assert.Equal(45.464211m, record.GetProperty("latitude").GetDecimal());
         Assert.Equal(9.189982m, record.GetProperty("longitude").GetDecimal());
@@ -330,8 +318,6 @@ public class PropertyAddressPostgresTests : IClassFixture<CasazenWebApplicationF
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal((41.902782m, 12.496366m), await CoordinatesInDbAsync(id));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static string NewStreet() => $"Via Roma {Guid.NewGuid():N}";
 

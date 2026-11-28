@@ -38,8 +38,6 @@ public class TicinoDeclarationTests
     private static readonly FixedTimeProvider Clock = new(new DateTimeOffset(2026, 11, 18, 15, 0, 0, TimeSpan.Zero));
     private static readonly DateTime Now = Clock.GetUtcNow().UtcDateTime;
 
-    // ─── Declaring ───
-
     [Fact]
     public async Task Declare_IsIdempotent_TheSecondCallAnswersTheFirstDeclaration_AndTellsNobodyAgain()
     {
@@ -52,7 +50,6 @@ public class TicinoDeclarationTests
         var push = new RecordingPush();
         var first = new TicinoNotificationService(db, Clock, pushNotifications: push);
 
-        // A co-host repeats the call five minutes later, from another request.
         var later = new TicinoNotificationService(db, new FixedTimeProvider(Clock.GetUtcNow().AddMinutes(5)), pushNotifications: push);
 
         var created = await first.DeclareDayAsync(property.Id, ArrivalDay, Anna);
@@ -92,7 +89,6 @@ public class TicinoDeclarationTests
         Assert.Null(dayBefore.DeclaredBy);
         Assert.Equal(ArrivalDay, Assert.Single(dayBefore.PendingDays).Day);
 
-        // The rule the alerts and the cockpit read: the declared day is gone from the list, for one org and for the job that reads every org.
         Assert.Empty(pendingAfter);
         Assert.Empty(everyOrgAfter);
         Assert.Empty(dayAfter.PendingDays);
@@ -151,8 +147,6 @@ public class TicinoDeclarationTests
         Assert.Empty(await db.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
     }
 
-    // ─── Undoing ───
-
     [Fact]
     public async Task Undo_RemovesTheDeclaration_TheDayIsToNotifyAgain_AndRepeatingItIsHarmless()
     {
@@ -178,7 +172,6 @@ public class TicinoDeclarationTests
         Assert.False(day.AlreadyDeclared);
         Assert.Null(day.DeclaredAtUtc);
 
-        // The declaration and the undo are told, nothing else: not the call with nothing to undo, not the repeated one.
         Assert.Equal(
             [PushTypes.TicinoNotificationDeclared, PushTypes.TicinoNotificationDeclared],
             push.Sent.Select(p => p.Payload.Type).ToArray());
@@ -211,8 +204,6 @@ public class TicinoDeclarationTests
     [Fact]
     public async Task Undo_ACoHostWhoUndoesTheSameDeclarationAtTheSameMoment_GetsTheIdempotentAnswer_AndTellsNobody()
     {
-        // Two hosts press «undo» together: the first removes the row and tells the hosts; the second finds the row already gone when it saves (the database says that no row was affected). That is
-        // the answer of an undo with nothing to undo (false, no error: the 204 of the API), not a 500, and nothing is told twice.
         var store = Guid.NewGuid().ToString();
         Property property;
         await using (var setup = NewDb(store))
@@ -241,11 +232,8 @@ public class TicinoDeclarationTests
         await using var check = NewDb(store);
         Assert.Empty(await check.SwissNotificationDeclarations.AsNoTracking().ToListAsync());
 
-        // The context is left clean: nothing that was undone is tracked for a later save of the same scope.
         Assert.Empty(db.ChangeTracker.Entries<SwissNotificationDeclaration>());
     }
-
-    // ─── Receipts ───
 
     [Fact]
     public async Task Receipt_AlsoClosesTheDay_AndStillDoesAfterTheDeclarationIsUndone()
@@ -257,12 +245,10 @@ public class TicinoDeclarationTests
         var service = new TicinoNotificationService(db, Clock);
         var pendingBefore = await service.ListPendingDaysAsync(property.OrgId, null, ArrivalDay);
 
-        // A receipt of the portal, with no declaration of anybody: the day is closed, as it has always been.
         AddReceipt(db, property, "Police");
         await db.SaveChangesAsync();
         var withReceipt = await service.GetDayAsync(property.Id, ArrivalDay);
 
-        // A declaration on top of the receipt, undone: the receipt still closes the day.
         await service.DeclareDayAsync(property.Id, ArrivalDay, Anna);
         await service.UndeclareDayAsync(property.Id, ArrivalDay, Anna);
         var afterUndo = await service.GetDayAsync(property.Id, ArrivalDay);
@@ -344,8 +330,6 @@ public class TicinoDeclarationTests
     [Fact]
     public async Task Declare_ARepeatedCallWithAnotherReceipt_NeverReplacesTheReceiptAlreadyAttached()
     {
-        // The receipt on the declaration is the one the first host recorded: a later call with another Police receipt of the same day (valid, but a different one) answers the declaration as
-        // it is and changes nothing, and the same receipt again is the same answer.
         await using var db = NewDb();
         var property = await SeedPropertyAsync(db);
         AddUser(db, Anna, "Anna", "Rossi");
@@ -370,8 +354,6 @@ public class TicinoDeclarationTests
     [Fact]
     public async Task Declare_AnUndoThatPassesBetweenTheReadAndTheSaveOfTheReceipt_LeavesTheDayDeclaredAgainByThisCall()
     {
-        // The declaration is read, a co-host undoes it, and only then the receipt is saved on it: the row to update is gone. The call comes after the undo, so the day is declared again with the
-        // receipt (not a 500, not the answer about a declaration that no longer exists) and the hosts are told, as for any declaration that is created.
         var store = Guid.NewGuid().ToString();
         Property property;
         Guid receipt;
@@ -406,13 +388,9 @@ public class TicinoDeclarationTests
         Assert.Equal((Anna, receipt), (row.DeclaredByUserId, row.ReceiptId));
     }
 
-    // ─── Organizations and regimes ───
-
     [Fact]
     public async Task Declaration_IsIsolatedPerOrganization_AndAnotherOrgsPropertyIsNotFound_Test()
     {
-        // PROOF TEST (permission, data): a declaration closes a legal duty, so the caller of one org cannot declare, undo or read the day of a property of another org (the tenant
-        // filter hides it: not found), the declaration of one org never closes the same day of the other, and a row that names a property with the wrong org counts for nobody.
         var store = Guid.NewGuid().ToString();
         Property mine;
         Property theirs;
@@ -425,7 +403,6 @@ public class TicinoDeclarationTests
             AddUser(system, Bruno, "Bruno", "Verdi");
             await system.SaveChangesAsync();
 
-            // A co-host of the other org declared its day; and a malformed row names MY property with the OTHER org.
             await new TicinoNotificationService(system, Clock).DeclareDayAsync(theirs.Id, ArrivalDay, Bruno);
             system.SwissNotificationDeclarations.Add(
                 new SwissNotificationDeclaration { OrgId = theirs.OrgId, PropertyId = mine.Id, ArrivalDay = ArrivalDay, DeclaredByUserId = Bruno });
@@ -444,22 +421,18 @@ public class TicinoDeclarationTests
         Assert.All([declareTheirs.Code, undoTheirs.Code, dayTheirs.Code, generateTheirs.Code], code => Assert.Equal("property_not_found", code));
         Assert.Empty(push.Sent);
 
-        // My day is still to notify: neither the declaration of the other org nor the malformed row closes it.
         var pending = await service.ListPendingDaysAsync(mine.OrgId, null, ArrivalDay);
         Assert.Equal((mine.Id, ArrivalDay), (Assert.Single(pending).PropertyId, pending[0].Day));
         var day = await service.GetDayAsync(mine.Id, ArrivalDay);
         Assert.False(day.AlreadyDeclared);
         Assert.Null(day.DeclaredAtUtc);
 
-        // The same reads with no tenant filter (a job over every org): every read names the org of the property too, so the malformed row closes nothing of mine,
-        // and the day of the other org is closed by its own declaration only.
         await using var asSystem = NewDb(store);
         var job = new TicinoNotificationService(asSystem, Clock);
         Assert.Equal([mine.Id], (await job.ListPendingDaysAsync(null, null, ArrivalDay)).Select(p => p.PropertyId));
         Assert.Null((await job.GetDayAsync(mine.Id, ArrivalDay)).DeclaredAtUtc);
         Assert.NotNull((await job.GetDayAsync(theirs.Id, ArrivalDay)).DeclaredAtUtc);
 
-        // Mine closes mine only, and the other org's declaration is untouched by my undo.
         await service.DeclareDayAsync(mine.Id, ArrivalDay, Anna);
         Assert.Empty(await service.ListPendingDaysAsync(mine.OrgId, null, ArrivalDay));
         await service.UndeclareDayAsync(mine.Id, ArrivalDay, Anna);
@@ -471,7 +444,6 @@ public class TicinoDeclarationTests
     [Fact]
     public async Task ADeclarationOfAnotherRegime_DoesNotCloseTheDayOfTheTicinoPolice()
     {
-        // The table is shared with the other cantons (E31): a row with a regime code is another notification, and the rows of the Ticino police are the ones without a code.
         await using var db = NewDb();
         var property = await SeedPropertyAsync(db);
         AddStay(db, property, BookingStatus.CheckedIn);
@@ -500,7 +472,6 @@ public class TicinoDeclarationTests
     [Fact]
     public async Task Declare_ACoHostWhoWinsTheRace_IsTheDeclarationThatIsAnswered_AndNothingIsToldTwice()
     {
-        // Two hosts press «declared» at the same moment: the unique index lets one in and the other gets the declaration that is there, as if it had called second.
         var store = Guid.NewGuid().ToString();
         Property property;
         await using (var setup = NewDb(store))
@@ -537,8 +508,6 @@ public class TicinoDeclarationTests
         Assert.Equal(Bruno, Assert.Single(await check.SwissNotificationDeclarations.AsNoTracking().ToListAsync()).DeclaredByUserId);
     }
 
-    // ─── Live ───
-
     [Fact]
     public async Task Declare_AndUndo_TellTheHostsOfThePropertyLive_WithThePropertyAndTheDayOnly()
     {
@@ -567,14 +536,12 @@ public class TicinoDeclarationTests
             Assert.Contains("Villa Rosa", payload.Body, StringComparison.Ordinal);
             Assert.Contains("18/11/2026", payload.Body, StringComparison.Ordinal);
 
-            // No guest, no value and not the person who did it (the cockpit shows who).
             Assert.DoesNotContain("Anna", payload.Title + payload.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("Rossi", payload.Title + payload.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("{", payload.Title + payload.Body, StringComparison.Ordinal);
         });
         Assert.NotEqual(declared.Title, undone.Title);
 
-        // The delivery key, formatted from real values (a date and an instant): the property, the day, the kind and the instant of the event.
         Assert.Equal($"ticino-declaration:{property.Id:N}:20261118:declared:20261118150000000", declaredKey);
         Assert.Equal($"ticino-declaration:{property.Id:N}:20261118:undone:20261118150100000", undoneKey);
     }
@@ -645,12 +612,9 @@ public class TicinoDeclarationTests
         Assert.NotEqual(declared.Body, undone.Body);
     }
 
-    // ─── The contract of the clients ───
-
     [Fact]
     public void TheJsonOfTheClients_KeepsTheNamesOfTheBrief()
     {
-        // The frontend slice (E30/F02/US03/T01) reads declaredAt, declaredBy, fileGeneratedAt, fileGeneratedCount and alreadyDeclared, and sends confirmRegenerate: the names are the contract.
         var web = new JsonSerializerOptions(JsonSerializerDefaults.Web);
         var declaredAt = new DateTime(2026, 11, 18, 14, 0, 0, DateTimeKind.Utc);
         var generatedAt = declaredAt.AddHours(-1);
@@ -697,13 +661,9 @@ public class TicinoDeclarationTests
             answer.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal));
     }
 
-    // ─── The file of a day that is declared: the guard against duplicates ───
-
     [Fact]
     public async Task Regenerate_DeclaredDay_RequiresConfirmation_Test()
     {
-        // PROOF TEST (data): the portal may create duplicates when a day is uploaded twice. The file of a day that is declared uploaded (or has a receipt) is generated again only when
-        // the person confirmed it; without it the answer is 409 ticino_day_already_declared, no file leaves and no audit row is written. A day that is not declared is never asked.
         await using var db = NewDb();
         var withDeclaration = await SeedPropertyAsync(db, structureId: "NL-12345678");
         var withReceipt = await SeedPropertyAsync(db, structureId: "NL-12345678");
@@ -728,7 +688,6 @@ public class TicinoDeclarationTests
         Assert.Equal("TicinoDayAlreadyDeclared", declared.MessageKey);
         Assert.Empty(await db.SwissNotificationFileEvents.AsNoTracking().ToListAsync());
 
-        // The day that is not declared is generated with no question; the confirmation opens the others, once confirmed each generation is audited.
         var first = await service.GenerateFileAsync(open.Id, ArrivalDay, TicinoPoliceFileFormat.Csv, new TicinoFileRequest(Anna));
         var confirmedDeclared = await service.GenerateFileAsync(
             withDeclaration.Id, ArrivalDay, TicinoPoliceFileFormat.Csv, new TicinoFileRequest(Anna, ConfirmRegenerate: true));
@@ -779,8 +738,6 @@ public class TicinoDeclarationTests
         Assert.Empty(await db.SwissNotificationFileEvents.AsNoTracking().ToListAsync());
     }
 
-    // ─── The audit of the files ───
-
     [Fact]
     public async Task EveryGeneration_WritesOneAuditRow_AndTheDayCountsTheFilesOfThePortalOnly()
     {
@@ -802,7 +759,6 @@ public class TicinoDeclarationTests
 
         Assert.Equal((0, (DateTime?)null), (before.FileGeneratedCount, before.FileGeneratedAtUtc));
 
-        // The rows are the files and the sheet; the day counts the CSV and the XML (the sheet is kept by the host, never uploaded).
         var events = (await db.SwissNotificationFileEvents.AsNoTracking().ToListAsync()).OrderBy(e => e.CreatedAt).ToList();
         Assert.Equal(["csv", "xml", "groupSheet"], events.Select(e => e.Format));
         Assert.Equal([csv.FileHash, xml.FileHash, Sha256Of(sheet.Content)], events.Select(e => e.Sha256));
@@ -906,7 +862,6 @@ public class TicinoDeclarationTests
             ["ArrivalDay", "CreatedAt", "CreatedByUserId", "Format", "Id", "OrgId", "PropertyId", "RowCount", "Sha256"],
             Names(typeof(SwissNotificationFileEvent)));
 
-        // The values of the formats are the words of the brief and of the API (a registration of the other slices photographs them), and only csv and xml are «the file of the day».
         Assert.Equal(["csv", "xml", "register", "groupSheet"], SwissNotificationFileFormats.All);
         Assert.Equal(["csv", "xml"], SwissNotificationFileFormats.PoliceFile);
         Assert.Equal("portal", SwissNotificationChannels.Portal);
@@ -935,7 +890,6 @@ public class TicinoDeclarationTests
             ("\"RegimeCode\" IS NOT NULL", "PropertyId,ArrivalDay,RegimeCode"),
             (unique[SwissNotificationDeclaration.NamedRegimeIndexName].GetFilter(), string.Join(',', unique[SwissNotificationDeclaration.NamedRegimeIndexName].Properties.Select(p => p.Name))));
 
-        // A receipt removed at the end of its retention leaves the declaration without it; the declaration and the audit go with their property.
         var receiptKey = Assert.Single(declaration.GetForeignKeys(), fk => fk.PrincipalEntityType.ClrType == typeof(SwissComplianceReceipt));
         Assert.Equal((DeleteBehavior.SetNull, false), (receiptKey.DeleteBehavior, receiptKey.IsRequired));
         Assert.Equal(DeleteBehavior.Cascade, Assert.Single(declaration.GetForeignKeys(), fk => fk.PrincipalEntityType.ClrType == typeof(Property)).DeleteBehavior);
@@ -948,14 +902,11 @@ public class TicinoDeclarationTests
         Assert.Contains("'groupSheet'", audit.GetCheckConstraints().Single(c => c.Name == SwissNotificationFileEventConfiguration.FormatCheckName).Sql, StringComparison.Ordinal);
     }
 
-    // ─── Helpers ───
-
     private static AppDbContext NewDb(string? store = null, ITenantContext? tenant = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(store ?? Guid.NewGuid().ToString()).Options, tenant);
 
     private static string Sha256Of(byte[] content) => Convert.ToHexString(SHA256.HashData(content)).ToLowerInvariant();
 
-    /// <summary>What another request does a moment before this one saves: it removes every declaration of the store.</summary>
     private static void RemoveEveryDeclaration(string store)
     {
         using var winner = NewDb(store);
@@ -1005,7 +956,6 @@ public class TicinoDeclarationTests
         return booking;
     }
 
-    /// <summary>A stay of one guest whose data are complete and whose home fits the XSD (a numeric postcode and a country): one row of the file, in CSV and in XML.</summary>
     private static void AddCompleteStay(AppDbContext db, Property property)
     {
         var stay = AddStay(db, property, BookingStatus.CheckedIn, guests: 1);
@@ -1026,7 +976,6 @@ public class TicinoDeclarationTests
         });
     }
 
-    /// <summary>A group of six (a leader and five members): one row of the file (the leader's, which fits the XSD), and a sheet of six persons.</summary>
     private static Booking AddGroupStay(AppDbContext db, Property property)
     {
         var group = AddStay(db, property, BookingStatus.CheckedIn, guests: 6);
@@ -1068,7 +1017,6 @@ public class TicinoDeclarationTests
         return receipt.Id;
     }
 
-    /// <summary>The push queue of the test: what was queued, or a queue that is down (it throws) or that refuses (it says false).</summary>
     private sealed class RecordingPush(bool fail = false, bool refuse = false) : IPushNotificationService
     {
         public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Sent { get; } = [];

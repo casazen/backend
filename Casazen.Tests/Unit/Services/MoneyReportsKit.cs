@@ -2,19 +2,12 @@ using Casazen.Core.Entities;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// The rows the tests of the money reports (NF-97, NF-98) are made of: stays and payments with the instants and the amounts written out, on the clock of the
-/// host scope tests (2026-10-09, 10:00 UTC), so a figure of a test can be worked out by hand. Every instant is set: a default would be the real clock.
-/// </summary>
 internal static class MoneyReportsKit
 {
-    /// <summary>The instant the services run at: 2026-10-09 in Rome.</summary>
     public static readonly TimeProvider Clock = new FixedTimeProvider(HostScopeScenario.Now);
 
-    /// <summary>A calendar date of 2026 as a stay date (midnight UTC).</summary>
     public static DateTime Day(int month, int day) => new(2026, month, day, 0, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>An instant of 2026 (UTC).</summary>
     public static DateTime At(int month, int day, int hour, int minute = 0) => new(2026, month, day, hour, minute, 0, DateTimeKind.Utc);
 
     public static Guest NewGuest(Guid orgId, string firstName = "Anna", string lastName = "Verdi") => new()
@@ -53,7 +46,6 @@ internal static class MoneyReportsKit
         };
     }
 
-    /// <summary>A payment of a booking; without <paramref name="processedAt"/> it came in at <paramref name="createdAt"/> (the instant of a payment recorded before it existed).</summary>
     public static Payment Pay(
         Booking booking,
         decimal amount,
@@ -79,7 +71,6 @@ internal static class MoneyReportsKit
         };
     }
 
-    /// <summary>A card payment the provider settled, with the figures its capture stores.</summary>
     public static Payment CardPay(
         Booking booking,
         decimal amount,

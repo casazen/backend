@@ -41,10 +41,8 @@ public class InAppNotificationSqlShapeTests
         Assert.Matches("\"UserId\" = @", sql);
         Assert.Contains("EXISTS", sql);
         Assert.Contains("FROM \"Users\"", sql);
-        // The host org and the supplier org of the user, compared with the org of the row.
         Assert.Contains("\"OrgId\"", sql);
         Assert.Contains("\"SupplierOrgId\"", sql);
-        // The tenant filter would add "OrgId" = @__tenant_OrgId: it is replaced by the user's own orgs (see the class remarks).
         Assert.DoesNotMatch("\"OrgId\" = @", sql);
     }
 

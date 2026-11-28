@@ -32,8 +32,6 @@ public class OtaReviewMapperTests
         OctorateRefer = "HM1",
     };
 
-    // ─── The wire ───
-
     [Fact]
     public void ReadReview_AListOfAGuestAndAHostReview_ReadsBothWithTheirWords()
     {
@@ -56,7 +54,6 @@ public class OtaReviewMapperTests
         Assert.Equal("Grazie!", guest.HostReply);
         Assert.Equal(new DateTime(2026, 11, 19, 9, 30, 0, DateTimeKind.Utc), guest.HostRepliedAt);
 
-        // The categories are named in lower case, once each (the first value wins).
         Assert.Equal([new OctorateReviewRating("cleanliness", 5m), new OctorateReviewRating("communication", 4m)], guest.Ratings);
 
         Assert.NotNull(review.Host);
@@ -174,8 +171,6 @@ public class OtaReviewMapperTests
         Assert.Equal(expected, review?.Host?.Window);
     }
 
-    // ─── What CasaZen keeps ───
-
     [Fact]
     public void Apply_ANewPublishedReview_SetsTheRowAndIsNewOnlyTheFirstTime()
     {
@@ -247,7 +242,6 @@ public class OtaReviewMapperTests
             guestErased: true,
             Now);
 
-        // The mark and the state are kept (the reputation of the house is not an identity), the words are not.
         Assert.True(applied.NewlyPublished);
         Assert.True(row.GuestReviewPublished);
         Assert.Equal(4m, row.GuestRating);
@@ -290,7 +284,6 @@ public class OtaReviewMapperTests
             guestErased: false,
             Now);
 
-        // Not a completion (CasaZen asked for nothing): the channel already holds the reply, so CasaZen sends none.
         Assert.False(applied.ReplyCompleted);
         Assert.Equal(OtaReviewActionState.Sent, row.HostReplyState);
         Assert.Equal("Risposta scritta sul canale", row.HostReplyText);
@@ -347,7 +340,6 @@ public class OtaReviewMapperTests
         row.HostReviewState = OtaReviewActionState.ManualVerify;
         row.HostReviewRequestedAt = Now.AddMinutes(-10);
 
-        // The channel shows the review as published: the send is complete and the window is over.
         var done = OtaReviewMapper.Apply(
             row,
             new OctorateReview(null, new OctorateHostReviewInfo(HostReviewWindow.Sent, Now.AddMinutes(-9))),
@@ -359,7 +351,6 @@ public class OtaReviewMapperTests
         Assert.Equal(OtaReviewActionState.Sent, row.HostReviewState);
         Assert.Equal(Now.AddMinutes(-9), row.HostReviewSentAt);
 
-        // A second row: nothing on the channel after an hour is an error the host can act on.
         var other = NewRow();
         other.HostReviewWindow = HostReviewWindow.Open;
         other.HostReviewState = OtaReviewActionState.ManualVerify;

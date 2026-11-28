@@ -8,18 +8,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// E05/F04/US01/T02 (NF-68): the proofs of the approval queue that executes. A decision in the queue does what the item was waiting for, once, with the text the host
-/// approved; a rejection keeps its reason; the host who may decide reaches only the items of its properties. EF InMemory, with the real "To do" service, the real preferences and
-/// the real actions over a fake of the replies that keeps the rule of the key of a send (<see cref="ApprovalQueueRig"/>).
-/// </summary>
 public class ApprovalDecisionProofTests : IDisposable
 {
     private readonly ApprovalQueueRig _rig = new();
 
     public void Dispose() => _rig.Dispose();
-
-    // ─── Data: once, and the edited text (AC-NF68-1, AC-NF68-2) ───
 
     /// <summary>
     /// Data rule (no duplicate message): two approvals of one draft of a message reach the guest once. The second one (a double click, another host) runs nothing, and the key of
@@ -41,7 +34,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Equal(nameof(OtaMessageDeliveryState.Sent), first.ActionState);
         Assert.Null(second.ActionState);
 
-        // The first approver stays; the item is approved and its action executed, once.
         var stored = await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync(i => i.Id == item.Id);
         Assert.Equal(ApprovalStatus.Approved, stored.Status);
         Assert.Equal(ApprovalQueueRig.Owner, stored.ApprovedByUserId);
@@ -51,10 +43,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Null(stored.OriginActionError);
     }
 
-    /// <summary>
-    /// Data rule (the text that is approved is the text that is sent): an edited draft goes out as the edited text, as the person's message (not the assistant's), and the original
-    /// text, with its author and time of the edit, stays in the item.
-    /// </summary>
     [Fact]
     public async Task Approval_EditedText_IsWhatIsSent_Test()
     {
@@ -93,7 +81,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Equal(MessageOrigin.Assistant, sent.Origin);
         Assert.Equal(ApprovalQueueRig.Situation, sent.RuleCode);
         Assert.Equal(item.ThreadKey, sent.Key.ToString());
-        // The executor is a system caller for the org: who may approve was decided before.
         Assert.Equal(_rig.OrgId, sent.Scope.OrgId);
         Assert.True(sent.Scope.IsOrgWide);
     }
@@ -117,8 +104,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Equal(ApprovalQueueRig.DraftText, sent.Text);
     }
 
-    // ─── Failures and pure decisions (AC-NF68-1) ───
-
     [Fact]
     public async Task Approval_AFailedAction_LeavesTheItemPendingWithTheCode_AndTheRetryAfterAnEditSendsOnce()
     {
@@ -138,7 +123,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Null(pending.ApprovedAt);
         Assert.Null(await _rig.Db.InternalActivities.AsNoTracking().Where(a => a.EntityId == item.Id).Select(a => a.CompletedAt).SingleAsync());
 
-        // The host edits and tries again: the key follows the text, so the corrected message is not taken for the refused one and goes out, once, as the person's.
         await service.EditAsync(_rig.OrgWide, item.Id, "Un testo corretto", ApprovalQueueRig.Owner);
         var retried = await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
         await service.ApproveAsync(_rig.OrgWide, item.Id, ApprovalQueueRig.Owner);
@@ -170,10 +154,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Equal([first, first, ApprovalQueueRules.SendKeyOf(item.Id, ApprovalQueueRig.DraftText, 2)], _rig.Sent.Select(s => s.IdempotencyKey));
     }
 
-    /// <summary>
-    /// Data rule (the text that is approved is the text that is sent): an item that was approved and sent, then went back to pending with a new text, sends the new text when it is approved
-    /// again. The service of the replies replays the message of a key it already knows whatever text it is given, so a key of the item alone would have answered Sent and sent nothing.
-    /// </summary>
     [Fact]
     public async Task Approval_AfterAReturnToPending_SendsTheNewText_AndDoesNotReplayTheFirstMessage_Test()
     {
@@ -294,8 +274,6 @@ public class ApprovalDecisionProofTests : IDisposable
         _rig.Campaigns.VerifyNoOtherCalls();
     }
 
-    // ─── Campaigns (AC-NF68-1) ───
-
     [Fact]
     public async Task Approval_ACampaign_IsApprovedWithItsEditedTextAndScheduledWhenItHasATime()
     {
@@ -359,12 +337,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Equal(ApprovalStatus.Pending, (await _rig.Db.ApprovalQueueItems.AsNoTracking().SingleAsync(i => i.Id == item.Id)).Status);
     }
 
-    // ─── Rejection (AC-NF68-3) ───
-
-    /// <summary>
-    /// Data rule (a decision leaves its reason): a rejection without a reason, with a blank one or with one longer than 500 characters is refused and the item stays pending; with
-    /// its reason it is saved on the item, the hook of the type runs (a campaign goes back to a draft, a message needs nothing) and nothing is sent.
-    /// </summary>
     [Fact]
     public async Task Approval_ARejection_NeedsItsReason_SavesIt_AndRunsTheHookOfTheType_Test()
     {
@@ -394,7 +366,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Empty(_rig.Sent);
         _rig.Campaigns.Verify(c => c.ReturnToDraftAsync(campaignId, _rig.OrgId, It.IsAny<CancellationToken>()), Times.Once);
 
-        // Both leave the queue, and their "To do" is closed.
         Assert.Empty(await service.GetPendingAsync(_rig.OrgWide));
         var todos = await _rig.Db.InternalActivities.AsNoTracking().ToListAsync();
         Assert.Equal(2, todos.Count);
@@ -430,12 +401,6 @@ public class ApprovalDecisionProofTests : IDisposable
         Assert.Equal([CancellationToken.None], closeTokens);
     }
 
-    // ─── Reach (AC-NF68-5, AM-03) ───
-
-    /// <summary>
-    /// Permission rule (the reach of the caller): a caller whose reach is limited to some properties lists, edits, approves and rejects only the items of those, and never an item
-    /// of the org (no property); an item of another property is a 404, not a 403, and nothing of it runs.
-    /// </summary>
     [Fact]
     public async Task Approval_APartialScope_ReadsAndDecidesOnlyTheItemsOfItsProperties_Test()
     {
@@ -465,7 +430,6 @@ public class ApprovalDecisionProofTests : IDisposable
             await _rig.Db.ApprovalQueueItems.AsNoTracking().Where(i => i.Id != onA.Id).ToListAsync(),
             i => Assert.Equal((ApprovalStatus.Pending, (string?)null), (i.Status, i.EditedContentText)));
 
-        // Within its reach it decides.
         await service.ApproveAsync(_rig.OnlyA, onA.Id, ApprovalQueueRig.Collaborator);
         Assert.Single(_rig.Sent);
     }
@@ -485,8 +449,6 @@ public class ApprovalDecisionProofTests : IDisposable
         await Assert.ThrowsAsync<NotFoundException>(() => service.EditAsync(stranger, item.Id, "Un testo", "auth0|stranger"));
         Assert.Empty(_rig.Sent);
     }
-
-    // ─── Edits (AC-NF68-2) ───
 
     [Theory]
     [InlineData(null)]

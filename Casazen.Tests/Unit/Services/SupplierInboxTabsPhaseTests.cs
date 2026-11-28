@@ -6,15 +6,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-04e: the tabs <c>da-rispondere</c> and <c>in-attesa</c> split the new requests by what the supplier already did (it proposed
-/// another time and the customer has not answered), <c>nuove</c> stays what it was (the Golden Journey and the other users do not
-/// change), and every request carries the <c>phase</c> the server derives once. Scenario clock: Thursday 8 October 2026, 12:00 in Rome.
-/// </summary>
 public class SupplierInboxTabsPhaseTests
 {
-    // ─── The tabs ───
-
     [Fact]
     public async Task ToAnswerTab_HoldsTheNewRequestsWithNoProposal_TheMostUrgentFirst_TheOnesWithoutDeadlineLast()
     {
@@ -61,7 +54,6 @@ public class SupplierInboxTabsPhaseTests
 
         var items = await TabAsync(s, SupplierInboxTab.New);
 
-        // One list, one order (the deadline, the ones without last): not split, not reordered.
         Assert.Equal(new[] { proposedSoon, toAnswerSoon, toAnswerLate, proposedNoDeadline }, items.Select(item => item.Id));
         Assert.Equal(
             new[] { SupplierRequestPhases.ProposalPending, SupplierRequestPhases.ToAnswer, SupplierRequestPhases.ToAnswer, SupplierRequestPhases.ProposalPending },
@@ -114,8 +106,6 @@ public class SupplierInboxTabsPhaseTests
         Assert.Equal(new[] { mine }, (await TabAsync(s, SupplierInboxTab.ToAnswer)).Select(item => item.Id));
         Assert.Empty(await TabAsync(s, SupplierInboxTab.AwaitingCustomer));
     }
-
-    // ─── The phase ───
 
     [Fact]
     public async Task Phase_OfEveryRequest_IsDerivedFromItsStatusAndItsProposal()
@@ -190,8 +180,6 @@ public class SupplierInboxTabsPhaseTests
         Assert.Equal(SupplierRequestPhases.Unknown, item.Phase);
     }
 
-    // ─── The source ───
-
     [Fact]
     public async Task Source_FiltersTheRequestsOfTheHostsFromTheOnesOfTheShowcase()
     {
@@ -225,8 +213,6 @@ public class SupplierInboxTabsPhaseTests
         Assert.Empty(await ListAsync(s, QueryOf(SupplierInboxTab.AwaitingCustomer) with { Source = ServiceRequestSource.Showcase }));
     }
 
-    // ─── helpers ───
-
     private static SupplierInboxQuery QueryOf(SupplierInboxTab tab) => new(
         SupplierInboxTabs.StatusesOf(tab),
         null,
@@ -242,11 +228,9 @@ public class SupplierInboxTabsPhaseTests
     private static async Task<IReadOnlyList<SupplierServiceRequestView>> ListAsync(ServiceRequestScenario s, SupplierInboxQuery query) =>
         (await s.Reader.ListAsync(s.SupplierOrgId, query)).Items;
 
-    /// <summary>A new request with no proposal, due <paramref name="minutesToExpire"/> minutes after the scenario clock (none when null).</summary>
     private static async Task<Guid> NewAsync(ServiceRequestScenario s, int? minutesToExpire) =>
         (await s.SeedAsync(ServiceRequestStatus.Richiesto, r => r.ResponseDueAt = Due(minutesToExpire))).Id;
 
-    /// <summary>A new request the supplier answered with another time (the customer has not answered).</summary>
     private static async Task<Guid> ProposedAsync(ServiceRequestScenario s, int? minutesToExpire) =>
         (await s.SeedAsync(
             ServiceRequestStatus.Richiesto,

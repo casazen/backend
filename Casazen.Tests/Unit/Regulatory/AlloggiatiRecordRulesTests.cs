@@ -133,8 +133,8 @@ public class AlloggiatiRecordRulesTests
     }
 
     [Theory]
-    [InlineData("2008-10-11", true)] // turns 18 the day after the arrival
-    [InlineData("2008-10-10", false)] // turns 18 on the arrival day
+    [InlineData("2008-10-11", true)]
+    [InlineData("2008-10-10", false)]
     [InlineData("1980-01-01", false)]
     public void IsMinor_DateOfBirth_ComparedWithTheArrivalDate(string dateOfBirth, bool expected)
     {

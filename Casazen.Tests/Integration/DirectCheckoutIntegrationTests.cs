@@ -113,7 +113,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             checkOut: TimeProvider.System.TodayInRome().AddDays(5));
         var response = await PostDirectBookingAsync(client, payload);
 
-        // BK-06: a business rule of the checkout is a 422 ProblemDetails with a code the frontend translates.
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("direct_booking_invalid_stay", problem.RootElement.GetProperty("code").GetString());
@@ -225,11 +224,9 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         var (bookingId, token) = await CreateCheckoutAsync(client, BuildPayload(property.Id, guestEmail: email));
         var orgSlug = await OrgSlugOfAsync(property.OrgId);
 
-        // A3-10 / R-06: the page used to send the email alone and always got a 400.
         var emailOnly = await PostLookupAsync(client, new { orgSlug, email });
         Assert.Equal(HttpStatusCode.BadRequest, emailOnly.StatusCode);
 
-        // The code the guest sees on the outcome page (and in the confirmation email), typed in lower case.
         var outcome = await PostWithCheckoutTokenAsync(client, bookingId, "outcome", token);
         using var outcomeDoc = JsonDocument.Parse(await outcome.Content.ReadAsStringAsync());
         var bookingCode = outcomeDoc.RootElement.GetProperty("bookingCode").GetString()!;
@@ -402,7 +399,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task Webhook_PaymentOnCancelledDirectBookingWithFreeDates_ReconfirmsBooking()
     {
-        // A3-04: the payment used to be marked Completed on the cancelled booking, with no booking and no refund.
         var property = await SeedConnectReadyPropertyAsync();
         var client = _factory.CreateClient();
         var response = await PostDirectBookingAsync(client, BuildPayload(property.Id));
@@ -446,7 +442,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var stripe = (FakeStripeService)scope.ServiceProvider.GetRequiredService<IStripeService>();
 
-        // The first guest's hold is cancelled and a second guest books the same dates before the payment arrives.
         await CancelAsync(db, bookingId);
         var secondResponse = await PostDirectBookingAsync(client, BuildPayload(property.Id));
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
@@ -549,17 +544,14 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         var body = await response.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
-        // A3-15: the page shows the real state, never "confirmed" before the payment webhook.
         Assert.Equal("AwaitingPayment", root.GetProperty("state").GetString());
         Assert.Equal("Immediate", root.GetProperty("paymentOption").GetString());
         Assert.Equal("Direct Checkout Villa", root.GetProperty("propertyName").GetString());
         Assert.Equal(JsonValueKind.String, root.GetProperty("expiresAt").ValueKind);
-        // Nothing personal about the guest.
         Assert.DoesNotContain(email, body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Mario", body, StringComparison.Ordinal);
         Assert.DoesNotContain("+393331234567", body, StringComparison.Ordinal);
 
-        // Only the hash of the token is stored.
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var stored = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
@@ -577,7 +569,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
             client,
             BuildPayload(property.Id, checkIn: TimeProvider.System.TodayInRome().AddDays(60), checkOut: TimeProvider.System.TodayInRome().AddDays(62)));
 
-        // Another guest's token, a made-up token, a guessed id: the same answer, nothing to enumerate.
         foreach (var (bookingId, token) in new[]
                  {
                      (first.BookingId, second.Token),
@@ -597,7 +588,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
         var missingToken = await PostWithCheckoutTokenAsync(client, first.BookingId, "outcome", null);
         Assert.Equal(HttpStatusCode.BadRequest, missingToken.StatusCode);
 
-        // The booking id alone reveals nothing: the anonymous GET status endpoint is gone.
         var legacy = await client.GetAsync($"/api/public/bookings/{first.BookingId}/status");
         Assert.True(
             legacy.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed,
@@ -728,7 +718,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
     [Fact]
     public async Task Quote_ArrivalTomorrowForTenNights_OffersNeitherDeferredPaymentNorFreeCancellation()
     {
-        // A3-16: the option used to be offered for stays of more than 7 nights, with a deadline already past.
         var property = await SeedConnectReadyPropertyAsync();
         var client = _factory.CreateClient();
         var tomorrow = TimeProvider.System.TodayInRome().AddDays(1);
@@ -737,7 +726,6 @@ public class DirectCheckoutIntegrationTests : IClassFixture<CasazenWebApplicatio
 
         Assert.False(options.GetProperty("deferredPaymentAvailable").GetBoolean());
         Assert.Equal(JsonValueKind.Null, options.GetProperty("deferredChargeDate").ValueKind);
-        // The guest cannot cancel by themselves (BK-02): no free cancellation is promised.
         Assert.Equal(JsonValueKind.Null, options.GetProperty("freeCancellationUntil").ValueKind);
     }
 
@@ -1003,23 +991,16 @@ internal sealed class FakeStripeService : IStripeService
     /// <summary>Cancellations sent (intent, <c>Stripe-Account</c>, idempotency key), in order.</summary>
     public static IReadOnlyList<(string IntentId, string? AccountId, string IdempotencyKey)> CancelledIntents => Cancellations.ToList();
 
-    // Intent statuses and cancellations are keyed by unique intent ids and never cleared: test classes run in parallel
-    // on this shared fake, so a Reset from one class must not wipe what another is asserting on.
     public static void Reset()
     {
         LastPaymentIntentId = null;
         LastClientSecret = "pi_test_secret_direct";
     }
 
-    /// <summary>Stripe status returned for one intent id, whatever the defaults (BK-21: a hold whose guest has paid).</summary>
     public static void SetIntentStatus(string intentId, string status) => IntentStatuses[intentId] = status;
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> UnavailableAccounts = new();
 
-    /// <summary>
-    /// Stripe refuses every PaymentIntent and SetupIntent of this connected account (BK-18: payment not started). Keyed by
-    /// account, so tests of other classes running in parallel on this shared fake are not affected.
-    /// </summary>
     public static void FailIntentsOfAccount(string connectedAccountId) => UnavailableAccounts[connectedAccountId] = 0;
 
     private static void ThrowWhenUnavailable(string connectedAccountId)
@@ -1095,7 +1076,6 @@ internal sealed class FakeStripeService : IStripeService
     /// <summary>Refund requests received, in order (BK-02): account, idempotency key and amount are asserted on them.</summary>
     public System.Collections.Concurrent.ConcurrentQueue<StripeRefundCreateRequest> RefundRequests { get; } = new();
 
-    /// <summary>Status Stripe answers to a refund request (<c>succeeded</c> for cards, <c>pending</c> for some methods).</summary>
     public string RefundStatus { get; set; } = "succeeded";
 
     /// <summary>
@@ -1229,7 +1209,6 @@ internal sealed class FakeStripeService : IStripeService
         CancellationToken cancellationToken = default) =>
         Task.FromResult<IReadOnlyList<PaymentIntent>>([]);
 
-    // E06/F04/US01/T02: the checkout never reads the provider fees; the fake has no balance transaction.
     public Task<StripeBalanceTransactionInfo?> GetChargeBalanceTransactionAsync(
         string paymentIntentId,
         string? connectedAccountId,

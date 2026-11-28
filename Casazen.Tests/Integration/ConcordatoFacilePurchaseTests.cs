@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Integration;
 
-/// <summary>
-/// ADR-004-R5: ConcordatoFacilePurchase tenant isolation — a user of org B cannot query, update or delete
-/// the purchase records of org A, and a query with OrgId scope only returns the caller's own org data.
-/// </summary>
 public class ConcordatoFacilePurchaseTests : IAsyncLifetime
 {
     private PostgresTestDatabase? _database;
@@ -27,7 +23,6 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
     [PostgresFact]
     public async Task OrgIdIsolation_QueryOnlyReturnsOwnOrgData()
     {
-        // Arrange: Two orgs with one purchase each
         var orgA = Guid.NewGuid();
         var orgB = Guid.NewGuid();
         var propertyA = Guid.NewGuid();
@@ -41,7 +36,6 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
         {
             await _database!.MigrateEmptyToAsync();
 
-            // Seed two orgs with properties, leases and purchases
             db.Orgs.AddRange(
                 new OrgEntity { Id = orgA, Name = "OrgA", Slug = "org-a", CreatedAt = DateTime.UtcNow },
                 new OrgEntity { Id = orgB, Name = "OrgB", Slug = "org-b", CreatedAt = DateTime.UtcNow }
@@ -86,7 +80,6 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
             await db.SaveChangesAsync();
         }
 
-        // Act & Assert: Query with OrgId scope for org B should only return org B's purchase
         await using (var dbForOrgB = new AppDbContext(
             _database.CreateOptions(),
             new StubTenantContext(orgB)))
@@ -101,7 +94,6 @@ public class ConcordatoFacilePurchaseTests : IAsyncLifetime
             Assert.Equal(ConcordatoFacilePurchaseStatus.Pending, visiblePurchases[0].Status);
         }
 
-        // Act & Assert: Direct query without tenant context should still respect the scope when filtering
         await using (var dbRaw = _database.CreateContext())
         {
             var orgAData = await dbRaw.ConcordatoFacilePurchases

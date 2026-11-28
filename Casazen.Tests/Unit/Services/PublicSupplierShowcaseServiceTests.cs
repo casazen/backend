@@ -11,20 +11,11 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// SP-09: the anonymous read side of a supplier's showcase (<see cref="PublicSupplierShowcaseService"/>) on the world of the
-/// service request scenario (an active supplier that works Monday to Friday 08-13 and 14-18 and Saturday 08-14, a two hours
-/// service at 60 euro, buffer 30 minutes, 35 days ahead, a slot every hour; Thursday 8 October 2026, 12:00 in Rome): who is
-/// visible, which services, the slots against the planner of SP-03 (parity, the requests with hours, the holds of SP-10),
-/// the days without a slot that say nothing about why, the 30 seconds cache, and the estimate with the zones.
-/// </summary>
 public class PublicSupplierShowcaseServiceTests
 {
     private const string Slug = "supplier-srl";
 
     private static readonly DateOnly Today = new(2026, 10, 8);
-
-    // ─── Who is visible ──────────────────────────────────────────────────────────
 
     [Theory]
     [InlineData("supplier-srl")]
@@ -68,7 +59,7 @@ public class PublicSupplierShowcaseServiceTests
     {
         using var s = await WorldAsync();
         var showcase = Showcase(s);
-        await s.Db.DisposeAsync(); // any lookup fails from here: the answer for such a slug must not need one
+        await s.Db.DisposeAsync();
 
         Assert.Null(await showcase.FindActiveSupplierAsync(new string('a', 101)));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => showcase.FindActiveSupplierAsync(Slug));
@@ -82,7 +73,6 @@ public class PublicSupplierShowcaseServiceTests
     [InlineData("supplier\u0085srl")]
     public async Task FindActiveSupplierAsync_ASlugWithAControlCharacter_IsNullWithoutALookup(string slug)
     {
-        // A NUL cannot even be sent to PostgreSQL (22021): asking would be a 500 for a visitor who typed %00.
         using var s = await WorldAsync();
         var showcase = Showcase(s);
         await s.Db.DisposeAsync();
@@ -106,8 +96,6 @@ public class PublicSupplierShowcaseServiceTests
         Assert.Null(await showcase.GetSlotsAsync(supplier, serviceSlug, null, null));
         Assert.Null(await showcase.QuoteAsync(supplier, serviceSlug, new SupplierQuoteRequest(null, null, null, null, null)));
     }
-
-    // ─── Services ────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task ListServicesAsync_OnlyThePublishedServicesOfTheSupplier_InTheSuppliersOrder()
@@ -199,12 +187,9 @@ public class PublicSupplierShowcaseServiceTests
         var supplier = await SupplierAsync(s);
         await s.SetSupplierStatusAsync(SupplierStatus.Suspended);
 
-        // The status is part of the statement that reads the services: a stale profile in the hands of the caller is not enough.
         Assert.Empty(await Showcase(s).ListServicesAsync(supplier));
         Assert.Null(await Showcase(s).FindServiceAsync(supplier, await SlugOfAsync(s, s.ListingId)));
     }
-
-    // ─── Extension of the page ───────────────────────────────────────────────────
 
     [Fact]
     public async Task GetExtensionAsync_NoRequestsAnswered_HasTheServicesAndNoResponseTime()
@@ -227,7 +212,7 @@ public class PublicSupplierShowcaseServiceTests
         foreach (var minutes in new[] { 5, 10, 20, 30, 40 })
             await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => Taken(r, now.AddDays(-2), minutes));
         var stale = (await SupplierAsync(s));
-        stale.Status = status; // a caller that kept an old profile object
+        stale.Status = status;
 
         var extension = await Showcase(s).GetExtensionAsync(stale);
 
@@ -243,18 +228,15 @@ public class PublicSupplierShowcaseServiceTests
         var now = ServiceRequestScenario.Instant.UtcDateTime;
         foreach (var minutes in new[] { 5, 10, 20, 30 })
             await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => Taken(r, now.AddDays(-3), minutes));
-        // Not answers of this supplier, or not in the window, or never taken: they never count.
-        await s.SeedAsync(ServiceRequestStatus.Completato, r => Taken(r, now.AddDays(-95), 60)); // taken 95 days ago
+        await s.SeedAsync(ServiceRequestStatus.Completato, r => Taken(r, now.AddDays(-95), 60));
         await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => Taken(r, now.AddDays(-3), 1), supplierOrgId: other);
         await s.SeedAsync(ServiceRequestStatus.Richiesto);
-        Assert.Null((await Showcase(s).GetExtensionAsync(await SupplierAsync(s))).MedianResponseMinutes); // four: not enough
+        Assert.Null((await Showcase(s).GetExtensionAsync(await SupplierAsync(s))).MedianResponseMinutes);
 
         await s.SeedAsync(ServiceRequestStatus.PresoInCarico, r => Taken(r, now.AddDays(-1), 600));
 
-        Assert.Equal(20, (await Showcase(s).GetExtensionAsync(await SupplierAsync(s))).MedianResponseMinutes); // 5 10 20 30 600
+        Assert.Equal(20, (await Showcase(s).GetExtensionAsync(await SupplierAsync(s))).MedianResponseMinutes);
     }
-
-    // ─── Slots ───────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetSlotsAsync_TheSlotsOfAFreshAgenda_AreExactlyWhatThePlannerOfTheAgendaComputesForTheSameInput()
@@ -281,14 +263,12 @@ public class PublicSupplierShowcaseServiceTests
     {
         using var s = await WorldAsync();
         var slug = await SlugOfAsync(s, s.ListingId);
-        await s.RequestAsync(start: ServiceRequestScenario.FridayAt10); // Friday 9 October 10:00-12:00 in Rome
+        await s.RequestAsync(start: ServiceRequestScenario.FridayAt10);
 
         var slots = await Showcase(s).GetSlotsAsync(await SupplierAsync(s), slug, from: new DateOnly(2026, 10, 9), days: 1);
 
         var friday = Assert.Single(slots!.Days);
         Assert.Equal(new DateOnly(2026, 10, 9), friday.Date);
-        // 10:00-12:00 plus 30 minutes before and after: 09:30-12:30 Rome (07:30-10:30 UTC). Every slot of the morning
-        // (08, 09, 10 and 11 o'clock, two hours long) touches it; the afternoon is free.
         var taken = (Start: new DateTime(2026, 10, 9, 7, 30, 0, DateTimeKind.Utc), End: new DateTime(2026, 10, 9, 10, 30, 0, DateTimeKind.Utc));
         Assert.All(friday.Slots, slot => Assert.True(slot.EndUtc <= taken.Start || slot.StartUtc >= taken.End, $"{slot} overlaps the job"));
         Assert.Equal(
@@ -301,10 +281,9 @@ public class PublicSupplierShowcaseServiceTests
     {
         using var s = await WorldAsync();
         var slug = await SlugOfAsync(s, s.ListingId);
-        var friday10 = ServiceRequestScenario.FridayAt10; // 10:00 Rome
+        var friday10 = ServiceRequestScenario.FridayAt10;
         var holds = new List<SupplierOccupancy>
         {
-            // SP-10 puts a hold here (a booking waiting for the e-mail check); it is a planner input like any other.
             SupplierOccupancy.Hold(friday10, friday10.AddHours(2), ServiceRequestScenario.Instant.UtcDateTime.AddMinutes(30)),
             SupplierOccupancy.Hold(ServiceRequestScenario.FridayAt14, ServiceRequestScenario.FridayAt14.AddHours(2), ServiceRequestScenario.Instant.UtcDateTime.AddMinutes(-1)),
         };
@@ -314,7 +293,6 @@ public class PublicSupplierShowcaseServiceTests
 
         var friday = Assert.Single(slots!.Days);
         Assert.DoesNotContain(friday.Slots, slot => slot.StartUtc < friday10.AddHours(2).AddMinutes(30) && slot.EndUtc > friday10.AddMinutes(-30));
-        // The expired hold frees its slot again.
         Assert.Contains(friday.Slots, slot => slot.StartUtc == ServiceRequestScenario.FridayAt14);
     }
 
@@ -323,7 +301,6 @@ public class PublicSupplierShowcaseServiceTests
     {
         using var s = await WorldAsync();
         var slug = await SlugOfAsync(s, s.ListingId);
-        // Sunday (no hours), time off with a label, a block with a label, a day closed by hand: four reasons, one answer.
         await s.Agenda.AddTimeOffAsync(s.SupplierOrgId, new SupplierTimeOffInput(new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 12), SupplierTimeOffReason.Illness, "Operazione segreta"));
         await s.Agenda.AddBlockAsync(s.SupplierOrgId, new SupplierBlockInput(
             SupplierBusyWindowKind.Block,
@@ -337,13 +314,12 @@ public class PublicSupplierShowcaseServiceTests
 
         Assert.NotNull(slots);
         Assert.Equal(5, slots.Days.Count);
-        // 11 Sunday, 12 time off, 13 blocked 08:00-18:00, 14 closed by hand: all "not available", with no slot.
         Assert.All(slots.Days.Take(4), day =>
         {
             Assert.False(day.Available);
             Assert.Empty(day.Slots);
         });
-        Assert.True(slots.Days[4].Available); // Friday 15 October works as usual
+        Assert.True(slots.Days[4].Available);
         var json = JsonSerializer.Serialize(slots);
         Assert.DoesNotContain("segreta", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Dentista", json, StringComparison.OrdinalIgnoreCase);
@@ -386,8 +362,8 @@ public class PublicSupplierShowcaseServiceTests
     [Theory]
     [InlineData(null, 14)]
     [InlineData(1, 1)]
-    [InlineData(62, 36)] // 62 days asked, but the horizon ends first: today plus 35 days is the 36th day
-    [InlineData(200, 36)] // more than the most a read covers is read as the most
+    [InlineData(62, 36)]
+    [InlineData(200, 36)]
     [InlineData(0, 1)]
     [InlineData(-4, 1)]
     public async Task GetSlotsAsync_TheNumberOfDays_DefaultsTo14_AndStaysBetweenOneAndTheHorizon(int? days, int listed)
@@ -441,8 +417,6 @@ public class PublicSupplierShowcaseServiceTests
         Assert.Contains(slots.Days, d => d.Available);
     }
 
-    // ─── The cache ───────────────────────────────────────────────────────────────
-
     [Fact]
     public async Task GetSlotsAsync_TheSamePlanIsServedFor30Seconds_ThenComputedAgain()
     {
@@ -454,7 +428,6 @@ public class PublicSupplierShowcaseServiceTests
 
         await showcase.GetSlotsAsync(supplier, slug, null, null);
         await showcase.GetSlotsAsync(supplier, slug, null, null);
-        // Another window of the same plan is a slice of it, not a new computation.
         await showcase.GetSlotsAsync(supplier, slug, Today.AddDays(5), 3);
         Assert.Equal(1, probe.PlanCalls);
 
@@ -512,18 +485,16 @@ public class PublicSupplierShowcaseServiceTests
         var showcase = Showcase(s, probe);
         var supplier = await SupplierAsync(s);
         var slug = await SlugOfAsync(s, s.ListingId);
-        s.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 8, 21, 59, 50, TimeSpan.Zero)); // 23:59:50 in Rome
+        s.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 8, 21, 59, 50, TimeSpan.Zero));
 
         var before = await showcase.GetSlotsAsync(supplier, slug, null, 1);
-        s.Clock.Advance(TimeSpan.FromSeconds(15)); // 00:00:05 on the 9th, inside the 30 seconds
+        s.Clock.Advance(TimeSpan.FromSeconds(15));
         var after = await showcase.GetSlotsAsync(supplier, slug, null, 1);
 
         Assert.Equal(2, probe.PlanCalls);
         Assert.Equal(Today, before!.Days[0].Date);
         Assert.Equal(Today.AddDays(1), after!.Days[0].Date);
     }
-
-    // ─── The estimate ────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task QuoteAsync_APublishedService_IsPricedFromTheCatalog()
@@ -600,7 +571,7 @@ public class PublicSupplierShowcaseServiceTests
 
         Assert.Equal(PublicQuoteCoverage.Unknown, quote!.Coverage);
         Assert.Equal(SupplierQuoteOutcome.Estimate, quote.Quote.Outcome);
-        matcher.VerifyNoOtherCalls(); // a strict mock: any call would have thrown
+        matcher.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -631,8 +602,6 @@ public class PublicSupplierShowcaseServiceTests
         Assert.Equal(SupplierQuoteReason.RequiresQuote, quote.Quote.Reason);
     }
 
-    // ─── Helpers ─────────────────────────────────────────────────────────────────
-
     private static async Task<ServiceRequestScenario> WorldAsync()
     {
         var s = await ServiceRequestScenario.CreateAsync();
@@ -645,8 +614,6 @@ public class PublicSupplierShowcaseServiceTests
         ISupplierAgendaService? agenda = null,
         ISupplierComuneMatcher? matcher = null)
     {
-        // The comuni list is not imported here: the matcher falls back to the names the supplier wrote (H501), as it does in
-        // an environment without the list.
         var directory = new Mock<IComuneDirectory>();
         directory
             .Setup(d => d.ResolveAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
@@ -710,10 +677,6 @@ public class PublicSupplierShowcaseServiceTests
         request.TakenAt = createdAt.AddMinutes(minutesToTake);
     }
 
-    /// <summary>
-    /// The real agenda with a counter on the plans it computes, and extra occupancies (the holds of SP-10) put in the
-    /// planning input of every plan.
-    /// </summary>
     private sealed class AgendaProbe(ISupplierAgendaService inner) : ISupplierAgendaService
     {
         public int PlanCalls { get; private set; }

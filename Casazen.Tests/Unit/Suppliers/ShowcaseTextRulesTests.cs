@@ -17,8 +17,6 @@ public class ShowcaseTextRulesTests
     private static ShowcaseTextOutcome Check(string json, IEnumerable<string?>? supplierWritten = null, string[]? fields = null) =>
         ShowcaseTextRules.Check(json, fields ?? AllFields, supplierWritten ?? NothingWritten);
 
-    // ─── What is kept ────────────────────────────────────────────────────────────
-
     [Fact]
     public void Check_PlainTextWithinTheLimits_IsKeptWhole()
     {
@@ -79,8 +77,6 @@ public class ShowcaseTextRulesTests
         Assert.Equal(new[] { ShowcaseTextFields.Intro }, outcome.Rejected);
     }
 
-    // ─── The small corrections ───────────────────────────────────────────────────
-
     [Fact]
     public void Check_TheSentenceInLargeType_HasNoFullStopNoQuotesAndNoExclamationMark()
     {
@@ -94,8 +90,6 @@ public class ShowcaseTextRulesTests
         Assert.Null(Check("""{"intro": "Pulizie per case vacanza 🙂"}""", fields: [ShowcaseTextFields.Intro]).Intro);
         Assert.Null(Check("""{"intro": "Pulizie <b>per</b> case vacanza"}""", fields: [ShowcaseTextFields.Intro]).Intro);
     }
-
-    // ─── The limits ──────────────────────────────────────────────────────────────
 
     [Fact]
     public void Check_ASentenceOrAnIntroductionOverItsLimit_IsDropped()
@@ -131,8 +125,6 @@ public class ShowcaseTextRulesTests
         Assert.Null(Check($$"""{"bio": "{{bio}}"}""", fields: [ShowcaseTextFields.Bio]).Bio);
     }
 
-    // ─── What the supplier did not say ───────────────────────────────────────────
-
     [Theory]
     [InlineData("Pulizie con garanzia di soddisfazione", "guarantee")]
     [InlineData("Siamo certificati ISO 9001", "certification")]
@@ -167,10 +159,6 @@ public class ShowcaseTextRulesTests
         Assert.Null(ShowcaseTextRules.FindUnsupportedClaim(text, NothingWritten));
     }
 
-    /// <summary>
-    /// The copy a model plausibly writes when it follows the prompt: what the job is and where, in plain words. The check is blunt on purpose, but
-    /// it must not drop this, or the help would answer «unusable» to a supplier who did nothing wrong.
-    /// </summary>
     [Fact]
     public void Check_PlainCopyOfAModelThatFollowsThePrompt_IsKeptWhole()
     {
@@ -214,8 +202,6 @@ public class ShowcaseTextRulesTests
         Assert.DoesNotContain(ShowcaseTextFields.Tagline, outcome.Rejected);
     }
 
-    // ─── What the supplier said itself ───────────────────────────────────────────
-
     [Fact]
     public void Check_AClaimTheSupplierWroteItself_MayBeRepeated()
     {
@@ -231,7 +217,6 @@ public class ShowcaseTextRulesTests
     {
         var written = new[] { "Siamo certificati ISO 9001." };
 
-        // The certification is the supplier's own; the guarantee and the number of years are not.
         var outcome = Check("""{"bio": "Siamo certificati ISO 9001 e diamo la garanzia su ogni lavoro."}""", written, [ShowcaseTextFields.Bio]);
 
         Assert.Null(outcome.Bio);
@@ -253,8 +238,6 @@ public class ShowcaseTextRulesTests
 
         Assert.Null(Check("""{"intro": "Scrivici a info@esempio.it"}""", written, [ShowcaseTextFields.Intro]).Intro);
     }
-
-    // ─── The tips "prima che arriviamo" ──────────────────────────────────────────
 
     [Fact]
     public void Check_TheTips_DropOnlyTheBadOnesAndTheRepeats()
@@ -295,8 +278,6 @@ public class ShowcaseTextRulesTests
         Assert.Empty(outcome.Prep);
         Assert.Equal(new[] { ShowcaseTextFields.Prep }, outcome.Rejected);
     }
-
-    // ─── The members and the answers of the request ──────────────────────────────
 
     [Fact]
     public void Fields_NoneNamedOrNoneKnown_MeansAllOfThem()

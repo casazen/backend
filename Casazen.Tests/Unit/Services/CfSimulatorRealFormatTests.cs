@@ -27,7 +27,6 @@ public sealed class CfSimulatorRealFormatTests
         var pages = text.PageTexts();
         var sections = ContractDocumentSections.Recognize(pages);
 
-        // The text of the PDF is read in process (no OCR): the sections start at the top of a page and come in the order of the real file.
         Assert.Equal(0, text.PagesOcr);
         Assert.Equal(
             [DocumentSectionKind.Contract, DocumentSectionKind.Attestation, DocumentSectionKind.CalculationSheet],
@@ -48,7 +47,6 @@ public sealed class CfSimulatorRealFormatTests
         Assert.Equal(CfSimulatorDocuments.SampleMonthlyRent, sheet.MonthlyRent);
         Assert.Equal(ConformityVerdict.Conform, sheet.Verdict);
 
-        // The sample is coherent with itself: nothing to warn about.
         var codes = ContractFiscalCodes.Find(contractText).Select(f => f.Code).ToList();
         Assert.Empty(ContractDocumentValidator.Validate(new ContractDocumentFacts(sections, reading, codes, 0, attestation, sheet, House.City)));
     }
@@ -63,7 +61,6 @@ public sealed class CfSimulatorRealFormatTests
         var pages = text.PageTexts();
         var sections = ContractDocumentSections.Recognize(pages);
 
-        // Every page is a picture: all of them are read by OCR, and the sections are told apart by what the OCR read.
         Assert.NotNull(scan);
         Assert.Equal(text.Pages, text.PagesOcr);
         Assert.Equal(
@@ -91,7 +88,6 @@ public sealed class CfSimulatorRealFormatTests
         var text = await new ContractTextReader().ReadDigitalAsync(pdf);
         var receipt = RegistrationReceiptReader.Read(text!.Text);
 
-        // A digital PDF: its text is there with no OCR, and it says what the Agenzia says.
         Assert.NotNull(text);
         Assert.Equal(ReceiptOutcome.Registered, receipt.Outcome);
         Assert.StartsWith("SIM26T", receipt.Code, StringComparison.Ordinal);

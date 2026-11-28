@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Push;
 
-/// <summary>UI-12a real time: the job tells the open sessions of each user it wrote, and of nobody else.</summary>
 public class InAppNotificationJobPublishTests : IDisposable
 {
     private readonly InAppNotificationTestKit _kit = new();

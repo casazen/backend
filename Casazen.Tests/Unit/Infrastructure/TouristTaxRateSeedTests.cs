@@ -17,10 +17,6 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// </summary>
 public class TouristTaxRateSeedTests
 {
-    /// <summary>
-    /// Comuni whose rule the model cannot represent even with a single official amount (RS-7, "Indicazioni per CO-03"
-    /// point 3). Torino: from 01/04/2026 the nights are capped per year, not per stay.
-    /// </summary>
     private static readonly Dictionary<string, string> NotRepresentableRules = new()
     {
         ["001272"] = "Torino: nights capped per calendar year",
@@ -95,7 +91,6 @@ public class TouristTaxRateSeedTests
 
         foreach (var rate in TouristTaxRateSeed.BuildCategoryAndSeasonRates())
         {
-            // BK-03: one row per category and season; the notes identify the CSV row.
             var row = rows.Single(r => r.Notes == rate.Notes);
 
             Assert.Equal("U", row.Verified);
@@ -117,7 +112,6 @@ public class TouristTaxRateSeedTests
 
             if (rate.City == "Venezia")
             {
-                // Season and reduced amount exactly as the notes publish them ("alta stagione 01/02-31/12", "= 1.70").
                 var season = rate.Notes.Contains("alta stagione 01/02-31/12", StringComparison.Ordinal)
                     ? ("02-01", "12-31")
                     : ("01-01", "01-31");
@@ -143,7 +137,6 @@ public class TouristTaxRateSeedTests
             .Select(r => r.Notes)
             .ToHashSet();
 
-        // T (a hint, not a source), D (our deduction) and rows without a fixed amount (Bologna) stay out.
         foreach (var row in rows.Where(r => r.Verified != "U" || string.IsNullOrWhiteSpace(r.Rate)))
             Assert.DoesNotContain(row.Notes, seededNotes);
 
@@ -202,12 +195,9 @@ public class TouristTaxRateSeedTests
     }
 
     private static bool IsRepresentable(CsvRow row, IReadOnlyList<CsvRow> rows) =>
-        // A fixed amount per person per night (empty = no rate or a percentage, never 0).
         !string.IsNullOrWhiteSpace(row.Rate)
-        // An official source for the amount: T is "a hint, not a source", D is our own deduction.
         && row.Verified == "U"
         && row.SourceUrl.StartsWith("https://", StringComparison.Ordinal)
-        // One amount for the whole comune: several rows mean category, season or cadastral group.
         && rows.Count(r => r.IstatCode == row.IstatCode) == 1
         && !NotRepresentableRules.ContainsKey(row.IstatCode);
 

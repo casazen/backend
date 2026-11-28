@@ -18,12 +18,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-/// <summary>
-/// CO-06 (A5-20, A5-36): the compliance status of a property follows its activation blockers. An active property that
-/// loses a requirement is suspended with the reason and one email to the host; a suspended one is reactivated as soon as
-/// its requirements are complete again; a pending one is activated only by the host; the first check of a historic
-/// property emails only when configured.
-/// </summary>
 public class PropertyComplianceStatusServiceTests
 {
     private static readonly DateTime Now = new(2026, 9, 24, 10, 0, 0, DateTimeKind.Utc);
@@ -181,7 +175,7 @@ public class PropertyComplianceStatusServiceTests
         Assert.Null(stored.ComplianceSuspensionReasons);
         Assert.Equal(Now, stored.ComplianceCompletedAt);
         Assert.Equal(Now, stored.ComplianceCheckedAt);
-        Assert.Single(_emails.Snapshot()); // only the suspension
+        Assert.Single(_emails.Snapshot());
     }
 
     [Fact]
@@ -223,7 +217,6 @@ public class PropertyComplianceStatusServiceTests
     [Fact]
     public async Task ReevaluateAsync_ActivePropertyWithOnlyRemindersOpen_StaysActiveWithoutEmail()
     {
-        // PO decision 2026-11-01 (option A): the safety checklist and the documents are reminders, they never suspend.
         await using var db = CreateDb(nameof(ReevaluateAsync_ActivePropertyWithOnlyRemindersOpen_StaysActiveWithoutEmail));
         var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
         await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
@@ -320,7 +313,6 @@ public class PropertyComplianceStatusServiceTests
         var first = await service.RecalculateAllAsync(dryRun: false);
         var second = await service.RecalculateAllAsync(dryRun: false);
 
-        // The pending property is never evaluated; the suspended one is evaluated again but stays suspended silently.
         Assert.Equal((1, 1, 0, 1), (first!.Checked, first.Suspended, first.Reactivated, first.HostsNotified));
         Assert.Equal((1, 0, 0, 0), (second!.Checked, second.Suspended, second.Reactivated, second.HostsNotified));
         Assert.Contains("dati di base incompleti", Assert.Single(_emails.Snapshot()).Content.HtmlBody);
@@ -336,7 +328,6 @@ public class PropertyComplianceStatusServiceTests
         await SetAsync(db, property.Id, p => p.MaxGuests = 0);
         var service = CreateService(db);
         await service.RecalculateAllAsync(dryRun: false);
-        // Requirement completed again without a request that re-evaluates it (e.g. a row fixed by hand).
         await SetAsync(db, property.Id, p => p.MaxGuests = 4);
 
         var first = await service.RecalculateAllAsync(dryRun: false);
@@ -347,15 +338,9 @@ public class PropertyComplianceStatusServiceTests
         var stored = await ReloadAsync(db, property.Id);
         Assert.Equal(PropertyComplianceStatus.Active, stored.ComplianceStatus);
         Assert.Null(stored.ComplianceSuspendedAt);
-        Assert.Single(_emails.Snapshot()); // only the suspension
+        Assert.Single(_emails.Snapshot());
     }
 
-    // ---- E29/F02/US01/T02 (NF-129): the readiness of a Swiss property, the step «guest-registration» ------------------------------------
-
-    /// <summary>
-    /// Proof (data): the file for the police portal cannot be written without the structure number of the property, so a Ticino property that lacks it stays pending
-    /// with the reason; with the number it activates as before.
-    /// </summary>
     [Fact]
     public async Task Ticino_WithoutStructureNumber_IsPendingWithReason_Test()
     {
@@ -378,7 +363,6 @@ public class PropertyComplianceStatusServiceTests
         Assert.Equal(["guest-registration"], refused.IncompleteSteps.Select(s => s.Id));
         Assert.Equal(PropertyComplianceStatus.Pending, (await ReloadAsync(db, property.Id)).ComplianceStatus);
 
-        // With the number, normalised as the update stores it, the property takes the normal path.
         await SetAsync(db, property.Id, p => p.TicinoStructureId = "NL-12345678");
         var step2 = (await service.GetBlockingStepsAsync(await ReloadAsync(db, property.Id))).Single(s => s.Id == "guest-registration");
         Assert.Equal(("complete", false, 0), (step2.Status, step2.Blocker, step2.Blockers.Count));
@@ -386,7 +370,6 @@ public class PropertyComplianceStatusServiceTests
         Assert.Equal(PropertyComplianceStatus.Active, activated.Status);
     }
 
-    /// <summary>A Swiss property with a missing or ambiguous municipality is pending with the reason: its canton, and with it its regime, is not known.</summary>
     [Theory]
     [InlineData("6900", "Ticino")]
     [InlineData("", "")]
@@ -403,7 +386,6 @@ public class PropertyComplianceStatusServiceTests
         Assert.Equal("SwissMunicipalityMissing", step.MessageKey);
     }
 
-    /// <summary>A municipality the host chose counts without a postal code; it decides the canton, and so whether the structure number is asked.</summary>
     [Fact]
     public async Task Swiss_WithAStoredMunicipality_IsPlacedByIt_NotByThePostalCode()
     {
@@ -419,7 +401,6 @@ public class PropertyComplianceStatusServiceTests
         Assert.Equal(["ticino_structure_id_missing"], luganoStep.Blockers.Select(b => b.Code));
     }
 
-    /// <summary>Proof (data): no regression on the Italian rules: an Italian property (any case, or an old row with no country) has the four steps it always had and no step of the Swiss readiness.</summary>
     [Theory]
     [InlineData("IT", true)]
     [InlineData("it", true)]
@@ -439,10 +420,9 @@ public class PropertyComplianceStatusServiceTests
 
         var steps = await service.GetBlockingStepsAsync(await ReloadAsync(db, property.Id));
 
-        // The four steps it always had, whatever the postal code or the structure number say: the Swiss readiness is never asked of an Italian property.
         Assert.Equal(["base-data", "cin", "documents", "safety"], steps.Select(s => s.Id));
         if (!wellFormedCountry)
-            return; // A country that is not two letters is the old base-data blocker «country unknown» (UnknownCountry_IsExplainedAsAnActivationBlocker): unchanged.
+            return;
 
         Assert.All(steps, step => Assert.Equal("complete", step.Status));
         Assert.Equal(PropertyComplianceStatus.Active, (await service.ActivateAsync(property.Id, new HostActivation(property.OwnerId, true))).Status);
@@ -488,7 +468,6 @@ public class PropertyComplianceStatusServiceTests
         Assert.Equal((PropertyComplianceStatus.Active, true), (back.Status, back.Reactivated));
     }
 
-    /// <summary>The list of the host reads the same steps for many properties as for one (two queries for the places, whatever their number).</summary>
     [Fact]
     public async Task GetBlockingStepsManyAsync_SaysForEveryPropertyWhatTheSingleReadSays()
     {

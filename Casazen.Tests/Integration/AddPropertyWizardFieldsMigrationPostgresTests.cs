@@ -53,7 +53,6 @@ public class AddPropertyWizardFieldsMigrationPostgresTests : IAsyncLifetime
             MaxGuests = 2,
             NightlyRate = 100m,
             ComplianceStatus = PropertyComplianceStatus.Active,
-            // Hidden by its host from the very first save: an explicit false, not the default.
             PublishedOnSite = false,
             AccommodationType = AccommodationType.TrulloOrMasseria,
             Beds = 3,
@@ -84,11 +83,9 @@ public class AddPropertyWizardFieldsMigrationPostgresTests : IAsyncLifetime
             Assert.Equal((new TimeOnly(22, 0), new TimeOnly(8, 0)), (stored.QuietHoursFrom, stored.QuietHoursTo));
             Assert.Equal(12.5m, stored.ExtraGuestFeePerNight);
 
-            // Activated and ready, but the host keeps it off: not published.
             Assert.False(await read.Properties.IgnoreQueryFilters().Where(PublicListing.IsPublished).AnyAsync(p => p.Id == property.Id));
         }
 
-        // The host turns the switch back on: through Update(), as PropertyRepository.UpdateAsync saves the forms.
         await using (var turnOn = _database.CreateContext())
         {
             var tracked = await turnOn.Properties.IgnoreQueryFilters().SingleAsync(p => p.Id == property.Id);

@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services.ICal;
 
-/// <summary>Grouping, keys and cap of the free-looking events the supplier is asked about (<see cref="ICalFreeEvents"/>).</summary>
 public class ICalFreeEventsTests
 {
     private static readonly DateTime Now = new(2026, 10, 13, 10, 0, 0, DateTimeKind.Utc);

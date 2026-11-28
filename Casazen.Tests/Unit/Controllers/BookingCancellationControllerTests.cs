@@ -40,7 +40,6 @@ public class BookingCancellationControllerTests
         Status = BookingStatus.Confirmed,
     };
 
-    /// <summary>A confirmed booking of an Airbnb guest that has its reservation on Octorate: a booking of a channel.</summary>
     private readonly Booking _channelBooking = new()
     {
         Id = Guid.NewGuid(),
@@ -133,7 +132,6 @@ public class BookingCancellationControllerTests
     [Fact]
     public async Task Cancel_ByTheHost_IsARequestOfTheHostSoTheGuestGetsEverythingRefundable()
     {
-        // DB-08h: the request carries who cancels; the host's endpoint must never ask for the guest's (policy) minimum.
         GivenQuote(refundable: 400m);
 
         await Controller().Cancel(_booking.Id, new CancelBookingRequest { RefundAmount = 100m });
@@ -173,7 +171,6 @@ public class BookingCancellationControllerTests
         var problem = await ProblemOfAsync(
             _channelBooking.Id, controller => controller.Cancel(_channelBooking.Id, new CancelBookingRequest { Reason = "Ospite non arrivato" }));
 
-        // 422 with the sentence of the channel in the language of the request, and the members the screens read.
         Assert.Equal(StatusCodes.Status422UnprocessableEntity, problem.Status);
         Assert.Equal("ota_booking_cancel_not_allowed", problem.Code);
         Assert.Equal("Per cancellare questa prenotazione di Airbnb chiedi all'ospite di annullarla su Airbnb.", problem.Detail);
@@ -210,7 +207,6 @@ public class BookingCancellationControllerTests
     [Fact]
     public async Task Cancel_ChannelBookingConfirmedByOctorate_Is200WithNoRefunds_NeedsNoPaymentWrite_AndTheLocalCancellationIsNeverUsed()
     {
-        // The channel collects its own bookings: no money moves here, so booking.write is all it takes.
         _permissions = (_, permission) => !permission.StartsWith("payment.", StringComparison.Ordinal);
         _otaCancellations
             .Setup(s => s.CancelAsync(_channelBooking.Id, "Ospite non arrivato", It.IsAny<CancellationToken>()))
@@ -227,7 +223,6 @@ public class BookingCancellationControllerTests
         _otaCancellations.Verify(
             s => s.CancelAsync(_channelBooking.Id, "Ospite non arrivato", It.IsAny<CancellationToken>()), Times.Once);
 
-        // Not the local cancellation: the refund the body asked for is never made, and no quote is read.
         VerifyNotCancelled();
         _cancellations.Verify(c => c.GetQuoteAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
@@ -235,7 +230,6 @@ public class BookingCancellationControllerTests
     [Fact]
     public async Task Cancel_ChannelBookingOutOfTheReachOfTheCaller_Is404_AndOctorateIsNeverAsked()
     {
-        // The property of another owner, then the same property with no booking.write: both are a booking the caller does not see.
         _hostResources.Setup(h => h.ForPropertyAsync(PropertyId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new HostResource(OrgId, "auth0|someone_else"));
         var otherOwner = await Controller().Cancel(_channelBooking.Id, new CancelBookingRequest());
@@ -252,7 +246,6 @@ public class BookingCancellationControllerTests
         VerifyNotCancelled();
     }
 
-    /// <summary>What the API answers when the action throws: the exception goes through the real error middleware, in Italian.</summary>
     private async Task<ProblemResponse> ProblemOfAsync(Guid bookingId, Func<BookingCancellationController, Task> action)
     {
         var controller = Controller();

@@ -8,11 +8,8 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Suppliers;
 
-/// <summary>SP-02: the weekday mask, the JSON columns and the texts of the supplier's service catalog.</summary>
 public class SupplierServiceCatalogSupportTests
 {
-    // ─── Weekdays ────────────────────────────────────────────────────────────────
-
     [Theory]
     [InlineData(DayOfWeek.Monday, 0b0000001)]
     [InlineData(DayOfWeek.Tuesday, 0b0000010)]
@@ -62,8 +59,6 @@ public class SupplierServiceCatalogSupportTests
         Assert.False(SupplierServiceWeekdays.IsOffered(weekdaysOnly, DayOfWeek.Saturday));
         Assert.True(SupplierServiceWeekdays.IsOffered(weekdaysOnly, DayOfWeek.Friday));
     }
-
-    // ─── JSON columns ────────────────────────────────────────────────────────────
 
     [Fact]
     public void Serialize_Supplements_UsesTheCamelCaseNamesOfTheSpecAndOmitsAMissingMax()
@@ -122,8 +117,6 @@ public class SupplierServiceCatalogSupportTests
         Assert.Equal(new SupplierServiceSupplement("a", "A", 100, "flat", null), Assert.Single(read));
     }
 
-    // ─── Texts: SharedResources ──────────────────────────────────────────────────
-
     [Fact]
     public void MessageKeys_EveryCatalogKey_ExistsInItalianAndEnglishWithDifferentText()
     {
@@ -143,7 +136,6 @@ public class SupplierServiceCatalogSupportTests
     public void MessageKeys_AreUniqueAndEveryErrorCodeHasOne()
     {
         Assert.Equal(SupplierServiceCatalogErrors.MessageKeys.Count, SupplierServiceCatalogErrors.MessageKeys.Distinct().Count());
-        // Eleven keys: ten errors (404, invalid, not publishable, limit, cannot pause, changed, four photo ones) + the copy suffix.
         Assert.Equal(11, SupplierServiceCatalogErrors.MessageKeys.Count);
     }
 
@@ -171,8 +163,6 @@ public class SupplierServiceCatalogSupportTests
         Assert.Equal(" (copia)", italian["SupplierServiceCopySuffix"]);
         Assert.Equal(" (copy)", english["SupplierServiceCopySuffix"]);
     }
-
-    // ─── Texts: the electrical category ──────────────────────────────────────────
 
     [Fact]
     public void ServiceCategoryLabel_Electrical_HasItalianAndEnglishLabels()

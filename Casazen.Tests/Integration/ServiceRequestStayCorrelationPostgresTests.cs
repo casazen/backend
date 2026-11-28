@@ -123,7 +123,6 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
         var b1 = await CreateAsync(host, "/api/service-requests", StayBody(w, w.PropertyB, w.StayB1));
         var lease = await CreateAsync(landlord, "/api/long-rent/service-requests", PropertyBody(w, w.PropertyA));
 
-        // The query the app's booking screen and the web booking detail both use.
         var stayA1 = await ListAsync(host, $"/api/service-requests?bookingId={w.StayA1}&pageSize=50");
         var stayA2 = await ListAsync(host, $"/api/service-requests?bookingId={w.StayA2}&pageSize=50");
         var propertyA = await ListAsync(host, $"/api/service-requests?propertyId={w.PropertyA}");
@@ -134,12 +133,10 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
         Assert.Equal([a1], stayA1.Ids);
         Assert.Equal([a2], stayA2.Ids);
         Assert.All(stayA1.Items, i => Assert.Equal(w.StayA1, i.GetProperty("bookingId").GetGuid()));
-        // The property overview is exactly the union of its stays' lists, and never another property's request.
         Assert.Equal(stayA1.Ids.Concat(stayA2.Ids).Order(), propertyA.Ids.Order());
         Assert.Equal(2, propertyA.Total);
         Assert.Equal([b1], propertyB.Ids);
         Assert.Equal([a1], both.Ids);
-        // The long-term request stays on the property, in the long-rent list only.
         Assert.Equal([lease], longRentA.Ids);
         Assert.DoesNotContain(lease, propertyA.Ids);
     }
@@ -191,7 +188,6 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
         var leaseRequest = await CreateAsync(landlord, "/api/long-rent/service-requests", PropertyBody(w, w.PropertyA));
         await SetStatusAsync(ServiceRequestStatus.Completato, stayRequest, leaseRequest);
 
-        // Long-rent only: the long-term requests, never the stays' ones, and no short-rent endpoint.
         Assert.Equal([leaseRequest], (await ListAsync(landlord, "/api/long-rent/service-requests")).Ids);
         Assert.Equal([leaseRequest], (await ListAsync(landlord, $"/api/long-rent/service-requests?propertyId={w.PropertyA}")).Ids);
         Assert.Equal(HttpStatusCode.NotFound, (await landlord.PostAsync($"/api/long-rent/service-requests/{stayRequest}/mark-paid", null)).StatusCode);
@@ -209,7 +205,6 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
             r.StatusCode == HttpStatusCode.Forbidden,
             $"{r.RequestMessage!.Method} {r.RequestMessage.RequestUri} answered {(int)r.StatusCode} to a long-rent-only landlord."));
 
-        // Short-rent only: the reverse.
         Assert.Equal([stayRequest], (await ListAsync(host, "/api/service-requests")).Ids);
         Assert.Equal(HttpStatusCode.NotFound, (await host.GetAsync($"/api/service-requests/{leaseRequest}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await host.PostAsync($"/api/service-requests/{leaseRequest}/mark-paid", null)).StatusCode);
@@ -231,7 +226,6 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
         var suppliers = await landlord.GetAsync($"/api/long-rent/service-requests/suppliers?propertyId={w.PropertyA}&category=plumbing");
         Assert.Equal(HttpStatusCode.OK, suppliers.StatusCode);
         var offered = (await ReadJsonAsync(suppliers)).GetProperty("items").EnumerateArray().ToList();
-        // The other tests of the class seed suppliers in the same comune: only the rule matters here.
         Assert.Contains(w.SupplierOrgId, offered.Select(i => i.GetProperty("orgId").GetGuid()));
         Assert.All(offered, i => Assert.Contains("plumbing", i.GetProperty("categories").EnumerateArray().Select(c => c.GetString())));
         await AssertProblemAsync(
@@ -260,7 +254,6 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
         using var supplier = _factory.CreateAuthenticatedClient(w.SupplierUserId, "Supplier");
         var id = await CreateAsync(host, "/api/service-requests", StayBody(w, w.PropertyA, w.StayA1));
 
-        // The host never acts as the supplier, the supplier never marks paid, and "paid" comes only after "completed".
         Assert.Equal(HttpStatusCode.Forbidden, (await host.PostAsJsonAsync($"/api/service-requests/{id}/take", new { })).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await supplier.PostAsync($"/api/service-requests/{id}/mark-paid", null)).StatusCode);
         await AssertProblemAsync(
@@ -270,8 +263,6 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
 
         Assert.Equal(ServiceRequestStatus.Richiesto, await StatusAsync(id));
     }
-
-    // ─── helpers ───
 
     private sealed record World(
         string OwnerId,
@@ -343,10 +334,6 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
             .ExecuteUpdateAsync(u => u.SetProperty(r => r.Status, status));
     }
 
-    /// <summary>
-    /// A host org with two properties in comune H501 (A with two stays, B with one) owned by one user, and an active
-    /// supplier (its own org) operating in H501 for cleaning and plumbing.
-    /// </summary>
     private async Task<World> SeedWorldAsync()
     {
         const string comune = "H501";

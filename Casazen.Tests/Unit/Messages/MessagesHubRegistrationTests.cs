@@ -10,7 +10,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
 
-/// <summary>E05/F02/US01/T01: what <c>AddMessagesHub</c> registers, and the connection guard of the attachment client.</summary>
 public class MessagesHubRegistrationTests
 {
     [Fact]
@@ -26,10 +25,6 @@ public class MessagesHubRegistrationTests
         Assert.Single(services, d => d.ServiceType == typeof(IOtaAttachmentFetcher));
     }
 
-    /// <summary>
-    /// E05/F02/US02: the write side of the hub and the helpers of the composer are registered, each once, scoped (they hold the database of the request).
-    /// The exact list of what <c>AddMessagesHub</c> registers is photographed here: a service added to it is added to this test.
-    /// </summary>
     [Fact]
     public void AddMessagesHub_RegistersTheExpectedInboxAndStorefrontServices()
     {
@@ -44,7 +39,6 @@ public class MessagesHubRegistrationTests
             new[] { typeof(IMessageHubService), typeof(IMessageReplyService), typeof(IMessageTemplateService), typeof(IMessageTranslationService), typeof(StorefrontChatService) },
             type => Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == type).Lifetime));
 
-        // Of the types of the application, these six and no other (the rest of the descriptors are the framework's: the typed client).
         Assert.Equal(
             [
                 nameof(IMessageHubService),
@@ -137,7 +131,6 @@ public class MessagesHubRegistrationTests
         });
     }
 
-    /// <summary>The control of the check above: a client that keeps the default logging of the factory does write the host and the path, so the spy sees them.</summary>
     [Fact]
     public async Task AClientThatKeepsTheDefaultLogging_WritesTheHostAndThePath_SoTheCheckAboveCanSeeIt()
     {
@@ -162,7 +155,6 @@ public class MessagesHubRegistrationTests
         return content;
     }
 
-    /// <summary>Records every message and every scope of every category, as a provider that writes them somewhere would see them.</summary>
     private sealed class CapturingLoggerProvider : ILoggerProvider
     {
         public List<string> Entries { get; } = [];

@@ -8,10 +8,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Authorization;
 
-/// <summary>
-/// E07/F07/US01 (NF-111): the owner portal is used by people outside the organization and its endpoints send e-mails, read files of up to 10 MB and write a line of
-/// audit for every download, so every one of them has a rate limit per signed-in person, and the ones that send, store or stream a file have a tighter one.
-/// </summary>
 public class OwnerPortalRateLimitTests
 {
     private static readonly Type[] Controllers =
@@ -54,10 +50,8 @@ public class OwnerPortalRateLimitTests
     [Fact]
     public void TheInvitationTheWritesAndTheDownloads_HaveTheirOwnPolicies_TighterThanTheReads()
     {
-        // Invite a contact: an e-mail to an address the owner chose.
         Assert.Equal(RateLimitPolicies.OwnerPortalInvite, PolicyOf<OwnerPortalCollaborationController>(nameof(OwnerPortalCollaborationController.InviteContact)));
 
-        // Open a conversation, write a message with its file (the owner), and the same and the documents (the agency): an e-mail to the other side and up to 10 MB.
         Assert.Equal(RateLimitPolicies.OwnerPortalWrite, PolicyOf<OwnerPortalCollaborationController>(nameof(OwnerPortalCollaborationController.StartConversation)));
         Assert.Equal(RateLimitPolicies.OwnerPortalWrite, PolicyOf<OwnerPortalCollaborationController>(nameof(OwnerPortalCollaborationController.PostMessage)));
         Assert.Equal(RateLimitPolicies.OwnerPortalWrite, PolicyOf<OwnerCollaborationController>(nameof(OwnerCollaborationController.StartConversation)));
@@ -65,13 +59,11 @@ public class OwnerPortalRateLimitTests
         Assert.Equal(RateLimitPolicies.OwnerPortalWrite, PolicyOf<OwnerCollaborationController>(nameof(OwnerCollaborationController.ShareDocument)));
         Assert.Equal(RateLimitPolicies.OwnerPortalWrite, PolicyOf<OwnerCollaborationController>(nameof(OwnerCollaborationController.AddVersion)));
 
-        // The files: a line of audit and up to 10 MB each.
         Assert.Equal(RateLimitPolicies.OwnerPortalDownload, PolicyOf<OwnerPortalCollaborationController>(nameof(OwnerPortalCollaborationController.DownloadDocument)));
         Assert.Equal(RateLimitPolicies.OwnerPortalDownload, PolicyOf<OwnerPortalCollaborationController>(nameof(OwnerPortalCollaborationController.DownloadAttachment)));
         Assert.Equal(RateLimitPolicies.OwnerPortalDownload, PolicyOf<OwnerCollaborationController>(nameof(OwnerCollaborationController.DownloadVersion)));
         Assert.Equal(RateLimitPolicies.OwnerPortalDownload, PolicyOf<OwnerCollaborationController>(nameof(OwnerCollaborationController.DownloadAttachment)));
 
-        // The reads and the light calls keep the default of the controller.
         Assert.Equal(RateLimitPolicies.OwnerPortalRead, PolicyOf<OwnerPortalCalendarController>(nameof(OwnerPortalCalendarController.GetCalendar)));
         Assert.Equal(RateLimitPolicies.OwnerPortalRead, PolicyOf<OwnerContactAcceptanceController>(nameof(OwnerContactAcceptanceController.Accept)));
 

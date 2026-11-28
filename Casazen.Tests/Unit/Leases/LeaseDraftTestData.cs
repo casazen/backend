@@ -3,25 +3,18 @@ using Casazen.Core.Leases;
 
 namespace Casazen.Tests.Unit.Leases;
 
-/// <summary>
-/// LR-12: the values of a draft the tests start from. Every fiscal code is a valid one (the check character is computed), so a test
-/// that wants an invalid value changes exactly that one.
-/// </summary>
 internal static class LeaseDraftTestData
 {
     public const string LandlordFiscalCode = "RSSMRA80A01H501U";
 
     public const string TenantFiscalCode = "VRDGLI85B02F205A";
 
-    /// <summary>Another valid code of a person (the check character is computed).</summary>
     public static readonly string SecondTenantFiscalCode = "BNCMRC90C15F205" + Casazen.Core.Regulatory.ItalianFiscalCode.CheckCharacter("BNCMRC90C15F205");
 
-    /// <summary>An 11-digit code with its check digit: a company.</summary>
     public static readonly string CompanyFiscalCode = Enumerable.Range(0, 10)
         .Select(digit => "1234567890" + digit)
         .Single(Casazen.Core.Regulatory.ItalianFiscalCode.IsValidNumericCode);
 
-    /// <summary>"Today" of the draft tests: 9 October 2026 in Rome.</summary>
     public static readonly DateOnly Today = new(2026, 10, 9);
 
     public static readonly Guid PropertyId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -47,7 +40,6 @@ internal static class LeaseDraftTestData
         Residence = "Bari, via Argiro 7",
     };
 
-    /// <summary>A canone libero with one landlord and one tenant: nothing is missing in the data steps.</summary>
     public static LeaseDraftValues Complete() => new()
     {
         PropertyId = PropertyId,

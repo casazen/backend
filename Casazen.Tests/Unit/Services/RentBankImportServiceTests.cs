@@ -55,7 +55,6 @@ public class RentBankImportServiceTests
 
         public required IConfiguration Configuration { get; init; }
 
-        /// <summary>The import service over another ledger service (one that fails in some way) and the same context, clock and secret.</summary>
         public RentBankImportService ServiceOver(IRentBillingService billing) => new(Db, billing, Log, Clock, Configuration);
 
         public required Guid OrgId { get; init; }
@@ -79,7 +78,6 @@ public class RentBankImportServiceTests
         public HostScope OwnerOfB => new(OrgId, OwnerId: OwnerB);
     }
 
-    /// <summary>The secret of the signed links, from which the key of the payer hashes is made (<see cref="BankPayerHash.DeriveKey"/>).</summary>
     private static IConfiguration WithSecret() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["SIGNED_LINK_SECRET"] = "a-long-random-secret-of-the-server" }).Build();
 
@@ -171,8 +169,6 @@ public class RentBankImportServiceTests
     private static Func<Guid, CancellationToken, Task<bool>> OnlyFor(params Guid[] properties) =>
         (propertyId, _) => Task.FromResult(properties.Contains(propertyId));
 
-    // ---------------------------------------------------------------- preview
-
     [Fact]
     public async Task Preview_ProposesTheInstallmentsOfTheCredits_AndWritesNothing()
     {
@@ -190,7 +186,7 @@ public class RentBankImportServiceTests
         Assert.Equal(new DateOnly(2026, 10, 3), verdi.Date);
         Assert.Equal("EUR", verdi.Installment.Currency);
         Assert.Contains(RentBankReason.Month, verdi.Reasons);
-        Assert.Single(verdi.Alternatives); // the same amount in November
+        Assert.Single(verdi.Alternatives);
         var rossi = preview.Suggestions.Single(s => s.Amount == 750m);
         Assert.Equal(f.RossiOct, rossi.Installment.Id);
         Assert.Equal(RentBankConfidence.High, rossi.Confidence);
@@ -224,7 +220,6 @@ public class RentBankImportServiceTests
         Assert.Equal(f.RossiOct, only.Installment.Id);
         Assert.Equal(f.PropertyB, only.Installment.PropertyId);
         Assert.DoesNotContain(preview.Suggestions.SelectMany(s => s.Alternatives.Append(s.Installment)), i => i.LeaseId == f.VerdiLease);
-        // The credit of the other property's tenant is just a credit with nothing to settle.
         Assert.Equal(2, preview.Unmatched.Count);
     }
 
@@ -291,8 +286,6 @@ public class RentBankImportServiceTests
         Assert.Equal(BankStatementErrorCodes.FormatUnsupported, ex.Code);
     }
 
-    // ---------------------------------------------------------------- confirm
-
     [Fact]
     public async Task Confirm_DeclaresTheInstallmentPaidThroughTheOfflinePath_WithTheValueDateAndTheNote()
     {
@@ -322,7 +315,6 @@ public class RentBankImportServiceTests
         Assert.Equal(900m, row.Amount);
         Assert.Equal(new DateOnly(2026, 10, 3), row.ValueDate);
         Assert.Equal(OwnerA, row.ConfirmedByUserId);
-        // Only hashes of the payer: nothing that reads as a name, an IBAN or a reason of payment.
         Assert.Matches("^[0-9a-f]{64}$", row.PayerIbanHash!);
         Assert.Null(row.PayerNameHash);
         Assert.DoesNotContain("VERDI", string.Join('|', row.Fingerprint, row.PayerIbanHash, row.ConfirmedByUserId), StringComparison.OrdinalIgnoreCase);
@@ -346,7 +338,6 @@ public class RentBankImportServiceTests
         Assert.All(second.Skipped, s => Assert.Equal(BankStatementErrorCodes.MovementAlreadyImported, s.Code));
         Assert.Equal(rowsAfterFirst, await f.Db.RentBankMovements.AsNoTracking().OrderBy(m => m.Fingerprint).Select(m => m.Id).ToListAsync());
 
-        // And the preview of the same file no longer offers what was imported.
         var again = await f.Service.PreviewAsync(f.OrgWide, Utf8(FirstFile), null);
         Assert.Equal(2, again.Summary.AlreadyImported);
         Assert.Empty(again.Suggestions);
@@ -360,7 +351,6 @@ public class RentBankImportServiceTests
         var verdi = preview.Suggestions.Single(s => s.Amount == 900m);
         await f.Service.ConfirmAsync(f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed);
 
-        // The next export starts a few days earlier: it holds the same Verdi credit again, and a new one.
         const string next =
             "Data contabile;Data valuta;Descrizione;Importo\r\n"
             + "03/10/2026;03/10/2026;BONIFICO DA VERDI GIULIA CANONE OTTOBRE 2026 IBAN DE89 3704 0044 0532 0130 00;900,00\r\n"
@@ -461,7 +451,6 @@ public class RentBankImportServiceTests
 
         Assert.Equal(RentBillingErrorCodes.InstallmentNotPayable, Assert.Single(result.Skipped).Code);
         Assert.Empty(await f.Db.RentBankMovements.ToListAsync());
-        // The hand-made payment is what the ledger keeps.
         Assert.Equal("a mano", (await f.Db.RentLedgerEntries.AsNoTracking().SingleAsync(e => e.Id == f.VerdiOct)).OfflinePaymentNote);
     }
 
@@ -501,8 +490,6 @@ public class RentBankImportServiceTests
         Assert.Equal(2, result.Requested);
     }
 
-    // ---------------------------------------------------------------- one credit pays one installment
-
     [Fact]
     public async Task Confirm_TwoRequestsRacingForTheSameCredit_OnlyTheFirstPays()
     {
@@ -511,7 +498,6 @@ public class RentBankImportServiceTests
         var preview = await f.Service.PreviewAsync(f.OrgWide, Utf8(FirstFile), null);
         var verdi = preview.Suggestions.Single(s => s.Amount == 900m);
 
-        // The other request saved its claim on the credit between the moment this one looked and the moment it saved: the unique index says so.
         interceptor.Failure = new DbUpdateException(
             "save failed",
             new PostgresException(
@@ -521,7 +507,6 @@ public class RentBankImportServiceTests
             f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiNov)], OwnerA, Allowed);
         interceptor.Failure = null;
 
-        // The loser pays nothing and is not told it did: the installment it chose is free for what it really is.
         Assert.Empty(result.Confirmed);
         Assert.Equal(BankStatementErrorCodes.MovementAlreadyImported, Assert.Single(result.Skipped).Code);
         Assert.Equal(RentLedgerStatus.Scheduled, (await f.Db.RentLedgerEntries.AsNoTracking().SingleAsync(e => e.Id == f.VerdiNov)).Status);
@@ -543,7 +528,6 @@ public class RentBankImportServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.ServiceOver(billing.Object).ConfirmAsync(
             f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed));
 
-        // Nothing was paid, so the credit is free again: the next try is not told it was imported.
         Assert.Empty(await f.Db.RentBankMovements.ToListAsync());
         var retry = await f.Service.ConfirmAsync(
             f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed);
@@ -561,7 +545,6 @@ public class RentBankImportServiceTests
             .Setup(b => b.MarkPaidOfflineAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MarkRentPaidOfflineRequest>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns(StageThePaymentAndFail);
 
-        // The ledger staged the payment in the context, and then its save failed.
         async Task<RentInstallmentView> StageThePaymentAndFail()
         {
             (await f.Db.RentLedgerEntries.SingleAsync(e => e.Id == f.VerdiOct)).Status = RentLedgerStatus.Paid;
@@ -586,7 +569,6 @@ public class RentBankImportServiceTests
             .Setup(b => b.MarkPaidOfflineAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<MarkRentPaidOfflineRequest>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns<Guid, Guid, MarkRentPaidOfflineRequest, string, CancellationToken>(PayThenBeCanceled);
 
-        // The real ledger saves the payment, and the caller goes away right after.
         async Task<RentInstallmentView> PayThenBeCanceled(Guid lease, Guid installment, MarkRentPaidOfflineRequest request, string user, CancellationToken token)
         {
             await f.Billing.MarkPaidOfflineAsync(lease, installment, request, user, token);
@@ -596,7 +578,6 @@ public class RentBankImportServiceTests
         await Assert.ThrowsAsync<OperationCanceledException>(() => f.ServiceOver(billing.Object).ConfirmAsync(
             f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed));
 
-        // The rent is paid and the credit says which rent it paid: the next preview does not offer it for another one.
         Assert.Equal(RentLedgerStatus.Paid, (await f.Db.RentLedgerEntries.AsNoTracking().SingleAsync(e => e.Id == f.VerdiOct)).Status);
         Assert.Equal(f.VerdiOct, (await f.Db.RentBankMovements.AsNoTracking().SingleAsync()).RentLedgerEntryId);
         var again = await f.Service.PreviewAsync(f.OrgWide, Utf8(FirstFile), null);
@@ -612,7 +593,6 @@ public class RentBankImportServiceTests
         Assert.Equal("GBP", movement.Currency);
         var fingerprint = BankMovementFingerprint.ForAll(f.OrgId, [movement])[0];
 
-        // The preview leaves it with no installment; a choice made by hand for it is refused all the same.
         var preview = await f.Service.PreviewAsync(f.OrgWide, Utf8(pounds), null);
         Assert.Empty(preview.Suggestions);
         var result = await f.Service.ConfirmAsync(
@@ -640,7 +620,6 @@ public class RentBankImportServiceTests
 
         await f.Service.ConfirmAsync(f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed);
 
-        // A late credit on an anonymized lease must not bring back what the anonymization took away.
         var row = await f.Db.RentBankMovements.AsNoTracking().SingleAsync();
         Assert.Null(row.PayerIbanHash);
         Assert.Null(row.PayerNameHash);
@@ -660,8 +639,6 @@ public class RentBankImportServiceTests
         Assert.Equal(BankStatementErrorCodes.SelectionsInvalid, ex.Code);
     }
 
-    // ---------------------------------------------------------------- who paid
-
     [Fact]
     public async Task TheNextStatement_RecognizesThePayerOfAnEarlierConfirmation_WithNoNameInTheReason()
     {
@@ -670,8 +647,7 @@ public class RentBankImportServiceTests
         var verdi = first.Suggestions.Single(s => s.Amount == 900m);
         await f.Service.ConfirmAsync(f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed);
 
-        // Next month the bank writes only «CANONE» and the payer's IBAN: no surname, no month. The IBAN paid this lease before.
-        f.Clock.Advance(TimeSpan.FromDays(27)); // it is the 5th of November: the credit of the 4th is no longer in the future
+        f.Clock.Advance(TimeSpan.FromDays(27));
         var next = $"Data;Descrizione;IBAN ordinante;Importo\r\n04/11/2026;CANONE;{PayerIban};900,00\r\n";
         var preview = await f.Service.PreviewAsync(f.OrgWide, Utf8(next), null);
 
@@ -689,7 +665,6 @@ public class RentBankImportServiceTests
         var verdi = first.Suggestions.Single(s => s.Amount == 900m);
         await f.Service.ConfirmAsync(f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed);
 
-        // The same IBAN pays 750: the lease it is known for has nothing of that amount, and the other lease has not seen it.
         var next = $"Data;Descrizione;IBAN ordinante;Importo\r\n04/10/2026;CANONE;{PayerIban};750,00\r\n";
         var preview = await f.Service.PreviewAsync(f.OrgWide, Utf8(next), null);
 
@@ -707,7 +682,6 @@ public class RentBankImportServiceTests
         var verdi = first.Suggestions.Single(s => s.Amount == 900m);
         await f.Service.ConfirmAsync(f.OrgWide, Utf8(FirstFile), null, [new RentBankSelection(verdi.Fingerprint, f.VerdiOct)], OwnerA, Allowed);
 
-        // Without the key of the hashes there are no hashes: a payer is learned from nothing, and the rest of the matching goes on.
         var row = await f.Db.RentBankMovements.AsNoTracking().SingleAsync();
         Assert.Null(row.PayerIbanHash);
         Assert.Null(row.PayerNameHash);
@@ -789,8 +763,6 @@ public class RentBankImportServiceTests
         Assert.Equal(new string('a', 64), row.Fingerprint);
         Assert.Equal(entryId, row.RentLedgerEntryId);
     }
-
-    // ---------------------------------------------------------------- log
 
     [Fact]
     public async Task TheLog_NamesNoOneAndQuotesNoReasonOfPayment()

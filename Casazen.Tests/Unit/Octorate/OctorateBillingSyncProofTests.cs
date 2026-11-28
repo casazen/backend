@@ -52,8 +52,6 @@ public class OctorateBillingSyncProofTests
 
     private static CancellationToken Ct => CancellationToken.None;
 
-    // --- The proofs -----------------------------------------------------------------------------------------------------------------
-
     /// <summary>
     /// PROOF TEST: data rule. The host wrote the recipient first; the import of Octorate then reads the customer record and saves it with the lowest
     /// source: it fills the fields that are empty and changes none of the host's (name, fiscal code, address, kind of recipient), and the row stays the
@@ -101,7 +99,6 @@ public class OctorateBillingSyncProofTests
         Assert.Equal("octo@pec.example.com", row.Pec);
         Assert.Equal(InvoiceDataSource.Host, row.Source);
 
-        // Delivered again: there is nothing left to fill, so nothing is written and no event is recorded.
         var events = await rig.EventCountAsync(booking.Id);
         await rig.FromOctorate().HandleAsync(created, Ct);
         Assert.Equal(events, await rig.EventCountAsync(booking.Id));
@@ -193,10 +190,8 @@ public class OctorateBillingSyncProofTests
         string[] neverAMember = ["document", "passport", "birth", "nationality", "phone", "mobile", "gender", "sex", "alloggiati", "police"];
         Assert.DoesNotContain(members, member => neverAMember.Any(word => member.Contains(word, StringComparison.OrdinalIgnoreCase)));
 
-        // legalMail is the PEC of the recipient; the e-mail address of the guest is another member (email) that is never written.
         Assert.DoesNotContain(members, member => member.Equals("email", StringComparison.OrdinalIgnoreCase));
 
-        // Nothing the guest holds privately is in either request, address or body.
         string[] neverAValue = [GuestEmail, GuestPhone, GuestDocumentNumber, "Anna", "Verdi", "Torino"];
         foreach (var request in http.Requests)
         {
@@ -204,13 +199,10 @@ public class OctorateBillingSyncProofTests
             Assert.All(neverAValue, secret => Assert.DoesNotContain(secret, wire, StringComparison.OrdinalIgnoreCase));
         }
 
-        // The type has no other member to carry one: the billing members and nothing else.
         Assert.Equal(
             new[] { "Address", "City", "CountryCode", "FiscalCode", "HasContent", "IsCompany", "Name", "Pec", "PostalCode", "Province", "SdiRecipientCode", "VatNumber" },
             typeof(OctorateBillingData).GetProperties().Select(p => p.Name).Order().ToArray());
     }
-
-    // --- Written once for each change, only where Octorate issues --------------------------------------------------------------------
 
     [Fact]
     public async Task WriteBack_IsOncePerChange_AndOnlyWhereOctorateIssues()
@@ -223,11 +215,9 @@ public class OctorateBillingSyncProofTests
             .Callback<string, string, OctorateBillingData, CancellationToken>((_, _, data, _) => sent.Add(data))
             .ReturnsAsync(true);
 
-        // No invoice data yet: nothing to send.
         await rig.WriteBack().HandleAsync(Saved(booking.Id, InvoiceDataSource.Host), Ct);
         Assert.Empty(sent);
 
-        // The host saves the recipient: one write, and the hash of what was written is kept.
         await rig.SaveInvoiceAsync(
             booking.Id,
             new SaveInvoiceDataCommand
@@ -252,7 +242,6 @@ public class OctorateBillingSyncProofTests
         Assert.False(string.IsNullOrEmpty(written.OctorateBillingHash));
         Assert.Equal(Now.UtcDateTime, written.OctorateBillingSentAt);
 
-        // The same event delivered again, and another event for data that did not change: nothing is sent again.
         await rig.WriteBack().HandleAsync(saved, Ct);
         await rig.WriteBack().HandleAsync(Saved(booking.Id, InvoiceDataSource.CheckIn), Ct);
         Assert.Single(sent);
@@ -261,7 +250,6 @@ public class OctorateBillingSyncProofTests
         await rig.WriteBack().HandleAsync(Saved(booking.Id, InvoiceDataSource.Octorate), Ct);
         Assert.Single(sent);
 
-        // A change is one more write, with the new data and a new hash.
         rig.Clock.Advance(TimeSpan.FromMinutes(5));
         await rig.SaveInvoiceAsync(booking.Id, new SaveInvoiceDataCommand { Pec = "nuova@pec.example.com" }, InvoiceDataSource.Host);
         await rig.WriteBack().HandleAsync(Saved(booking.Id, InvoiceDataSource.Host), Ct);
@@ -323,8 +311,6 @@ public class OctorateBillingSyncProofTests
             Assert.Equal(Now.UtcDateTime, failed.OctorateBillingErrorAt);
         }
 
-        // A record Octorate does not know, a request it rejects, a conflict, the wrong environment, no connection: the same answer five times would
-        // help nobody, so nothing is thrown and nothing is marked as written, but none of them is swallowed: the code stays on the invoice data.
         foreach (var leftAlone in new OctorateException[]
                  {
                      OctorateAuthException.NotConnected(),
@@ -357,7 +343,6 @@ public class OctorateBillingSyncProofTests
         var stored = await rig.RowAsync(booking.Id);
         Assert.All(personal, value => Assert.DoesNotContain(value, stored.OctorateBillingError ?? string.Empty, StringComparison.OrdinalIgnoreCase));
 
-        // Octorate answers at the next delivery: written, marked, and the code of the failures is gone.
         rig.Client
             .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -381,8 +366,6 @@ public class OctorateBillingSyncProofTests
             .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        // The reservation names no customer record: nothing was sent, so nothing is marked as written, and the data says why. Delivered again, the
-        // same: no hash is ever stored for a write that did not happen.
         await rig.WriteBack(logger: logger).HandleAsync(saved, Ct);
         await rig.WriteBack(logger: logger).HandleAsync(saved, Ct);
 
@@ -396,7 +379,6 @@ public class OctorateBillingSyncProofTests
             c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));
 
-        // The customer is made in Octorate: the next save writes, marks the data and clears the code.
         rig.Client
             .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -424,7 +406,6 @@ public class OctorateBillingSyncProofTests
         var first = await rig.RowAsync(booking.Id);
         Assert.NotNull(first.OctorateBillingHash);
 
-        // A change that Octorate refuses: the hash stays the one of what Octorate holds, and the code of the refusal is on the data.
         await rig.SaveInvoiceAsync(booking.Id, new SaveInvoiceDataCommand { City = "Como" }, InvoiceDataSource.Host);
         rig.Client
             .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
@@ -434,7 +415,6 @@ public class OctorateBillingSyncProofTests
         Assert.Equal(first.OctorateBillingHash, refused.OctorateBillingHash);
         Assert.Equal("octorate_request_rejected", refused.OctorateBillingError);
 
-        // The host puts the data back as it was: it is what Octorate holds, so nothing is sent and the code of the refusal is no longer the state.
         await rig.SaveInvoiceAsync(booking.Id, new SaveInvoiceDataCommand { City = "Cernobbio" }, InvoiceDataSource.Host);
         await rig.WriteBack().HandleAsync(saved, Ct);
 
@@ -452,7 +432,6 @@ public class OctorateBillingSyncProofTests
     {
         var rig = new Rig();
 
-        // A booking made in CasaZen whose confirmation is still waiting in the outbox: its create on Octorate is that handler's work, still to come.
         var waiting = await rig.SeedBookingAsync(reservationId: null, source: BookingSource.Direct);
         await rig.SaveInvoiceAsync(waiting.Id, CompanyData(), InvoiceDataSource.Host);
         await using (var db = rig.NewDb())
@@ -469,7 +448,6 @@ public class OctorateBillingSyncProofTests
 
         await Assert.ThrowsAsync<OctorateBillingPendingException>(() => rig.WriteBack().HandleAsync(Saved(waiting.Id, InvoiceDataSource.Host), Ct));
 
-        // A booking whose create is under way (its mirror row is Pending): the same.
         var creating = await rig.SeedBookingAsync(reservationId: null, source: BookingSource.Manual);
         await rig.SaveInvoiceAsync(creating.Id, CompanyData(), InvoiceDataSource.Host);
         await using (var db = rig.NewDb())
@@ -480,7 +458,6 @@ public class OctorateBillingSyncProofTests
 
         await Assert.ThrowsAsync<OctorateBillingPendingException>(() => rig.WriteBack().HandleAsync(Saved(creating.Id, InvoiceDataSource.Host), Ct));
 
-        // Nothing is coming for these: a booking of a channel arrives with its reservation, and a booking with no create waiting has none to wait for.
         var channel = await rig.SeedBookingAsync(reservationId: null, source: BookingSource.Airbnb);
         await rig.SaveInvoiceAsync(channel.Id, CompanyData(), InvoiceDataSource.Host);
         await rig.WriteBack().HandleAsync(Saved(channel.Id, InvoiceDataSource.Host), Ct);
@@ -492,8 +469,6 @@ public class OctorateBillingSyncProofTests
         rig.Client.VerifyNoOtherCalls();
     }
 
-    // --- The pre-fill: nothing swallowed, and never the import's problem -----------------------------------------------------------------
-
     [Fact]
     public async Task PreFill_EveryFailureOfOctorate_IsDeliveredAgain_NeverSwallowed()
     {
@@ -502,8 +477,6 @@ public class OctorateBillingSyncProofTests
         var created = Created(booking, BookingEventOrigin.Octorate);
         var logger = new CapturingLogger<InvoiceDataFromOctorateHandler>();
 
-        // Octorate has nothing for the booker (the reservation names no customer record, or the record holds no billing data): not an error, and
-        // nothing is saved either.
         rig.Client.Setup(c => c.GetBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<CancellationToken>())).ReturnsAsync((OctorateBillingData?)null);
         await rig.FromOctorate().HandleAsync(created, Ct);
         Assert.Null(await rig.RowOrNullAsync(booking.Id));
@@ -531,7 +504,6 @@ public class OctorateBillingSyncProofTests
 
         Assert.Null(await rig.RowOrNullAsync(booking.Id));
 
-        // The log names the booking and the code of each failure.
         Assert.Contains(booking.Id.ToString(), logger.AllOutput, StringComparison.Ordinal);
         Assert.Contains(OctorateAuthException.RefusedCode, logger.AllOutput, StringComparison.Ordinal);
         Assert.Contains(OctorateAuthException.NotConnectedCode, logger.AllOutput, StringComparison.Ordinal);
@@ -560,8 +532,6 @@ public class OctorateBillingSyncProofTests
         Assert.True(await probe.TryAcquireAsync(OrgA));
         Assert.False(OctorateBillingSyncRules.QuotaAllowsPrefill(probe, OrgA));
 
-        // The org has used enough of its quota: nothing is read, nothing is thrown, the event is consumed with a line that says why, and the booking has
-        // no data from Octorate (the host fills it in).
         while (rig.Limiter.AvailableCalls(OrgA) - OctorateBillingSyncRules.PrefillCalls >= OctorateBillingSyncRules.PrefillQuotaReserve)
             Assert.True(await rig.Limiter.TryAcquireAsync(OrgA));
 
@@ -572,7 +542,6 @@ public class OctorateBillingSyncProofTests
         Assert.Contains("quota of the org is low", logger.AllOutput, StringComparison.Ordinal);
         Assert.Contains(booking.Id.ToString(), logger.AllOutput, StringComparison.Ordinal);
 
-        // The bucket refills (20 calls every 12 seconds): the next booking is pre-filled.
         rig.Clock.Advance(OctorateRateLimiter.BurstPeriod);
         await rig.FromOctorate(logger: logger).HandleAsync(created, Ct);
 
@@ -605,7 +574,6 @@ public class OctorateBillingSyncProofTests
         rig.Targets.Setup(t => t.AccommodationOfAsync(notMirrored.PropertyId, It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
         await rig.FromOctorate().HandleAsync(Created(notMirrored, BookingEventOrigin.Octorate), Ct);
 
-        // An event that is not about a booking created, and a payload that is not a booking event.
         var imported = await rig.SeedBookingAsync();
         await rig.FromOctorate().HandleAsync(Created(imported, BookingEventOrigin.Octorate) with { Type = DomainEventType.BookingConfirmed }, Ct);
         await rig.FromOctorate().HandleAsync(Created(imported, BookingEventOrigin.Octorate) with { PayloadJson = "not json" }, Ct);
@@ -644,13 +612,11 @@ public class OctorateBillingSyncProofTests
         Assert.Null(row.Pec);
         Assert.Equal(InvoiceDataSource.Octorate, row.Source);
 
-        // The log names the fields that were left out, never their values nor the rest of the record.
         Assert.Contains("province", logger.AllOutput, StringComparison.Ordinal);
         Assert.Contains("pec", logger.AllOutput, StringComparison.Ordinal);
         string[] personal = ["Mario", "Rossi", FiscalCode, "not an address"];
         Assert.All(personal, value => Assert.DoesNotContain(value, logger.AllOutput, StringComparison.OrdinalIgnoreCase));
 
-        // Nothing valid left in a record: nothing is saved.
         var emptyBooking = await rig.SeedBookingAsync(reservationId: "130219999");
         rig.Client
             .Setup(c => c.GetBookerBillingDataAsync(AccommodationId, "130219999", It.IsAny<CancellationToken>()))
@@ -676,13 +642,10 @@ public class OctorateBillingSyncProofTests
             await rig.FromOctorate().HandleAsync(Created(booking, BookingEventOrigin.Octorate), Ct);
             await rig.WriteBack().HandleAsync(Saved(booking.Id, InvoiceDataSource.Host), Ct);
 
-            // The strict client has no setup: a call would have failed the test. The row is the host's, untouched.
             rig.Client.VerifyNoOtherCalls();
             Assert.Null((await rig.RowAsync(booking.Id)).OctorateBillingHash);
         }
     }
-
-    // --- The client and its mapping ------------------------------------------------------------------------------------------------------
 
     [Fact]
     public async Task Client_ReadsTheBillingRecordOfTheBooker_AndARefusalIsNeverAnEmptyResult()
@@ -720,13 +683,11 @@ public class OctorateBillingSyncProofTests
         Assert.Equal("IT", company.CountryCode);
         Assert.Equal("ABC1234", company.SdiRecipientCode);
 
-        // The province is not read (no member of the schema is known to hold it) and the PEC never is (write-only): a record has neither.
         Assert.Null(company.Province);
         Assert.Null(company.Pec);
         Assert.EndsWith($"/rest/v1/guests/{AccommodationId}/{CustomerId}", http.Requests[1].Uri.AbsolutePath);
         Assert.DoesNotContain(GuestEmail, company.ToString(), StringComparison.Ordinal);
 
-        // A record that holds only the guest's name is no billing data; the name of a person is firstname and lastname, whatever the case.
         http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": {{CustomerId}} }""");
         http.Answer(HttpStatusCode.OK, $$"""{ "id": {{CustomerId}}, "firstname": "Anna", "lastname": "Verdi", "email": "{{GuestEmail}}" }""");
         Assert.Null(await ReadAsync());
@@ -756,8 +717,6 @@ public class OctorateBillingSyncProofTests
 
         using (scope.Use(OrgA))
         {
-            // The reservation names no customer record, or only a guest of the stay (a guestId, the id of a guest of the stay: another table, whose id
-            // could be another customer's): the read is empty (nothing is guessed), the write sends nothing, makes no record and answers false.
             foreach (var answer in new[]
                      {
                          $$"""{ "id": "{{ReservationId}}" }""",
@@ -777,7 +736,6 @@ public class OctorateBillingSyncProofTests
             Assert.All(http.Requests, request => Assert.Equal(HttpMethod.Get, request.Method));
             Assert.All(http.Requests, request => Assert.EndsWith($"/rest/v1/reservation/{AccommodationId}/{ReservationId}", request.Uri.AbsolutePath));
 
-            // Data with nothing to write (a name alone, a company's denomination alone) is refused before Octorate is called.
             await Assert.ThrowsAsync<ArgumentException>(
                 () => client.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, new OctorateBillingData { Name = "Mario Rossi" }, Ct));
             await Assert.ThrowsAsync<ArgumentException>(
@@ -805,7 +763,6 @@ public class OctorateBillingSyncProofTests
         Assert.NotEqual(hash, OctorateBillingMapping.HashOf(company with { Pec = CompanyPec }));
         Assert.DoesNotContain(CompanyName, hash, StringComparison.Ordinal);
 
-        // A person's name is never written, so it is neither in the body nor in the hash, and a name alone is nothing to write.
         var person = new OctorateBillingData { Name = "Mario Rossi", FiscalCode = FiscalCode };
         Assert.DoesNotContain("Mario", OctorateBillingMapping.WriteBody(person), StringComparison.Ordinal);
         Assert.Equal(OctorateBillingMapping.HashOf(person), OctorateBillingMapping.HashOf(person with { Name = "Mario Rossi Junior" }));
@@ -841,7 +798,6 @@ public class OctorateBillingSyncProofTests
         Assert.False(OctorateBillingMapping.HasMembersToWrite(new OctorateBillingData { Province = "CO", SdiRecipientCode = "ABC1234" }));
         Assert.Equal(OctorateBillingMapping.EmptyBody, OctorateBillingMapping.WriteBody(new OctorateBillingData()));
 
-        // The invoice data of a booking becomes the billing data (street and number on one line) and has nothing to send before the host types a recipient.
         var view = new InvoiceDataView(
             Guid.NewGuid(), true, Now.UtcDateTime, InvoiceRecipientKind.Company, CompanyName, null, VatNumber, "Via Roma", "12", "00100", "Roma", "RM", "IT", null, null,
             InvoiceDataSource.Host, Now.UtcDateTime);
@@ -852,8 +808,6 @@ public class OctorateBillingSyncProofTests
         Assert.Null(OctorateBillingData.From(view with { Name = null, VatNumber = null, AddressStreet = null, AddressCivic = null, PostalCode = null, City = null, Province = null }));
         Assert.Equal(nameof(OctorateBillingData), company.ToString());
     }
-
-    // --- Helpers -------------------------------------------------------------------------------------------------------------------------
 
     private static SaveInvoiceDataCommand CompanyData() => new()
     {
@@ -927,10 +881,6 @@ public class OctorateBillingSyncProofTests
         public bool FilterEnabled => true;
     }
 
-    /// <summary>
-    /// What the handlers need, built the way the dispatcher builds them: a new unit of work (context) for each event, under the org of the event. The
-    /// Octorate client is strict: a call nobody set up fails the test.
-    /// </summary>
     private sealed class Rig
     {
         public Rig(TestFeatureFlags? flags = null)
@@ -947,7 +897,6 @@ public class OctorateBillingSyncProofTests
 
         public FakeTimeProvider Clock { get; } = new(Now);
 
-        /// <summary>The bucket of calls to Octorate, one for the application (a singleton), on the clock of the rig.</summary>
         public OctorateRateLimiter Limiter { get; }
 
         public ITenantContext Tenant { get; } = new FixedTenantContext(OrgA);

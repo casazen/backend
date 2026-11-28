@@ -6,7 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Middleware;
 
-/// <summary>FD-17 (A9-29): baseline security headers on every API response, HSTS outside Development/Testing.</summary>
 public class SecurityHeadersMiddlewareTests
 {
     [Theory]
@@ -83,7 +82,6 @@ public class SecurityHeadersMiddlewareTests
         app.MapGet("/api/ping", () => "pong");
         app.MapGet("/api/cleared", async (HttpContext context) =>
         {
-            // What an error handler does: drop what was written so far, then write the error.
             context.Response.Headers["X-Partial"] = "1";
             context.Response.Clear();
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;

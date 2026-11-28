@@ -77,7 +77,6 @@ public class AddPropertySiteProfileMigrationPostgresTests : IAsyncLifetime
             Assert.Equal(["vista-mare"], view.Tags);
         }
 
-        // Another writer than the host API: the database says no.
         await AssertViolationAsync(db, property.Id, """UPDATE "Properties" SET "EnergyClass" = 'H' WHERE "Id" = {0}""");
         await AssertViolationAsync(db, property.Id, """UPDATE "Properties" SET "EnergyClass" = NULL WHERE "Id" = {0}""");
         await AssertViolationAsync(db, property.Id, """UPDATE "Properties" SET "FloorLevel" = 99 WHERE "Id" = {0}""");

@@ -20,14 +20,8 @@ namespace Casazen.Tests.Integration;
 /// <param name="Secrets">Every private text seeded for this supplier: none may appear in any answer.</param>
 internal sealed record PublicShowcaseSupplier(Guid OrgId, string Slug, IReadOnlyList<string> Secrets);
 
-/// <summary>
-/// The default integration host with the flag <c>SupplierShowcaseBooking</c> on and a clock the test moves: Monday 12 October
-/// 2026, 08:45 in Rome (06:45 UTC). The clock is the host's <see cref="TimeProvider"/>, so the slot planner and the cache
-/// both read it: the slots of a test are exact, and the 30 seconds of the cache pass when the test says so.
-/// </summary>
 public class PublicShowcaseFactory : CasazenWebApplicationFactory
 {
-    /// <summary>Monday 12 October 2026, 08:45 in Rome (summer time): a quarter of an hour before the first slot of a working day.</summary>
     public static readonly DateTimeOffset Start = new(2026, 10, 12, 6, 45, 0, TimeSpan.Zero);
 
     public FakeTimeProvider Clock { get; } = new(Start);
@@ -46,11 +40,9 @@ public class PublicShowcaseFactory : CasazenWebApplicationFactory
         });
     }
 
-    /// <summary>More configuration for a host of a test class that needs it.</summary>
     protected virtual IEnumerable<KeyValuePair<string, string?>> ExtraSettings() => [];
 }
 
-/// <summary>The showcase host with both new rate limits at two requests per minute, to see them answer 429.</summary>
 public sealed class PublicShowcaseThrottledFactory : PublicShowcaseFactory
 {
     protected override IEnumerable<KeyValuePair<string, string?>> ExtraSettings() =>
@@ -61,7 +53,6 @@ public sealed class PublicShowcaseThrottledFactory : PublicShowcaseFactory
     ];
 }
 
-/// <summary>Seeds for the public showcase tests (SP-09): rows written straight to the database, valid on PostgreSQL and in memory.</summary>
 internal static class PublicShowcaseTestData
 {
     public const string Phone = "+39 06 5550199";
@@ -128,7 +119,6 @@ internal static class PublicShowcaseTestData
         return new PublicShowcaseSupplier(org.Id, slug, [Phone, email, vat]);
     }
 
-    /// <summary>A service row of <paramref name="orgId"/>; returns its slug.</summary>
     public static async Task<string> SeedServiceAsync(
         CasazenWebApplicationFactory factory,
         Guid orgId,
@@ -174,11 +164,6 @@ internal static class PublicShowcaseTestData
         return slug;
     }
 
-    /// <summary>
-    /// A request of a host for <paramref name="supplierOrgId"/> with hours (<paramref name="startUtc"/> to
-    /// <paramref name="endUtc"/>): the host, its property, its guest and its private notes are seeded around it. Returns the
-    /// private texts that must never reach a public answer.
-    /// </summary>
     public static async Task<IReadOnlyList<string>> SeedTimedRequestAsync(
         CasazenWebApplicationFactory factory,
         Guid supplierOrgId,
@@ -198,11 +183,9 @@ internal static class PublicShowcaseTestData
         return [address, guestName, "Note riservate dell'host", "Casa Riservata", "Romeo"];
     }
 
-    /// <summary>A manual block with a private label.</summary>
     public static Task<SupplierBusyWindow> SeedBlockAsync(CasazenWebApplicationFactory factory, Guid orgId, DateTime startUtc, DateTime endUtc) =>
         SupplierAgendaTestData.SeedWindowAsync(factory, orgId, startUtc, endUtc, SupplierBusyWindowKind.Block);
 
-    /// <summary>A time off with a private label.</summary>
     public static async Task SeedTimeOffAsync(CasazenWebApplicationFactory factory, Guid orgId, DateOnly from, DateOnly to)
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -211,7 +194,6 @@ internal static class PublicShowcaseTestData
         await db.SaveChangesAsync();
     }
 
-    /// <summary>A request the supplier took <paramref name="minutesToTake"/> minutes after it arrived, <paramref name="daysAgo"/> days before <paramref name="now"/>.</summary>
     public static async Task SeedAnsweredRequestAsync(
         CasazenWebApplicationFactory factory,
         Guid supplierOrgId,

@@ -33,11 +33,6 @@ public class CrmMergePostgresTests : IAsyncLifetime
             await _database.DisposeAsync();
     }
 
-    /// <summary>
-    /// One proposal between two profiles of one person; each profile has a guest and contacts (a service-only address; a confirmed consent and a
-    /// withdrawn WhatsApp number), and three other profiles, each proposed with one or both of the two: with the first, with both, with the second
-    /// only. Whichever profile is kept, it ends with one open proposal for each of the three others.
-    /// </summary>
     private sealed record World(Guid OrgId, Guid FirstId, Guid SecondId, Guid DecidedId, IReadOnlyList<Guid> OtherProfileIds);
 
     private async Task<World> SeedAsync()
@@ -111,7 +106,6 @@ public class CrmMergePostgresTests : IAsyncLifetime
         };
     }
 
-    /// <summary>Every column of a guest but the profile it is linked to: what a merge must leave as it is.</summary>
     private static string GuestFingerprint(Guest guest) => string.Join(
         "|",
         guest.Id,
@@ -125,7 +119,6 @@ public class CrmMergePostgresTests : IAsyncLifetime
         guest.CreatedAt.ToString("O"),
         guest.UpdatedAt.ToString("O"));
 
-    /// <summary>Every column of a contact but the profile it belongs to: what a merge must leave as it is.</summary>
     private static string ContactFingerprint(GuestContact contact) => string.Join(
         "|",
         contact.Id,
@@ -169,7 +162,6 @@ public class CrmMergePostgresTests : IAsyncLifetime
         {
             await using var db = _database!.CreateContext();
 
-            // Some of them ask to keep the one profile, some the other.
             var survivor = worker % 2 == 0 ? world.FirstId : world.SecondId;
             try
             {
@@ -193,7 +185,6 @@ public class CrmMergePostgresTests : IAsyncLifetime
         var goneId = survivorId == world.FirstId ? world.SecondId : world.FirstId;
         await using var check = _database!.CreateContext();
 
-        // One tombstone, pointing at the profile the winner asked to keep, which holds the stays and the tags of both.
         var profiles = await check.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == world.OrgId).ToListAsync();
         Assert.Single(profiles, p => p.MergedIntoProfileId != null);
         Assert.Equal(survivorId, profiles.Single(p => p.Id == goneId).MergedIntoProfileId);
@@ -203,7 +194,6 @@ public class CrmMergePostgresTests : IAsyncLifetime
         Assert.Equal(500m, survivor.TotalSpend);
         Assert.Equal(new[] { "nuovo", "vip" }, CrmProfileRules.ParseTags(survivor.TagsJson).Order().ToList());
 
-        // Every guest and every contact is on the survivor, and not one other column of them changed (the update of a stub sets the link only).
         var guests = await check.Guests.AsNoTracking().Where(g => g.OrgId == world.OrgId).ToListAsync();
         Assert.All(guests, guest => Assert.Equal(survivorId, guest.GuestCrmProfileId));
         Assert.Equal(guestsBefore, guests.OrderBy(g => g.Id).Select(GuestFingerprint).ToList());
@@ -211,7 +201,6 @@ public class CrmMergePostgresTests : IAsyncLifetime
         Assert.All(contacts, contact => Assert.Equal(survivorId, contact.GuestCrmProfileId));
         Assert.Equal(contactsBefore, contacts.OrderBy(c => c.Id).Select(ContactFingerprint).ToList());
 
-        // The proposal is merged once, by the one who won; the others follow the survivor, one for each of the three, none left on the tombstone.
         var proposals = await check.GuestMergeCandidates.AsNoTracking().Where(c => c.OrgId == world.OrgId).ToListAsync();
         var decided = Assert.Single(proposals, proposal => proposal.Status == GuestMergeStatus.Merged);
         Assert.Equal(world.DecidedId, decided.Id);

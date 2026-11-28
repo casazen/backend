@@ -34,7 +34,6 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         var duplicate = await SeedProfileAsync(email, SupplierStatus.Pending, Older);
         await SeedAgendaAsync(duplicate, buffer: 45, maxJobs: 6);
 
-        // The dry run reports the move and changes nothing.
         var dry = await FixOrphanedAsync(dryRun: true);
         Assert.Equal(HttpStatusCode.OK, dry.StatusCode);
         Assert.Equal(3 + 2 + 2 + 1, SingleMerge(await ReadAsync(dry), duplicate).GetProperty("agendaRowsMoved").GetInt32());
@@ -49,7 +48,6 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         Assert.Equal(8, merge.GetProperty("agendaRowsMoved").GetInt32());
         Assert.True(merge.GetProperty("duplicateOrgDeleted").GetBoolean());
 
-        // Nothing is lost with the duplicate profile (the cascade would have taken what stayed): every row is the keeper's.
         Assert.False(await ProfileExistsAsync(duplicate));
         Assert.Equal((0, 0, 0, 0), await CountsAsync(duplicate));
         Assert.Equal((3, 2, 2, 1), await CountsAsync(keeper));
@@ -74,16 +72,15 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         var applied = await FixOrphanedAsync(dryRun: false);
 
         Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
-        // Moved: the 2 time off and the 2 windows of the duplicate. Not moved: its 3 bands and its settings row.
         Assert.Equal(4, SingleMerge(await ReadAsync(applied), duplicate).GetProperty("agendaRowsMoved").GetInt32());
         Assert.Equal((1, 3, 2, 1), await CountsAsync(keeper));
         Assert.Equal((0, 0, 0, 0), await CountsAsync(duplicate));
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var settings = await db.SupplierSettings.AsNoTracking().Where(s => s.OrgId == keeper).SingleAsync();
-        Assert.Equal(15, settings.BufferMinutes); // the keeper's rules stay
+        Assert.Equal(15, settings.BufferMinutes);
         Assert.Equal(2, settings.MaxJobsPerDay);
-        Assert.Single(await db.SupplierWorkingHours.AsNoTracking().Where(h => h.OrgId == keeper).ToListAsync()); // its own band only
+        Assert.Single(await db.SupplierWorkingHours.AsNoTracking().Where(h => h.OrgId == keeper).ToListAsync());
     }
 
     [PostgresFact]
@@ -93,7 +90,6 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         var email = $"sp03-{Guid.NewGuid():N}@test.com";
         var keeper = await SeedProfileAsync(email, SupplierStatus.Active, Newer);
         var duplicate = await SeedProfileAsync(email, SupplierStatus.Pending, Older);
-        // The keeper saved a rule (so it has a settings row) but never its hours.
         await SeedAgendaAsync(keeper, buffer: 15, maxJobs: 2, hourBands: 0, timeOff: 0, windows: 0, hoursConfiguredAt: null);
         await SeedAgendaAsync(duplicate, buffer: 45, maxJobs: 6);
 
@@ -104,8 +100,8 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var settings = await db.SupplierSettings.AsNoTracking().Where(s => s.OrgId == keeper).SingleAsync();
-        Assert.Equal(15, settings.BufferMinutes); // its rules stay...
-        Assert.Equal(Configured, settings.HoursConfiguredAt); // ...and the hours that came over are marked as configured
+        Assert.Equal(15, settings.BufferMinutes);
+        Assert.Equal(Configured, settings.HoursConfiguredAt);
     }
 
     [PostgresFact]
@@ -123,11 +119,8 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         var merge = SingleMerge(await ReadAsync(applied), duplicate);
         Assert.Equal(0, merge.GetProperty("agendaRowsMoved").GetInt32());
         Assert.True(merge.GetProperty("duplicateOrgDeleted").GetBoolean());
-        // The keeper's own agenda is untouched.
         Assert.Equal((3, 2, 2, 1), await CountsAsync(keeper));
     }
-
-    // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static async Task<JsonElement> ReadAsync(HttpResponseMessage response) =>
         await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -147,7 +140,6 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         return await admin.PostAsync($"/api/admin/suppliers/fix-orphaned?dryRun={(dryRun ? "true" : "false")}", null);
     }
 
-    /// <summary>Data written before the migration SupplierProfileEmailUnique: without its unique index.</summary>
     private async Task DropEmailIndexAsync()
     {
         await using var scope = factory.Services.CreateAsyncScope();
@@ -186,7 +178,6 @@ public class SupplierAgendaRepairPostgresTests(CasazenWebApplicationFactory fact
         return org.Id;
     }
 
-    /// <summary>An agenda: some weekly bands (Monday morning, afternoon and Tuesday morning), time off, windows, and a settings row.</summary>
     private async Task SeedAgendaAsync(
         Guid orgId,
         int buffer,

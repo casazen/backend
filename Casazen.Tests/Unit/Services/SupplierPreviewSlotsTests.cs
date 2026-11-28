@@ -34,7 +34,6 @@ public class SupplierPreviewSlotsTests
         return s;
     }
 
-    /// <summary>The days as text (the date, whether it is available, its slots), so two lists of days compare by what they say.</summary>
     private static List<string> Shape(IEnumerable<PublicSlotDay> days) =>
         days
             .Select(day => $"{day.Date:yyyy-MM-dd}|{day.Available}|{string.Join(",", day.Slots.Select(slot => $"{slot.StartUtc:O}>{slot.EndUtc:O}"))}")
@@ -43,8 +42,8 @@ public class SupplierPreviewSlotsTests
     [Theory]
     [InlineData(null, null)]
     [InlineData("2026-10-12", 5)]
-    [InlineData("2026-10-01", 3)] // before today: today
-    [InlineData("2026-11-05", 10)] // cut at the horizon (35 days from today is 12 November)
+    [InlineData("2026-10-01", 3)]
+    [InlineData("2026-11-05", 10)]
     public async Task Preview_OfAPublishedService_ShowsExactlyTheDaysAndTheSlotsOfThePublicPage(string? from, int? days)
     {
         using var s = await WorldAsync();
@@ -88,7 +87,7 @@ public class SupplierPreviewSlotsTests
         Assert.Equal(status, preview.ServiceStatus);
         Assert.Equal(ServiceRequestScenario.ServiceMinutes, preview.DurationMinutes);
         Assert.Contains(preview.Days, day => day.Available);
-        Assert.Null(await showcase.FindServiceAsync(supplier, await s.ListingSlugAsync(listingId))); // the public does not know it
+        Assert.Null(await showcase.FindServiceAsync(supplier, await s.ListingSlugAsync(listingId)));
     }
 
     [Fact]
@@ -128,13 +127,11 @@ public class SupplierPreviewSlotsTests
         var friday = new DateOnly(2026, 10, 9);
         var tenOClock = ServiceRequestScenario.FridayAt10;
 
-        // Both answer the same, and the public plan is now cached.
         var publicBefore = (await showcase.GetSlotsAsync(supplier, slug, friday, 1))!;
         var previewBefore = await Preview(s).GetAsync(s.SupplierOrgId, s.ListingId, friday, 1, comune: null);
         Assert.Contains(previewBefore.Days[0].Slots, slot => slot.StartUtc == tenOClock);
         Assert.Contains(publicBefore.Days[0].Slots, slot => slot.StartUtc == tenOClock);
 
-        // The supplier blocks the morning: the preview shows it at once, the public page keeps its cached plan.
         await s.Agenda.AddBlockAsync(
             s.SupplierOrgId,
             new SupplierBlockInput(SupplierBusyWindowKind.Block, tenOClock.AddHours(-2), tenOClock.AddHours(3), "Dentista"));
@@ -142,7 +139,7 @@ public class SupplierPreviewSlotsTests
         var publicAfter = (await showcase.GetSlotsAsync(supplier, slug, friday, 1))!;
 
         Assert.DoesNotContain(previewAfter.Days[0].Slots, slot => slot.StartUtc == tenOClock);
-        Assert.Contains(publicAfter.Days[0].Slots, slot => slot.StartUtc == tenOClock); // 30 seconds of cache: not a promise
+        Assert.Contains(publicAfter.Days[0].Slots, slot => slot.StartUtc == tenOClock);
     }
 
     [Fact]
@@ -161,15 +158,14 @@ public class SupplierPreviewSlotsTests
             Assert.Equal("SupplierServiceNotFound", ex.MessageKey);
         }
 
-        // And the other supplier's service is theirs to preview.
         Assert.Equal(theirs, (await Preview(s).GetAsync(other, theirs, null, null, comune: null)).ServiceId);
     }
 
     [Theory]
-    [InlineData("H501", true)] // the comune the supplier works in
+    [InlineData("H501", true)]
     [InlineData("  H501  ", true)]
     [InlineData("Milano", false)]
-    [InlineData("058091", false)] // an ISTAT code the supplier does not cover
+    [InlineData("058091", false)]
     public async Task Preview_WithAComune_SaysIfItIsOneOfTheSuppliersZones(string comune, bool inside)
     {
         using var s = await WorldAsync();
@@ -179,7 +175,7 @@ public class SupplierPreviewSlotsTests
         Assert.NotNull(preview.Coverage);
         Assert.Equal(inside, preview.Coverage.Inside);
         Assert.Equal(comune.Trim(), preview.Coverage.Comune);
-        Assert.NotEmpty(preview.Days); // the slots are the same whether or not the comune is covered: the supplier decides
+        Assert.NotEmpty(preview.Days);
     }
 
     [Theory]
@@ -203,7 +199,6 @@ public class SupplierPreviewSlotsTests
 
         var preview = await Preview(s).GetAsync(s.SupplierOrgId, s.ListingId, new DateOnly(2026, 10, 11), 3, comune: null);
 
-        // Sunday (a rest day) and Monday (time off) look the same: not available, with no slot, and the type carries no reason.
         Assert.Equal([new DateOnly(2026, 10, 11), new DateOnly(2026, 10, 12), new DateOnly(2026, 10, 13)], preview.Days.Select(day => day.Date));
         Assert.False(preview.Days[0].Available);
         Assert.False(preview.Days[1].Available);

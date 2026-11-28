@@ -32,8 +32,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
     private const string Comune = "H501";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    // ─── The host's timeline ───
-
     [PostgresFact]
     public async Task GetById_AsHost_ShowsEveryStepWithItsDateAndPartyOfAPaidRequest()
     {
@@ -54,7 +52,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         Assert.Equal(
             new[] { "Host", "Supplier", "Supplier", "Host" },
             steps.Select(s => s.GetProperty("actor").GetString()));
-        // The dates are the ones the request keeps, oldest first.
         Assert.Equal(request.GetProperty("createdAt").GetDateTime(), steps[0].GetProperty("at").GetDateTime());
         Assert.Equal(request.GetProperty("takenAt").GetDateTime(), steps[1].GetProperty("at").GetDateTime());
         Assert.Equal(request.GetProperty("completedAt").GetDateTime(), steps[2].GetProperty("at").GetDateTime());
@@ -76,7 +73,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
 
         var text = await response.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        // The supplier is shown by its business name: the first and last name of the member who took it stay private.
         Assert.DoesNotContain(MemberFirstName, text, StringComparison.Ordinal);
         Assert.DoesNotContain(MemberLastName, text, StringComparison.Ordinal);
         var steps = JsonSerializer.Deserialize<JsonElement>(text, JsonOptions).GetProperty("history").EnumerateArray();
@@ -101,7 +97,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         var rejection = steps[1];
         Assert.Equal("Supplier", rejection.GetProperty("actor").GetString());
         Assert.Equal("Siamo chiusi per ferie", rejection.GetProperty("reason").GetString());
-        // A rejection is final: its date is the last update of the request.
         Assert.Equal(request.GetProperty("updatedAt").GetDateTime(), rejection.GetProperty("at").GetDateTime());
         Assert.True(rejection.GetProperty("at").GetDateTime() >= steps[0].GetProperty("at").GetDateTime());
     }
@@ -165,8 +160,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         Assert.Equal("Fuori zona", last.GetProperty("reason").GetString());
     }
 
-    // ─── Ask another supplier after a rejection ───
-
     [PostgresFact]
     public async Task Create_AfterTheFirstSupplierRejected_AnotherSupplierCanBeRequestedForTheSameStay()
     {
@@ -185,7 +178,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         Assert.Equal("Richiesto", items[second].GetProperty("status").GetString());
         Assert.Equal(w.SupplierB.OrgId, items[second].GetProperty("supplierOrgId").GetGuid());
         Assert.Equal(w.BookingId, items[second].GetProperty("bookingId").GetGuid());
-        // The new supplier gets the request in its inbox, the first one's request stays rejected.
         using var supplierB = factory.CreateAuthenticatedClient(w.SupplierB.UserId, Supplier);
         var inbox = await GetJsonAsync(supplierB, "/api/supplier/inbox");
         Assert.Contains(second, inbox.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()));
@@ -194,7 +186,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
     [PostgresFact]
     public async Task Suppliers_ForTheCategory_ListTheSupplierThatRejectedTooSoTheHostCanDecide()
     {
-        // The API does not exclude the supplier that rejected: the web form leaves it out by default, the host may still pick it.
         var w = await SeedWorldAsync();
         using var host = factory.CreateAuthenticatedClient(w.OwnerId, Host);
         using var supplierA = factory.CreateAuthenticatedClient(w.SupplierA.UserId, Supplier);
@@ -207,8 +198,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         Assert.Contains(w.SupplierA.OrgId, ids);
         Assert.Contains(w.SupplierB.OrgId, ids);
     }
-
-    // ─── The supplier is told when the host marks the request as paid ───
 
     [PostgresFact]
     public async Task MarkPaid_AsHost_QueuesOneEmailAndOnePushToTheSupplier()
@@ -231,7 +220,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         var push = Assert.Single(factory.Pushes.Where(p => p.Payload.Type == PushTypes.ServiceRequestPaid).Skip(pushesBefore));
         Assert.Equal(PushAudience.SupplierOrg(w.SupplierA.OrgId), push.Audience);
         Assert.Equal(id, push.Payload.ServiceRequestId);
-        // Marking it paid a second time is refused and notifies nobody again.
         var again = await host.PostAsync($"/api/service-requests/{id}/mark-paid", null);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, again.StatusCode);
         Assert.Single(factory.Emails.Snapshot().Where(e => e.To == w.SupplierA.Email).Skip(emailsBefore));
@@ -253,8 +241,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         Assert.Equal(emailsBefore, factory.Emails.Snapshot().Count(e => e.Template == EmailTemplates.Names.ServiceRequestPaid));
         Assert.Equal(pushesBefore, factory.Pushes.Count(p => p.Payload.Type == PushTypes.ServiceRequestPaid));
     }
-
-    // ─── helpers ───
 
     private const string MemberFirstName = "Zaccaria";
     private const string MemberLastName = "Squadrista";
@@ -295,10 +281,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
     private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response) =>
         JsonSerializer.Deserialize<JsonElement>(await response.Content.ReadAsStringAsync(), JsonOptions);
 
-    /// <summary>
-    /// A host org with one property in comune H501 (also a long-term property of the same owner, who holds both roles)
-    /// and one confirmed stay on it, and two active suppliers (their own orgs) in H501 for cleaning.
-    /// </summary>
     private async Task<World> SeedWorldAsync()
     {
         var ownerId = $"auth0|su09-owner-{Guid.NewGuid():N}";
@@ -369,7 +351,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
                 Email = $"member-{Guid.NewGuid():N}@example.com",
                 FirstName = MemberFirstName,
                 LastName = MemberLastName,
-                // A supplier account links its supplier org only: User.OrgId is the host org (PL-05, A1-40).
                 SupplierOrgId = supplierOrg.Id,
                 IsActive = true,
             },
@@ -388,7 +369,6 @@ public class ServiceRequestHostTimelinePostgresTests(ServiceRequestHostTimelineP
         return new SeededSupplier(supplierOrg.Id, userId, email);
     }
 
-    /// <summary>The pilot-comuni factory with a recording email queue, and a recording push queue.</summary>
     public sealed class TimelineFactory : SupplierRegistrationIntegrationTests.PilotComuniFactory
     {
         public ConcurrentQueue<(string Key, PushAudience Audience, PushNotificationPayload Payload)> PushQueue { get; } = new();

@@ -17,7 +17,6 @@ public class ConcordatoFacileApiClientTests
     private const string LeaseId = "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11";
     private const string PracticeId = "P-0123456789abcdef";
 
-    /// <summary>The example of <c>GET /v1/leases/{leaseId}/practices</c> in §4 of the specification, as it is.</summary>
     private const string SpecLeasePractices = """
         {
           "leaseId": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11",
@@ -53,7 +52,6 @@ public class ConcordatoFacileApiClientTests
         Assert.Null(practice.CloseReason);
     }
 
-    /// <summary>A lease with no practices (or that CF does not know, or is not CasaZen's) is a 200 with an empty list, not an error.</summary>
     [Theory]
     [InlineData("""{ "leaseId": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11", "practices": [] }""")]
     [InlineData("""{ "leaseId": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11" }""")]
@@ -64,9 +62,6 @@ public class ConcordatoFacileApiClientTests
         Assert.Empty(practices);
     }
 
-    /// <summary>
-    /// <c>comuneDiffersFromLink</c> is null when the link named no comune or the practice is not linked: it must not make the read fail.
-    /// </summary>
     [Fact]
     public async Task GetPracticesByLeaseId_ComuneDiffersFromLinkNull_IsRead()
     {
@@ -94,7 +89,6 @@ public class ConcordatoFacileApiClientTests
         Assert.Equal(CfPracticeStatus.Received, practice.Status);
     }
 
-    /// <summary>Every status of §5 of the specification is known; one added later is read as Unknown, never as an error.</summary>
     [Theory]
     [InlineData("Received", CfPracticeStatus.Received)]
     [InlineData("InProgress", CfPracticeStatus.InProgress)]
@@ -117,7 +111,6 @@ public class ConcordatoFacileApiClientTests
         Assert.Equal(expected, practice.Status);
     }
 
-    /// <summary>The four close reasons of §5 of the specification come through as they are.</summary>
     [Theory]
     [InlineData("duplicate")]
     [InlineData("withdrawn")]
@@ -134,10 +127,6 @@ public class ConcordatoFacileApiClientTests
         Assert.Equal(closeReason, practice.CloseReason);
     }
 
-    /// <summary>
-    /// <c>GET /v1/practices/{practiceId}</c> is the same object plus <c>leaseId</c>, which is null for a practice that CF has received
-    /// without a link to a contract: the lookup of the upload page must answer "pick the contract", not fail.
-    /// </summary>
     [Fact]
     public async Task GetPractice_NotLinkedToALease_HasNoLeaseId()
     {
@@ -176,7 +165,6 @@ public class ConcordatoFacileApiClientTests
         Assert.True(practice.ComuneDiffersFromLink);
     }
 
-    /// <summary>404 <c>practice_not_found</c> (and a number CF does not accept) is "CF does not know it", not an error.</summary>
     [Theory]
     [InlineData(HttpStatusCode.NotFound, "practice_not_found")]
     [InlineData(HttpStatusCode.BadRequest, "invalid_practice_id")]
@@ -187,7 +175,6 @@ public class ConcordatoFacileApiClientTests
         Assert.Null(await Client(handler).GetPracticeAsync(PracticeId));
     }
 
-    /// <summary>A key CF rejects (401) is an error that the caller keeps as stale: it is never read as "no practices".</summary>
     [Fact]
     public async Task GetPracticesByLeaseId_KeyRejected_Throws_ItIsNotAnEmptyList()
     {

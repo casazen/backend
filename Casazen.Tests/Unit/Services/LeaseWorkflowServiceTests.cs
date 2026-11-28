@@ -40,7 +40,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_WithApePresent_ReturnsLeaseWithDraftStatus()
     {
-        // Arrange
         var property = BuildProperty(hasApe: true);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
         _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
@@ -50,29 +49,24 @@ public class LeaseWorkflowServiceTests
 
         var request = BuildCreateRequest();
 
-        // Act
         var result = await _sut.CreateDraftAsync(PropertyId, request);
 
-        // Assert
         Assert.Equal(LeaseStatus.Draft, result.Status);
         Assert.Equal(request.MonthlyRent, result.MonthlyRent);
-        // LT-04 (A7-04): no stipula yet, so no deadline stored (it was StartDate + 30).
         Assert.Null(result.StipulaDate);
         Assert.Null(result.RegistrationDeadline);
-        Assert.Null(result.PartiesAnonymizedAt); // LT-12: no stored retention date, it is counted from the end date
+        Assert.Null(result.PartiesAnonymizedAt);
         Assert.False(result.ErasureRequested);
     }
 
     [Fact]
     public async Task CreateDraftAsync_WithoutApe_ThrowsInvalidOperationException()
     {
-        // Arrange
         var property = BuildProperty(hasApe: false);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
         _apeCompliance.Setup(s => s.EnsurePropertyHasValidApeAsync(PropertyId))
             .ThrowsAsync(ApeComplianceException.Required());
 
-        // Act & Assert
         var ex = await Assert.ThrowsAsync<ApeComplianceException>(() =>
             _sut.CreateDraftAsync(PropertyId, BuildCreateRequest()));
         Assert.Equal(ApeComplianceException.RequiredCode, ex.Code);
@@ -111,8 +105,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_PropertyOwnedByAnotherOrgMember_CreatesDraftInThePropertyOrg()
     {
-        // The caller (owner, or an org-wide member such as a PropertyManager) is authorized on the property by the
-        // controller (TN-3): the service no longer rejects a caller who is not the owner (LT-05).
         var property = BuildProperty(hasApe: true, ownerId: "auth0|different-owner");
         property.OrgId = Guid.NewGuid();
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
@@ -130,7 +122,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_WithExtraEUTenant_SetsIsExtraEUTrue()
     {
-        // Arrange
         var property = BuildProperty(hasApe: true);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
         _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
@@ -140,10 +131,8 @@ public class LeaseWorkflowServiceTests
 
         var request = BuildCreateRequest(tenantCitizenship: "US");
 
-        // Act
         var result = await _sut.CreateDraftAsync(PropertyId, request);
 
-        // Assert
         var tenant = result.Parties.Single(p => p.Role == PartyRole.Tenant);
         Assert.True(tenant.IsExtraEU);
         Assert.True(result.HasExtraEUTenant);
@@ -152,7 +141,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_WithItalianTenant_SetsIsExtraEUFalse()
     {
-        // Arrange
         var property = BuildProperty(hasApe: true);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
         _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>()))
@@ -162,10 +150,8 @@ public class LeaseWorkflowServiceTests
 
         var request = BuildCreateRequest(tenantCitizenship: "IT");
 
-        // Act
         var result = await _sut.CreateDraftAsync(PropertyId, request);
 
-        // Assert
         var tenant = result.Parties.Single(p => p.Role == PartyRole.Tenant);
         Assert.False(tenant.IsExtraEU);
         Assert.False(result.HasExtraEUTenant);
@@ -174,7 +160,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_LowerCaseEuCitizenship_StoredUpperCaseAndNotExtraEu()
     {
-        // LT-07: the EU list (EuMemberStates) is compared on the normalized code, which is also what is stored.
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(BuildProperty(hasApe: true));
         _leaseRepo.Setup(r => r.AddAsync(It.IsAny<LeaseContract>())).ReturnsAsync((LeaseContract l) => l);
         _eventRepo.Setup(r => r.AddAsync(It.IsAny<LeaseEvent>())).ReturnsAsync((LeaseEvent e) => e);
@@ -215,50 +200,41 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task GetLeaseDetailAsync_ExistingLease_ReturnsItForTheCallerToAuthorize()
     {
-        // Arrange: ownership is no longer decided here but by the controller (TN-3 HostResource check).
         var lease = BuildLease(LeaseStatus.Draft);
         _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(lease.Id)).ReturnsAsync(lease);
 
-        // Act
         var result = await _sut.GetLeaseDetailAsync(lease.Id);
 
-        // Assert
         Assert.Same(lease, result);
     }
 
     [Fact]
     public async Task GetLeaseDetailAsync_UnknownLease_ReturnsNull()
     {
-        // Arrange
         _leaseRepo.Setup(r => r.GetByIdWithDetailsAsync(It.IsAny<Guid>())).ReturnsAsync((LeaseContract?)null);
 
-        // Act
         var result = await _sut.GetLeaseDetailAsync(Guid.NewGuid());
 
-        // Assert
         Assert.Null(result);
     }
 
     [Fact]
     public async Task CreateDraftAsync_WhenEndDateBeforeStartDate_Throws422EndBeforeStart()
     {
-        // Arrange
         var property = BuildProperty(hasApe: true);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
 
         var request = BuildCreateRequest() with
         {
             StartDate = new DateTime(2030, 9, 1, 0, 0, 0, DateTimeKind.Utc),
-            EndDate = new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc), // before StartDate
+            EndDate = new DateTime(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc),
         };
 
-        // Act & Assert
         var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _sut.CreateDraftAsync(PropertyId, request));
         Assert.Equal(LeaseTermErrorCodes.EndBeforeStart, ex.Code);
     }
 
     [Theory]
-    // LT-10 (A7-13): libero 4+4 at least 4 years, concordato 3+2 at least 3 years, transitorio 1-18 months.
     [InlineData(LeaseContractType.Libero, "2026-09-01", "2030-08-30", "lease_term_too_short")]
     [InlineData(LeaseContractType.Libero, "2026-09-01", "2027-08-31", "lease_term_too_short")]
     [InlineData(LeaseContractType.Concordato, "2026-09-01", "2027-08-31", "lease_term_too_short")]
@@ -343,7 +319,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_ConcordatoUnderOrdinaryRegime_KeepsBothTypeAndRegime()
     {
-        // A7-13: "concordato + regime ordinario" could not be represented with the combined value.
         ArrangeCreation();
         ArrangeRange(DataCompleteness.Complete);
         var request = ConcordatoRequest(400m) with { TaxRegime = LeaseTaxRegime.Ordinario };
@@ -370,7 +345,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_ConcordatoRange_UsesTheTermOfTheLeaseDates()
     {
-        // A7-12: the range is computed with the real term (5 years here), never with a client-side year count.
         ArrangeCreation();
         LeaseTerm? usedTerm = null;
         _canoneEligibility
@@ -400,7 +374,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_ConcordatoOutsideIndicativeRangeWithPartialData_CreatesLeaseWithWarning()
     {
-        // A7-23: with data not confirmed by a lawyer or a signatory organization the range is a guide, not a block.
         ArrangeCreation();
         ArrangeRange(DataCompleteness.Partial);
 
@@ -464,7 +437,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_WhenNoTenant_Throws422TenantRequired()
     {
-        // Arrange
         var property = BuildProperty(hasApe: true);
         _propertyRepo.Setup(r => r.GetByIdAsync(PropertyId)).ReturnsAsync(property);
 
@@ -484,7 +456,6 @@ public class LeaseWorkflowServiceTests
     [Fact]
     public async Task CreateDraftAsync_TwoLandlordsAndTwoTenants_KeepsEveryPartyWithItsPositionAndNormalizedCode()
     {
-        // LT-14 (A7-28): co-owners (spouses) and co-tenants; a company tenant with its 11-digit code.
         ArrangeCreation();
         var request = BuildCreateRequest() with
         {
@@ -510,10 +481,10 @@ public class LeaseWorkflowServiceTests
     }
 
     [Theory]
-    [InlineData("RSSMRA80A01H501Z", LeasePartyErrorCodes.FiscalCodeInvalid)] // wrong check character
-    [InlineData("12345678901", LeasePartyErrorCodes.FiscalCodeInvalid)] // wrong check digit
+    [InlineData("RSSMRA80A01H501Z", LeasePartyErrorCodes.FiscalCodeInvalid)]
+    [InlineData("12345678901", LeasePartyErrorCodes.FiscalCodeInvalid)]
     [InlineData("ABC", LeasePartyErrorCodes.FiscalCodeInvalid)]
-    [InlineData("rssmra80a01h501u", LeasePartyErrorCodes.FiscalCodeDuplicate)] // the landlord again
+    [InlineData("rssmra80a01h501u", LeasePartyErrorCodes.FiscalCodeDuplicate)]
     public async Task CreateDraftAsync_TenantFiscalCodeRejected_Throws422WithCodeAndStoresNothing(string tenantCode, string code)
     {
         ArrangeCreation();
@@ -548,7 +519,6 @@ public class LeaseWorkflowServiceTests
         Assert.Equal(LeasePartyErrorCodes.TooMany, ex.Code);
     }
 
-    /// <summary>A valid 11-digit code built from <paramref name="seed"/> (check digit computed).</summary>
     private static string NumericCode(int seed)
     {
         var first10 = (1_000_000_000L + seed).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -573,7 +543,6 @@ public class LeaseWorkflowServiceTests
             .Setup(s => s.CalculateAsync(PropertyId, It.IsAny<RentBandCharacteristics>(), It.IsAny<LeaseTerm>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Range(completeness));
 
-    /// <summary>Seveso, 65 mq, sub-fascia 2, 3 years: 1.300,00-5.525,00 euro a year.</summary>
     private static CanoneConcordatoEligibilityDto Range(DataCompleteness completeness) =>
         new(true, null, "Seveso", "Unica", 2, 1300m, 5525m, 108.34m, 460.41m,
             completeness, true, false, true, CanoneConcordatoCopy.Disclaimer)
@@ -610,8 +579,6 @@ public class LeaseWorkflowServiceTests
             StartDate = new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             EndDate = new DateTime(2029, 8, 31, 0, 0, 0, DateTimeKind.Utc),
         };
-
-    // Helpers
 
     private static Property BuildProperty(bool hasApe, string? ownerId = null) => new()
     {

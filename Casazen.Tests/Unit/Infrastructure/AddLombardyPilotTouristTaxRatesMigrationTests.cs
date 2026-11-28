@@ -6,10 +6,6 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
 
-/// <summary>
-/// SEO-LOCALE: tourist tax rates of the new Lombardy SEO pilots, only the rows free of ambiguity (the seed of the migration and
-/// the calculator on it). The test that re-read the script of the migration went away once it reached production.
-/// </summary>
 public class AddLombardyPilotTouristTaxRatesMigrationTests
 {
     [Fact]
@@ -66,7 +62,6 @@ public class AddLombardyPilotTouristTaxRatesMigrationTests
     [Fact]
     public void Calculate_CernobbioWithoutCategory_UsesTheBaseRateNotTheVillaOne()
     {
-        // Properties have no cadastral category yet: the base rate applies, the villa row is never required.
         var quote = TouristTaxCalculator.Calculate(RatesOf("Cernobbio"), Stay("2026-10-10", nights: 2, adults: 2));
 
         Assert.Equal(TouristTaxQuoteStatus.Calculated, quote.Status);
@@ -85,7 +80,6 @@ public class AddLombardyPilotTouristTaxRatesMigrationTests
     [Fact]
     public void Calculate_MaccagnoBeforeTheTaxExisted_IsNotAvailable()
     {
-        // The tax was instituted from 01/03/2026.
         var quote = TouristTaxCalculator.Calculate(RatesOf("Maccagno con Pino e Veddasca"), Stay("2026-02-10", nights: 2, adults: 2));
 
         Assert.Equal(TouristTaxQuoteStatus.RateUnavailable, quote.Status);
